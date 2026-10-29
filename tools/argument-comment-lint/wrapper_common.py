@@ -20,17 +20,6 @@ STRICT_LINTS = [
 NOISE_LINT = "unknown_lints"
 TOOLCHAIN_CHANNEL = "nightly-2025-09-18"
 
-_TARGET_SELECTION_ARGS = {
-    "--all-targets",
-    "--lib",
-    "--bins",
-    "--tests",
-    "--examples",
-    "--benches",
-    "--doc",
-}
-_TARGET_SELECTION_PREFIXES = ("--bin=", "--test=", "--example=", "--bench=")
-_TARGET_SELECTION_WITH_VALUE = {"--bin", "--test", "--example", "--bench"}
 _NIGHTLY_LIBRARY_PATTERN = re.compile(
     r"^(.+@nightly-[0-9]{4}-[0-9]{2}-[0-9]{2})-.+$"
 )
@@ -44,8 +33,6 @@ class ParsedWrapperArgs:
     has_package_selection: bool = False
     has_no_deps: bool = False
     has_library_selection: bool = False
-    has_cargo_target_selection: bool = False
-    has_fix: bool = False
 
 
 def repo_root() -> Path:
@@ -60,10 +47,6 @@ def parse_wrapper_args(argv: Sequence[str]) -> ParsedWrapperArgs:
     for arg in argv:
         if after_separator:
             parsed.cargo_args.append(arg)
-            if arg in _TARGET_SELECTION_ARGS or arg in _TARGET_SELECTION_WITH_VALUE:
-                parsed.has_cargo_target_selection = True
-            elif arg.startswith(_TARGET_SELECTION_PREFIXES):
-                parsed.has_cargo_target_selection = True
             continue
 
         if arg == "--":
@@ -90,8 +73,6 @@ def parse_wrapper_args(argv: Sequence[str]) -> ParsedWrapperArgs:
             expect_value = "package_selection"
         elif arg.startswith("--package="):
             parsed.has_package_selection = True
-        elif arg == "--fix":
-            parsed.has_fix = True
         elif arg == "--workspace":
             parsed.has_package_selection = True
         elif arg == "--no-deps":
@@ -114,8 +95,6 @@ def build_final_args(parsed: ParsedWrapperArgs, manifest_path: Path) -> list[str
         final_args.append("--workspace")
     if not parsed.has_no_deps:
         final_args.append("--no-deps")
-    if not parsed.has_fix and not parsed.has_cargo_target_selection:
-        cargo_args.append("--all-targets")
     final_args.extend(parsed.lint_args)
     if cargo_args:
         final_args.extend(["--", *cargo_args])

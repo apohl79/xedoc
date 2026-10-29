@@ -137,7 +137,3 @@ pub fn write_attribution_frame(writer: &mut impl Write, token: &str) -> io::Resu
     writer.write_all(&token_len.to_be_bytes())?;
     writer.write_all(token.as_bytes())
 }
-
-#[cfg(test)]
-#[path = "attribution_tests.rs"]
-mod tests;

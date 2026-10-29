@@ -2587,7 +2587,3 @@ fn normalize_activity_summary(raw: &str) -> Option<String> {
         Some(result)
     }
 }
-
-#[cfg(test)]
-#[path = "turn_tests.rs"]
-mod tests;

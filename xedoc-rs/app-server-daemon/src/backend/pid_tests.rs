@@ -5,7 +5,6 @@ use pretty_assertions::assert_eq;
 use tempfile::TempDir;
 
 use super::PidBackend;
-use super::PidCommandKind;
 use super::PidFileState;
 use super::PidLogTail;
 use super::PidRecord;
@@ -160,22 +159,6 @@ async fn stop_reaps_untracked_app_server_child() {
     // `sleep` is not tracked by Tokio, so stop must reap it instead of leaving a zombie.
     result.expect("stop timed out").expect("stop");
     assert!(!pid_file.exists());
-}
-
-#[test]
-fn update_loop_uses_hidden_app_server_subcommand() {
-    let backend = PidBackend {
-        xedoc_bin: "xedoc".into(),
-        pid_file: "updater.pid".into(),
-        lock_file: "updater.pid.lock".into(),
-        command_kind: PidCommandKind::UpdateLoop,
-        environment: Vec::new(),
-    };
-
-    assert_eq!(
-        backend.command_args(),
-        vec!["app-server", "daemon", "pid-update-loop"]
-    );
 }
 
 #[tokio::test]

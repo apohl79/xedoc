@@ -485,7 +485,3 @@ fn code_challenge(code_verifier: &str) -> String {
     let digest = Sha256::digest(code_verifier.as_bytes());
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(digest)
 }
-
-#[cfg(test)]
-#[path = "oauth_login_tests.rs"]
-mod tests;

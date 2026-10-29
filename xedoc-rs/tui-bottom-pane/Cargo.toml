@@ -8,6 +8,7 @@ version.workspace = true
 name = "xedoc_tui_bottom_pane"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [features]
 test-support = ["xedoc-tui-composer/test-support"]

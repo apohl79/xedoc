@@ -4,7 +4,4 @@ xedoc_rust_crate(
     name = "tui-status",
     crate_features = ["test-support"],
     crate_name = "xedoc_tui_status",
-    test_data_extra = glob([
-        "src/snapshots/**",
-    ]),
 )

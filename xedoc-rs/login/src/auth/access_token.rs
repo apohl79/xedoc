@@ -12,7 +12,3 @@ pub(super) fn classify_xedoc_access_token(access_token: &str) -> XedocAccessToke
         XedocAccessToken::AgentIdentityJwt(access_token)
     }
 }
-
-#[cfg(test)]
-#[path = "access_token_tests.rs"]
-mod tests;

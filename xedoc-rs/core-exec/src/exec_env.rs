@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 use xedoc_protocol::ThreadId;
-#[cfg(test)]
-use xedoc_protocol::config_types::EnvironmentVariablePattern;
 use xedoc_protocol::config_types::ShellEnvironmentPolicy;
 use xedoc_protocol::models::ActivePermissionProfile;
 use xedoc_protocol::shell_environment;
@@ -69,33 +67,3 @@ pub fn inject_permission_profile_env(
         );
     }
 }
-
-#[cfg(all(test, target_os = "windows"))]
-fn create_env_from_vars<I>(
-    vars: I,
-    policy: &ShellEnvironmentPolicy,
-    thread_id: Option<ThreadId>,
-) -> HashMap<String, String>
-where
-    I: IntoIterator<Item = (String, String)>,
-{
-    let thread_id = thread_id.map(|thread_id| thread_id.to_string());
-    shell_environment::create_env_from_vars(vars, policy, thread_id.as_deref())
-}
-
-#[cfg(test)]
-fn populate_env<I>(
-    vars: I,
-    policy: &ShellEnvironmentPolicy,
-    thread_id: Option<ThreadId>,
-) -> HashMap<String, String>
-where
-    I: IntoIterator<Item = (String, String)>,
-{
-    let thread_id = thread_id.map(|thread_id| thread_id.to_string());
-    shell_environment::populate_env(vars, policy, thread_id.as_deref())
-}
-
-#[cfg(test)]
-#[path = "exec_env_tests.rs"]
-mod tests;

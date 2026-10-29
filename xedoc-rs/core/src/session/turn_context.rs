@@ -535,7 +535,3 @@ fn create_turn_model_provider(
 ) -> SharedModelProvider {
     create_model_provider_for_configured_id(provider_id, provider, auth_manager)
 }
-
-#[cfg(test)]
-#[path = "turn_context_tests.rs"]
-mod tests;

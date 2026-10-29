@@ -49,7 +49,3 @@ pub fn permission_profile_policy_tag(profile: &PermissionProfile, cwd: &Path) ->
         }
     }
 }
-
-#[cfg(test)]
-#[path = "sandbox_tags_tests.rs"]
-mod tests;

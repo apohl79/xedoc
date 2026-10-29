@@ -8,14 +8,10 @@ license.workspace = true
 name = "xedoc_tui_frame"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
 
 [dependencies]
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt", "test-util", "time"] }
-tokio-util = { workspace = true, features = ["time"] }

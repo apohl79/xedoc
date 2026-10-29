@@ -140,14 +140,13 @@ bazel build --config=argument-comment-lint -- \
 just argument-comment-lint -p xedoc-core
 ```
 
-If no package selection is provided, `just argument-comment-lint` now defaults
-to the Bazel aspect path over `//xedoc-rs/...`. The Python wrappers remain the
-package-scoped escape hatch and still default the underlying Cargo invocation
-to `--all-targets` unless you explicitly narrow the target set, so targeted
-wrapper runs cover test-only call sites by default. The Bazel entrypoints use
-`tools/argument-comment-lint/list-bazel-targets.sh` to add the internal
-manual `*-unit-tests-bin` Rust targets explicitly, so inline `#[cfg(test)]`
-call sites are covered without pulling in unrelated manual release targets.
+If no package selection is provided, `just argument-comment-lint` defaults
+to the Bazel aspect path over production Rust targets in `//xedoc-rs/...`.
+The Python wrappers remain the package-scoped escape hatch and leave Cargo's
+default production-target selection intact unless you explicitly select
+another target set. This also supports binary-only packages. The Bazel entrypoints use
+`tools/argument-comment-lint/list-bazel-targets.sh` to select production
+libraries, procedural macros, and binaries without compiling test harnesses.
 
 Repo runs also promote `argument_comment_mismatch` and
 `uncommented_anonymous_literal_argument` to errors by default:

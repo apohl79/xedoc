@@ -1,7 +1,0 @@
----
-source: tui-transcript/src/history_cell/tests.rs
-expression: rendered
----
-
-❯ _count_ro
-  ws

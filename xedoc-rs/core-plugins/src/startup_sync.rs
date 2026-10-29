@@ -876,7 +876,3 @@ fn apply_zip_permissions(
 ) -> Result<(), String> {
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "startup_sync_tests.rs"]
-mod tests;

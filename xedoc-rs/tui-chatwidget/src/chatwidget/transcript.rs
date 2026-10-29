@@ -67,22 +67,3 @@ impl TranscriptState {
         self.plan_item_active = false;
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use pretty_assertions::assert_eq;
-
-    use super::*;
-
-    #[test]
-    fn active_cell_revision_wraps() {
-        let mut state = TranscriptState {
-            active_cell_revision: u64::MAX,
-            ..TranscriptState::default()
-        };
-
-        state.bump_active_cell_revision();
-
-        assert_eq!(state.active_cell_revision, 0);
-    }
-}

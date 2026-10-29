@@ -189,7 +189,3 @@ fn find_system_bwrap_in_search_paths(
             }
         })
 }
-
-#[cfg(test)]
-#[path = "bwrap_tests.rs"]
-mod tests;

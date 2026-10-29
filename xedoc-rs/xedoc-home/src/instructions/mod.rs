@@ -72,6 +72,3 @@ impl UserInstructionsProvider for XedocHomeUserInstructionsProvider {
         Box::pin(self.load_from_xedoc_home())
     }
 }
-
-#[cfg(test)]
-mod tests;

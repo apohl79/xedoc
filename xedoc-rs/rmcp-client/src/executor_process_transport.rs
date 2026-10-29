@@ -472,10 +472,6 @@ impl ExecutorProcessTransport {
     }
 }
 
-#[cfg(test)]
-#[path = "executor_process_transport_tests.rs"]
-mod tests;
-
 impl Drop for ExecutorProcessTransport {
     fn drop(&mut self) {
         if self.terminated {

@@ -363,11 +363,3 @@ fn environment_context_markers() -> (&'static str, &'static str) {
         xedoc_protocol::protocol::ENVIRONMENT_CONTEXT_CLOSE_TAG,
     )
 }
-
-#[cfg(test)]
-#[path = "environment_tests.rs"]
-mod tests;
-
-#[cfg(test)]
-#[path = "environment_render_tests.rs"]
-mod render_tests;

@@ -277,7 +277,3 @@ fn truncate_str_to_char_boundary(value: &str, max_chars: usize) -> &str {
         None => value,
     }
 }
-
-#[cfg(test)]
-#[path = "tool_call_telemetry_tests.rs"]
-mod tests;

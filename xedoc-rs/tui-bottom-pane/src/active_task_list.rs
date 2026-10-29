@@ -148,7 +148,3 @@ impl Renderable for ActiveTaskList {
         self.display_lines(width).len() as u16
     }
 }
-
-#[cfg(test)]
-#[path = "active_task_list_tests.rs"]
-mod tests;

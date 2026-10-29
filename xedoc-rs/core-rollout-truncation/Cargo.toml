@@ -7,6 +7,8 @@ version.workspace = true
 [lib]
 name = "xedoc_core_rollout_truncation"
 path = "src/lib.rs"
+test = false
+doctest = false
 
 [lints]
 workspace = true
@@ -16,7 +18,3 @@ xedoc-app-server-protocol = { workspace = true }
 xedoc-core-context-manager = { workspace = true }
 xedoc-core-response-items = { workspace = true }
 xedoc-protocol = { workspace = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
-serde_json = { workspace = true }

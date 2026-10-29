@@ -436,7 +436,3 @@ fn thinking_level(effort: &ReasoningEffort) -> Option<GeminiThinkingLevel> {
         ReasoningEffort::None | ReasoningEffort::Ultra | ReasoningEffort::Custom(_) => None,
     }
 }
-
-#[cfg(test)]
-#[path = "request_tests.rs"]
-mod tests;

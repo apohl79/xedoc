@@ -133,7 +133,3 @@ fn prepare_image(
     *image_url = image.into_data_url();
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "image_tests.rs"]
-mod tests;

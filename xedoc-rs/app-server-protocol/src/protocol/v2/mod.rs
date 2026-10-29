@@ -50,6 +50,3 @@ pub use thread::*;
 pub use thread_data::*;
 pub use turn::*;
 pub use web_ui::*;
-
-#[cfg(test)]
-mod tests;

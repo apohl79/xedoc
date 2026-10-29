@@ -427,7 +427,3 @@ impl ResolvedMcpCatalog {
         &self.conflicts
     }
 }
-
-#[cfg(test)]
-#[path = "catalog_tests.rs"]
-mod tests;

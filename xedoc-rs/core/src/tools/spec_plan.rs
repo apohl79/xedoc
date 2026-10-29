@@ -837,7 +837,3 @@ impl CoreToolRuntime for MultiAgentV2NamespaceOverride {
         self.handler.create_diff_consumer()
     }
 }
-
-#[cfg(test)]
-#[path = "spec_plan_tests.rs"]
-mod tests;

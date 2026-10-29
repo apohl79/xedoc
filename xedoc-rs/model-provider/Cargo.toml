@@ -8,6 +8,7 @@ version.workspace = true
 doctest = false
 name = "xedoc_model_provider"
 path = "src/lib.rs"
+test = false
 
 [lints]
 workspace = true
@@ -29,10 +30,3 @@ xedoc-utils-home-dir = { workspace = true }
 http = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
 tracing = { workspace = true, features = ["log"] }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
-serde_json = { workspace = true }
-tempfile = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }
-wiremock = { workspace = true }

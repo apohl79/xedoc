@@ -8,6 +8,7 @@ version.workspace = true
 name = "xedoc_tui_hooks"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -30,8 +31,3 @@ strum = { workspace = true }
 textwrap = { workspace = true }
 unicode-width = { workspace = true }
 uuid = { workspace = true }
-
-[dev-dependencies]
-xedoc-tui-test-support = { workspace = true }
-insta = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }

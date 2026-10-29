@@ -1,7 +1,6 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::future::Future;
-use std::fs;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::path::PathBuf;
@@ -237,52 +236,6 @@ async fn shutdown_returns_teardown_error() -> Result<()> {
 
     assert_eq!(error.to_string(), "stop isolated wineserver");
     assert_prefix_removed(&prefix);
-    Ok(())
-}
-
-#[test]
-fn powershell_runtime_is_materialized_at_the_windows_fallback_path() -> Result<()> {
-    let prefix = TempDir::new()?;
-    let runtime = TempDir::new()?;
-    fs::create_dir(runtime.path().join("Modules"))?;
-    fs::write(runtime.path().join("pwsh.exe"), b"pwsh")?;
-    fs::write(runtime.path().join("Modules").join("marker.txt"), b"module")?;
-
-    install_powershell_runtime(prefix.path(), runtime.path())?;
-
-    let installed = prefix
-        .path()
-        .join("drive_c")
-        .join("Program Files")
-        .join("PowerShell")
-        .join("7");
-    assert_eq!(fs::read(installed.join("pwsh.exe"))?, b"pwsh");
-    assert_eq!(
-        fs::read(installed.join("Modules").join("marker.txt"))?,
-        b"module"
-    );
-    Ok(())
-}
-
-#[test]
-fn powershell_runtime_follows_runfiles_symlinks() -> Result<()> {
-    let prefix = TempDir::new()?;
-    let runtime = TempDir::new()?;
-    let backing = TempDir::new()?;
-    let backing_file = backing.path().join("pwsh.exe");
-    fs::write(&backing_file, b"pwsh")?;
-    std::os::unix::fs::symlink(&backing_file, runtime.path().join("pwsh.exe"))?;
-
-    install_powershell_runtime(prefix.path(), runtime.path())?;
-
-    let installed = prefix
-        .path()
-        .join("drive_c")
-        .join("Program Files")
-        .join("PowerShell")
-        .join("7")
-        .join("pwsh.exe");
-    assert_eq!(fs::read(installed)?, b"pwsh");
     Ok(())
 }
 

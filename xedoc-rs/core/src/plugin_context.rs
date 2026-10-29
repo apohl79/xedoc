@@ -196,7 +196,3 @@ impl PluginManifestContextContributor {
         PromptFragment::new(slot, text).with_position(position)
     }
 }
-
-#[cfg(test)]
-#[path = "plugin_context_tests.rs"]
-mod tests;

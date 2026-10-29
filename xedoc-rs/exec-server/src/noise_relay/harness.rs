@@ -626,7 +626,3 @@ fn send_disconnected(
         reason: Some(reason),
     });
 }
-
-#[cfg(test)]
-#[path = "harness_tests.rs"]
-mod tests;

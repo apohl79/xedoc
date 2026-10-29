@@ -232,7 +232,3 @@ impl ModelsManager for RegistryModelsManager {
         self.inner.refresh_if_new_etag(etag, http_client_factory)
     }
 }
-
-#[cfg(test)]
-#[path = "registry_manager_tests.rs"]
-mod tests;

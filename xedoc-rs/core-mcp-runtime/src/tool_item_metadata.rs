@@ -35,7 +35,3 @@ impl McpToolCallItemMetadata {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "tool_item_metadata_tests.rs"]
-mod tests;

@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_tui_markdown"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -22,7 +23,3 @@ regex-lite = { workspace = true }
 unicode-width = { workspace = true }
 url = { workspace = true }
 urlencoding = { workspace = true }
-
-[dev-dependencies]
-insta = { workspace = true }
-pretty_assertions = { workspace = true }

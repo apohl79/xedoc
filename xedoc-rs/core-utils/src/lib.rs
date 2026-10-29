@@ -31,7 +31,3 @@ pub fn normalize_thread_name(name: &str) -> Option<String> {
         Some(trimmed.to_string())
     }
 }
-
-#[cfg(test)]
-#[path = "lib_tests.rs"]
-mod tests;

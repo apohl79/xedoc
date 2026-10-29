@@ -280,11 +280,6 @@ impl ChatWidget {
         self.request_redraw();
     }
 
-    #[cfg(test)]
-    pub fn last_agent_markdown_text(&self) -> Option<&str> {
-        self.transcript.last_agent_markdown.as_deref()
-    }
-
     pub(super) fn show_rename_prompt(&mut self) {
         if !self.ensure_thread_rename_allowed() {
             return;

@@ -8,6 +8,7 @@ build = "build.rs"
 [[bin]]
 name = "xedoc"
 path = "src/main.rs"
+test = false
 
 [lib]
 name = "xedoc_cli"

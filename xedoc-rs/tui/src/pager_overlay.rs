@@ -3,8 +3,6 @@ use crate::tui::TuiEvent;
 use std::io::Result;
 
 pub(crate) use xedoc_tui_overlays::pager_overlay::Overlay;
-#[cfg(test)]
-pub(crate) use xedoc_tui_overlays::pager_overlay::TranscriptOverlay;
 
 pub(crate) fn handle_event(overlay: &mut Overlay, tui: &mut Tui, event: TuiEvent) -> Result<()> {
     match event {

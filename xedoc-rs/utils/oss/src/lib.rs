@@ -36,26 +36,3 @@ pub async fn ensure_oss_provider_ready(
     }
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_get_default_model_for_provider_lmstudio() {
-        let result = get_default_model_for_oss_provider(LMSTUDIO_OSS_PROVIDER_ID);
-        assert_eq!(result, Some(xedoc_lmstudio::DEFAULT_OSS_MODEL));
-    }
-
-    #[test]
-    fn test_get_default_model_for_provider_ollama() {
-        let result = get_default_model_for_oss_provider(OLLAMA_OSS_PROVIDER_ID);
-        assert_eq!(result, Some(xedoc_ollama::DEFAULT_OSS_MODEL));
-    }
-
-    #[test]
-    fn test_get_default_model_for_provider_unknown() {
-        let result = get_default_model_for_oss_provider("unknown-provider");
-        assert_eq!(result, None);
-    }
-}

@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_arg0"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -25,6 +26,3 @@ xedoc-utils-home-dir = { workspace = true }
 dotenvy = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }

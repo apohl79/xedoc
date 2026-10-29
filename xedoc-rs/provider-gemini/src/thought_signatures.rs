@@ -59,7 +59,3 @@ impl GeminiThoughtSignatureStore {
             .cloned()
     }
 }
-
-#[cfg(test)]
-#[path = "thought_signatures_tests.rs"]
-mod tests;

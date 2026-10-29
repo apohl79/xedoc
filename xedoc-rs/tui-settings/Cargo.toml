@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_tui_settings"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -27,11 +28,3 @@ crossterm = { workspace = true }
 ratatui = { workspace = true }
 textwrap = { workspace = true }
 unicode-width = { workspace = true }
-
-[dev-dependencies]
-xedoc-tui-bottom-pane = { workspace = true, features = ["test-support"] }
-xedoc-tui-frame = { workspace = true }
-dirs = { workspace = true }
-insta = { workspace = true }
-pretty_assertions = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }

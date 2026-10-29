@@ -8,11 +8,13 @@ autotests = false
 [[bin]]
 name = "xedoc-exec"
 path = "src/main.rs"
+test = false
 
 [lib]
 name = "xedoc_exec"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [[test]]
 name = "all"

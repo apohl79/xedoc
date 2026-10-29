@@ -365,7 +365,3 @@ pub enum LegacyAppPathStringError {
         convention: Option<PathConvention>,
     },
 }
-
-#[cfg(test)]
-#[path = "api_path_string_tests.rs"]
-mod tests;

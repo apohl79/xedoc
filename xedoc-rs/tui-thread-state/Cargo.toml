@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_tui_thread_state"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -21,8 +22,3 @@ xedoc-tui-events = { workspace = true }
 xedoc-tui-transcript = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
-
-[dev-dependencies]
-xedoc-config = { workspace = true }
-xedoc-utils-absolute-path = { workspace = true }
-pretty_assertions = { workspace = true }

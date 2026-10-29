@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_tui_events"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -33,7 +34,3 @@ serde_json = { workspace = true }
 shlex = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 tracing = { workspace = true }
-
-[dev-dependencies]
-xedoc-utils-absolute-path = { workspace = true }
-pretty_assertions = { workspace = true }

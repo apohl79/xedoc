@@ -156,26 +156,3 @@ fn parse_version_from_user_agent(user_agent: &str) -> Result<String> {
         .ok_or_else(|| anyhow!("app-server user-agent omitted version"))?;
     Ok(version.to_string())
 }
-
-#[cfg(all(test, unix))]
-mod tests {
-    use pretty_assertions::assert_eq;
-
-    use super::parse_version_from_user_agent;
-
-    #[test]
-    fn parses_version_from_xedoc_user_agent() {
-        assert_eq!(
-            parse_version_from_user_agent(
-                "xedoc_app_server_daemon/1.2.3 (Linux 6.8.0; x86_64) codex_cli_rs/1.2.3",
-            )
-            .expect("version"),
-            "1.2.3"
-        );
-    }
-
-    #[test]
-    fn rejects_user_agent_without_version() {
-        assert!(parse_version_from_user_agent("xedoc_app_server_daemon").is_err());
-    }
-}

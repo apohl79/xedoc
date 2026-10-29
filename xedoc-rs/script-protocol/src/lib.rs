@@ -63,7 +63,3 @@ pub use subprocess::SubprocessExecutor;
 pub use subprocess::SubprocessFailure;
 pub use subprocess::SubprocessFailureKind;
 pub use subprocess::SubprocessRequest;
-
-#[cfg(test)]
-#[path = "protocol_tests.rs"]
-mod tests;

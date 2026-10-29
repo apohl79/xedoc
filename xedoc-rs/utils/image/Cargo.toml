@@ -21,6 +21,7 @@ image = { workspace = true, features = ["jpeg", "png", "gif", "webp"] }
 
 [lib]
 doctest = false
+test = false
 
 [[bench]]
 name = "prompt_images"

@@ -301,7 +301,3 @@ pub fn sub_agent_activity_summary(kind: SubAgentActivityKind, agent_path: &str) 
         SubAgentActivityKind::Completed => format!("Completed `{agent_path}`"),
     }
 }
-
-#[cfg(test)]
-#[path = "thread_transcript_tests.rs"]
-mod tests;

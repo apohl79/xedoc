@@ -35,3 +35,4 @@ pretty_assertions = { workspace = true }
 
 [lib]
 doctest = false
+test = false

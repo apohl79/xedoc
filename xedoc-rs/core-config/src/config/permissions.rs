@@ -23,7 +23,3 @@ pub(crate) fn default_builtin_permission_profile_name(
         BUILT_IN_READ_ONLY_PROFILE
     }
 }
-
-#[cfg(test)]
-#[path = "permissions_config_tests.rs"]
-mod tests;

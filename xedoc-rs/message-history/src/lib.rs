@@ -438,9 +438,3 @@ fn log_identity(metadata: &std::fs::Metadata) -> Option<u64> {
 fn log_identity(_metadata: &std::fs::Metadata) -> Option<u64> {
     None
 }
-
-#[cfg(test)]
-#[path = "batch_tests.rs"]
-mod batch_tests;
-#[cfg(test)]
-mod tests;

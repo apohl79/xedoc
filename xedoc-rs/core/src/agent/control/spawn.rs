@@ -224,25 +224,6 @@ impl AgentControl {
         }
     }
 
-    /// Spawn a new agent thread and submit the initial prompt.
-    #[cfg(test)]
-    pub(crate) async fn spawn_agent(
-        &self,
-        config: Config,
-        initial_input: Vec<UserInput>,
-        session_source: Option<SessionSource>,
-    ) -> XedocResult<ThreadId> {
-        let spawned_agent = Box::pin(self.spawn_agent_internal(
-            config,
-            SpawnInitialInput::UserInput(initial_input),
-            session_source,
-            SpawnAgentOptions::default(),
-            /*defer_initial_input*/ false,
-        ))
-        .await?;
-        Ok(spawned_agent.thread_id)
-    }
-
     /// Spawn an agent thread with some metadata.
     pub(crate) async fn spawn_agent_with_metadata(
         &self,

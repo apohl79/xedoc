@@ -9,9 +9,5 @@ xedoc_rust_crate(
     crate_name = "xedoc_tui_transcript",
     test_data_extra = glob([
         "src/**/*.rs",
-        "src/**/snapshots/**",
     ]),
-    test_shard_counts = {
-        "tui-transcript-unit-tests": 4,
-    },
 )

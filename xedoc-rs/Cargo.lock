@@ -252,7 +252,6 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "core_test_support",
- "pretty_assertions",
  "serde",
  "serde_json",
  "shlex",
@@ -1856,9 +1855,7 @@ dependencies = [
  "notify",
  "opentelemetry",
  "opentelemetry_sdk",
- "pretty_assertions",
  "regex-lite",
- "reqwest 0.12.28",
  "serde_json",
  "shlex",
  "similar",
@@ -11914,12 +11911,8 @@ dependencies = [
 name = "xedoc-agent-graph-store"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "serde",
- "serde_json",
- "tempfile",
  "thiserror 2.0.18",
- "tokio",
  "xedoc-protocol",
  "xedoc-state",
 ]
@@ -11934,7 +11927,6 @@ dependencies = [
  "crypto_box",
  "ed25519-dalek",
  "jsonwebtoken",
- "pretty_assertions",
  "rand 0.9.3",
  "reqwest 0.12.28",
  "serde",
@@ -12079,10 +12071,8 @@ name = "xedoc-app-server-client"
 version = "1.69.0"
 dependencies = [
  "futures",
- "pretty_assertions",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "tokio-tungstenite",
  "toml 0.9.11+spec-1.1.0",
@@ -12126,12 +12116,10 @@ name = "xedoc-app-server-jsonrpc"
 version = "1.69.0"
 dependencies = [
  "futures",
- "pretty_assertions",
  "serde_json",
  "tokio",
  "tokio-util",
  "tracing",
- "uuid",
  "xedoc-app-server-protocol",
  "xedoc-app-server-transport",
  "xedoc-otel",
@@ -12173,7 +12161,6 @@ version = "1.69.0"
 dependencies = [
  "anyhow",
  "clap",
- "pretty_assertions",
  "serde",
  "serde_json",
  "tokio",
@@ -12244,7 +12231,6 @@ version = "1.69.0"
 dependencies = [
  "anyhow",
  "dotenvy",
- "pretty_assertions",
  "tempfile",
  "tokio",
  "xedoc-apply-patch",
@@ -12261,7 +12247,6 @@ dependencies = [
 name = "xedoc-async-utils"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "tokio",
  "tokio-util",
 ]
@@ -12276,9 +12261,7 @@ dependencies = [
  "aws-types",
  "bytes",
  "http 1.4.0",
- "pretty_assertions",
  "thiserror 2.0.18",
- "tokio",
 ]
 
 [[package]]
@@ -12322,13 +12305,11 @@ name = "xedoc-cli-runtime"
 version = "1.69.0"
 dependencies = [
  "anyhow",
- "assert_matches",
  "chrono",
  "clap",
  "clap_complete",
  "libc",
  "owo-colors",
- "pretty_assertions",
  "regex-lite",
  "serde",
  "serde_json",
@@ -12354,7 +12335,6 @@ dependencies = [
  "xedoc-execpolicy",
  "xedoc-features",
  "xedoc-home",
- "xedoc-keyring-store",
  "xedoc-login",
  "xedoc-mcp",
  "xedoc-mcp-server",
@@ -12605,7 +12585,6 @@ dependencies = [
 name = "xedoc-core-agent-registry"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "rand 0.9.3",
  "xedoc-otel",
  "xedoc-protocol",
@@ -12616,18 +12595,12 @@ name = "xedoc-core-agent-role"
 version = "1.69.0"
 dependencies = [
  "anyhow",
- "pretty_assertions",
- "tempfile",
  "tokio",
  "toml 0.9.11+spec-1.1.0",
  "tracing",
  "xedoc-config",
  "xedoc-core-config",
- "xedoc-core-plugins",
- "xedoc-core-skills",
  "xedoc-exec-server",
- "xedoc-protocol",
- "xedoc-utils-absolute-path",
 ]
 
 [[package]]
@@ -12654,11 +12627,9 @@ dependencies = [
 name = "xedoc-core-approval-policy"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "rmcp",
  "serde",
  "serde_json",
- "tempfile",
  "tracing",
  "xedoc-apply-patch",
  "xedoc-config",
@@ -12669,7 +12640,6 @@ dependencies = [
  "xedoc-rmcp-client",
  "xedoc-sandboxing",
  "xedoc-shell-command",
- "xedoc-utils-absolute-path",
  "xedoc-utils-path-uri",
 ]
 
@@ -12677,7 +12647,6 @@ dependencies = [
 name = "xedoc-core-auto-compact-window"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "uuid",
  "xedoc-protocol",
 ]
@@ -12686,27 +12655,22 @@ dependencies = [
 name = "xedoc-core-client"
 version = "1.69.0"
 dependencies = [
- "anyhow",
  "chrono",
  "eventsource-stream",
  "futures",
  "http 1.4.0",
- "pretty_assertions",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "tokio-tungstenite",
  "tokio-util",
  "tracing",
- "wiremock",
  "xedoc-api",
  "xedoc-http-client",
  "xedoc-login",
  "xedoc-model-provider",
  "xedoc-model-provider-info",
- "xedoc-models-manager",
  "xedoc-otel",
  "xedoc-protocol",
  "xedoc-provider-anthropic",
@@ -12722,17 +12686,14 @@ name = "xedoc-core-config"
 version = "1.69.0"
 dependencies = [
  "anyhow",
- "assert_matches",
  "base64 0.22.1",
  "dirs",
  "dunce",
  "indexmap 2.14.0",
- "pretty_assertions",
  "rmcp",
  "serde",
  "serde_json",
  "similar",
- "tempfile",
  "tokio",
  "toml 0.9.11+spec-1.1.0",
  "toml_edit 0.24.0+spec-1.1.0",
@@ -12759,7 +12720,6 @@ dependencies = [
  "xedoc-state",
  "xedoc-thread-store",
  "xedoc-utils-absolute-path",
- "xedoc-utils-cargo-bin",
  "xedoc-utils-home-dir",
  "xedoc-utils-path",
  "xedoc-utils-path-uri",
@@ -12769,9 +12729,6 @@ dependencies = [
 name = "xedoc-core-config-runtime"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
- "tempfile",
- "toml 0.9.11+spec-1.1.0",
  "tracing",
  "xedoc-config",
  "xedoc-execpolicy",
@@ -12786,11 +12743,8 @@ dependencies = [
 name = "xedoc-core-context"
 version = "1.69.0"
 dependencies = [
- "anyhow",
  "chrono",
  "indexmap 2.14.0",
- "insta",
- "pretty_assertions",
  "serde",
  "serde_json",
  "sha1 0.10.6",
@@ -12803,7 +12757,6 @@ dependencies = [
  "xedoc-mcp",
  "xedoc-prompts",
  "xedoc-protocol",
- "xedoc-utils-absolute-path",
  "xedoc-utils-path-uri",
  "xedoc-utils-string",
 ]
@@ -12814,8 +12767,6 @@ version = "1.69.0"
 dependencies = [
  "base64 0.22.1",
  "image",
- "pretty_assertions",
- "regex-lite",
  "serde_json",
  "symphonia",
  "thiserror 2.0.18",
@@ -12824,7 +12775,6 @@ dependencies = [
  "xedoc-core-context",
  "xedoc-core-turn-context",
  "xedoc-protocol",
- "xedoc-utils-absolute-path",
  "xedoc-utils-cache",
  "xedoc-utils-image",
  "xedoc-utils-output-truncation",
@@ -12844,15 +12794,10 @@ dependencies = [
  "anyhow",
  "arc-swap",
  "async-channel",
- "core_test_support",
  "futures",
  "libc",
- "pretty_assertions",
  "serde",
- "serde_json",
- "tempfile",
  "tokio",
- "tokio-tungstenite",
  "tokio-util",
  "tracing",
  "xedoc-exec-server",
@@ -12869,21 +12814,14 @@ dependencies = [
 name = "xedoc-core-exec"
 version = "1.69.0"
 dependencies = [
- "anyhow",
  "arc-swap",
  "async-channel",
- "dunce",
  "libc",
- "maplit",
- "pretty_assertions",
  "shlex",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
- "toml 0.9.11+spec-1.1.0",
  "tracing",
- "which",
  "xedoc-config",
  "xedoc-core-config",
  "xedoc-core-environment",
@@ -12906,12 +12844,8 @@ dependencies = [
 name = "xedoc-core-mcp-runtime"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "serde_json",
- "tokio",
  "tracing",
- "tracing-subscriber",
- "tracing-test",
  "url",
  "xedoc-config",
  "xedoc-core-approval-policy",
@@ -12939,7 +12873,6 @@ dependencies = [
 name = "xedoc-core-plugin-context"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "xedoc-core-config",
  "xedoc-core-context",
  "xedoc-core-plugins",
@@ -12958,8 +12891,6 @@ dependencies = [
  "chrono",
  "dirs",
  "flate2",
- "libc",
- "pretty_assertions",
  "regex",
  "semver",
  "serde",
@@ -12971,14 +12902,10 @@ dependencies = [
  "tokio",
  "toml 0.9.11+spec-1.1.0",
  "tracing",
- "tracing-subscriber",
- "tracing-test",
  "url",
  "which",
- "wiremock",
  "xedoc-app-server-protocol",
  "xedoc-config",
- "xedoc-core-plugins",
  "xedoc-exec-server",
  "xedoc-git-utils",
  "xedoc-plugin",
@@ -12996,8 +12923,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "dirs",
- "libc",
- "pretty_assertions",
  "regex",
  "reqwest 0.12.28",
  "semver",
@@ -13009,9 +12934,7 @@ dependencies = [
  "tokio",
  "toml 0.9.11+spec-1.1.0",
  "tracing",
- "url",
  "which",
- "wiremock",
  "xedoc-config",
  "xedoc-core-plugin-marketplace",
  "xedoc-core-skills",
@@ -13035,11 +12958,7 @@ dependencies = [
 name = "xedoc-core-project-docs"
 version = "1.69.0"
 dependencies = [
- "core_test_support",
  "futures",
- "libc",
- "pretty_assertions",
- "tempfile",
  "tokio",
  "toml 0.9.11+spec-1.1.0",
  "tracing",
@@ -13049,7 +12968,6 @@ dependencies = [
  "xedoc-core-environment",
  "xedoc-exec-server",
  "xedoc-extension-api",
- "xedoc-features",
  "xedoc-file-system",
  "xedoc-protocol",
  "xedoc-utils-absolute-path",
@@ -13060,7 +12978,6 @@ dependencies = [
 name = "xedoc-core-response-items"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "tracing",
  "uuid",
  "xedoc-core-context",
@@ -13086,8 +13003,6 @@ dependencies = [
 name = "xedoc-core-rollout-truncation"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
- "serde_json",
  "xedoc-app-server-protocol",
  "xedoc-core-context-manager",
  "xedoc-core-response-items",
@@ -13098,7 +13013,6 @@ dependencies = [
 name = "xedoc-core-session-name"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "xedoc-model-provider-info",
  "xedoc-protocol",
 ]
@@ -13140,7 +13054,6 @@ dependencies = [
 name = "xedoc-core-subagent-activity"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "xedoc-protocol",
 ]
 
@@ -13160,8 +13073,6 @@ dependencies = [
 name = "xedoc-core-tool-output"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
- "regex-lite",
  "serde",
  "serde_json",
  "xedoc-core-context-manager",
@@ -13179,7 +13090,6 @@ version = "1.69.0"
 dependencies = [
  "bm25",
  "futures",
- "pretty_assertions",
  "serde",
  "serde_json",
  "tokio",
@@ -13199,10 +13109,8 @@ dependencies = [
 name = "xedoc-core-tool-specs"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "serde_json",
  "tracing",
- "xedoc-features",
  "xedoc-protocol",
  "xedoc-tools",
 ]
@@ -13237,25 +13145,16 @@ dependencies = [
 name = "xedoc-core-turn-diff"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "sha1 0.10.6",
  "similar",
- "tempfile",
- "tokio",
  "xedoc-apply-patch",
- "xedoc-exec-server",
- "xedoc-git-utils",
- "xedoc-utils-path-uri",
 ]
 
 [[package]]
 name = "xedoc-core-turn-metadata"
 version = "1.69.0"
 dependencies = [
- "core_test_support",
- "pretty_assertions",
  "serde_json",
- "tempfile",
  "tokio",
  "xedoc-core-client",
  "xedoc-git-utils",
@@ -13268,7 +13167,6 @@ dependencies = [
 name = "xedoc-core-turn-timing"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "tokio",
  "xedoc-core-client",
  "xedoc-protocol",
@@ -13383,7 +13281,6 @@ name = "xedoc-exec-server-protocol"
 version = "1.69.0"
 dependencies = [
  "base64 0.22.1",
- "pretty_assertions",
  "serde",
  "serde_json",
  "xedoc-file-system",
@@ -13439,7 +13336,6 @@ dependencies = [
 name = "xedoc-extension-items"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "schemars 0.8.22",
  "serde",
  "serde_json",
@@ -13451,7 +13347,6 @@ dependencies = [
 name = "xedoc-features"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "schemars 0.8.22",
  "serde",
  "toml 0.9.11+spec-1.1.0",
@@ -13469,10 +13364,8 @@ dependencies = [
  "crossbeam-channel",
  "ignore",
  "nucleo",
- "pretty_assertions",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
 ]
 
@@ -13493,8 +13386,6 @@ name = "xedoc-file-watcher"
 version = "1.69.0"
 dependencies = [
  "notify",
- "pretty_assertions",
- "tempfile",
  "tokio",
  "tracing",
 ]
@@ -13508,22 +13399,18 @@ dependencies = [
  "futures",
  "gix",
  "once_cell",
- "pretty_assertions",
  "regex",
  "schemars 0.8.22",
  "serde",
- "serde_json",
  "similar",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "ts-rs",
  "walkdir",
- "xedoc-exec-server",
  "xedoc-file-system",
  "xedoc-protocol",
  "xedoc-utils-absolute-path",
- "xedoc-utils-path",
  "xedoc-utils-path-uri",
 ]
 
@@ -13552,8 +13439,6 @@ dependencies = [
 name = "xedoc-home"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
- "tempfile",
  "tokio",
  "xedoc-extension-api",
  "xedoc-utils-absolute-path",
@@ -13566,12 +13451,10 @@ dependencies = [
  "anyhow",
  "chrono",
  "futures",
- "pretty_assertions",
  "regex",
  "schemars 0.8.22",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "tracing",
  "uuid",
@@ -13619,11 +13502,9 @@ version = "1.69.0"
 dependencies = [
  "base64 0.22.1",
  "http 1.4.0",
- "pretty_assertions",
  "schemars 0.8.22",
  "serde",
  "serde_json",
- "tokio",
  "tracing",
  "xedoc-api",
  "xedoc-core",
@@ -13644,8 +13525,6 @@ dependencies = [
 name = "xedoc-install-context"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
- "tempfile",
  "xedoc-utils-absolute-path",
  "xedoc-utils-home-dir",
 ]
@@ -13654,8 +13533,6 @@ dependencies = [
 name = "xedoc-installation-id"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
- "tempfile",
  "tokio",
  "uuid",
  "xedoc-utils-absolute-path",
@@ -13703,7 +13580,6 @@ dependencies = [
  "tokio",
  "tracing",
  "which",
- "wiremock",
  "xedoc-core",
  "xedoc-model-provider-info",
 ]
@@ -13760,13 +13636,11 @@ dependencies = [
  "async-channel",
  "futures",
  "lru 0.16.3",
- "pretty_assertions",
  "regex-lite",
  "rmcp",
  "serde",
  "serde_json",
  "sha1 0.10.6",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
@@ -13779,7 +13653,6 @@ dependencies = [
  "xedoc-login",
  "xedoc-model-provider",
  "xedoc-otel",
- "xedoc-plugin",
  "xedoc-protocol",
  "xedoc-rmcp-client",
  "xedoc-utils-path-uri",
@@ -13848,10 +13721,8 @@ name = "xedoc-message-history"
 version = "1.69.0"
 dependencies = [
  "memchr",
- "pretty_assertions",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "tracing",
  "xedoc-config",
@@ -13862,12 +13733,8 @@ name = "xedoc-model-provider"
 version = "1.69.0"
 dependencies = [
  "http 1.4.0",
- "pretty_assertions",
- "serde_json",
- "tempfile",
  "tokio",
  "tracing",
- "wiremock",
  "xedoc-agent-identity",
  "xedoc-api",
  "xedoc-aws-auth",
@@ -13888,15 +13755,10 @@ name = "xedoc-model-provider-info"
 version = "1.69.0"
 dependencies = [
  "http 1.4.0",
- "maplit",
- "pretty_assertions",
  "schemars 0.8.22",
  "serde",
- "tempfile",
- "toml 0.9.11+spec-1.1.0",
  "xedoc-api",
  "xedoc-protocol",
- "xedoc-utils-absolute-path",
 ]
 
 [[package]]
@@ -13904,10 +13766,8 @@ name = "xedoc-models-manager"
 version = "1.69.0"
 dependencies = [
  "chrono",
- "pretty_assertions",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "tracing",
  "xedoc-collaboration-mode-templates",
@@ -13929,7 +13789,6 @@ dependencies = [
  "chrono",
  "clap",
  "globset",
- "pretty_assertions",
  "rama-core",
  "rama-http",
  "rama-http-backend",
@@ -13945,7 +13804,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "tempfile",
  "thiserror 2.0.18",
  "time",
  "tokio",
@@ -13960,12 +13818,10 @@ dependencies = [
 name = "xedoc-ollama"
 version = "1.69.0"
 dependencies = [
- "assert_matches",
  "async-stream",
  "bytes",
  "futures",
  "memchr",
- "pretty_assertions",
  "reqwest 0.12.28",
  "semver",
  "serde_json",
@@ -14011,7 +13867,6 @@ dependencies = [
 name = "xedoc-plugin"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "thiserror 2.0.18",
  "xedoc-config",
  "xedoc-protocol",
@@ -14025,7 +13880,6 @@ name = "xedoc-process-hardening"
 version = "1.69.0"
 dependencies = [
  "libc",
- "pretty_assertions",
 ]
 
 [[package]]
@@ -14033,7 +13887,6 @@ name = "xedoc-prompts"
 version = "1.69.0"
 dependencies = [
  "anyhow",
- "pretty_assertions",
  "xedoc-context-fragments",
  "xedoc-execpolicy",
  "xedoc-git-utils",
@@ -14046,17 +13899,14 @@ dependencies = [
 name = "xedoc-protocol"
 version = "1.69.0"
 dependencies = [
- "anyhow",
  "chardetng",
  "chrono",
  "encoding_rs",
  "globset",
- "http 1.4.0",
  "icu_decimal",
  "icu_locale_core",
  "icu_provider",
  "landlock",
- "pretty_assertions",
  "quick-xml 0.41.0",
  "reqwest 0.12.28",
  "schemars 0.8.22",
@@ -14067,7 +13917,6 @@ dependencies = [
  "strum 0.27.2",
  "strum_macros 0.28.0",
  "sys-locale",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -14093,21 +13942,17 @@ dependencies = [
  "eventsource-stream",
  "futures",
  "http 1.4.0",
- "pretty_assertions",
  "rand 0.9.3",
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "tempfile",
  "thiserror 2.0.18",
  "tiny_http",
  "tokio",
  "url",
  "webbrowser",
- "wiremock",
  "xedoc-api",
  "xedoc-client",
- "xedoc-http-client",
  "xedoc-protocol",
  "xedoc-utils-path",
 ]
@@ -14138,11 +13983,9 @@ dependencies = [
 name = "xedoc-provider-gemini"
 version = "1.69.0"
 dependencies = [
- "bytes",
  "eventsource-stream",
  "futures",
  "http 1.4.0",
- "pretty_assertions",
  "serde",
  "serde_json",
  "tokio",
@@ -14158,7 +14001,6 @@ version = "1.69.0"
 dependencies = [
  "base64 0.22.1",
  "http 1.4.0",
- "pretty_assertions",
  "serde_json",
  "xedoc-api",
 ]
@@ -14171,7 +14013,6 @@ dependencies = [
  "clap",
  "ctor 0.6.3",
  "libc",
- "pretty_assertions",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -14227,7 +14068,6 @@ version = "1.69.0"
 dependencies = [
  "anyhow",
  "chrono",
- "pretty_assertions",
  "regex",
  "serde",
  "serde_json",
@@ -14253,11 +14093,8 @@ dependencies = [
  "anyhow",
  "dunce",
  "libc",
- "pretty_assertions",
  "regex-lite",
  "serde_json",
- "tempfile",
- "tokio",
  "tracing",
  "url",
  "which",
@@ -14288,15 +14125,12 @@ dependencies = [
  "age",
  "anyhow",
  "base64 0.22.1",
- "keyring",
- "pretty_assertions",
  "rand 0.9.3",
  "regex",
  "schemars 0.8.22",
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "tempfile",
  "tracing",
  "xedoc-git-utils",
  "xedoc-keyring-store",
@@ -14306,11 +14140,9 @@ dependencies = [
 name = "xedoc-shell-command"
 version = "1.69.0"
 dependencies = [
- "anyhow",
  "base64 0.22.1",
  "libc",
  "once_cell",
- "pretty_assertions",
  "regex",
  "serde",
  "serde_json",
@@ -14330,11 +14162,9 @@ dependencies = [
  "anyhow",
  "clap",
  "libc",
- "pretty_assertions",
  "serde",
  "serde_json",
  "socket2 0.6.3",
- "tempfile",
  "tokio",
  "tokio-util",
  "tracing",
@@ -14389,8 +14219,6 @@ dependencies = [
  "libsqlite3-sys",
  "log",
  "owo-colors",
- "pretty_assertions",
- "scopeguard",
  "serde",
  "serde_json",
  "sqlx",
@@ -14399,7 +14227,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
- "xedoc-git-utils",
  "xedoc-otel",
  "xedoc-protocol",
  "xedoc-tool-output-reduce",
@@ -14422,7 +14249,6 @@ dependencies = [
 name = "xedoc-terminal-detection"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "tracing",
 ]
 
@@ -14452,16 +14278,13 @@ version = "1.69.0"
 dependencies = [
  "chrono",
  "futures",
- "pretty_assertions",
  "pulldown-cmark",
  "serde",
  "serde_json",
  "sqlx",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
- "uuid",
  "xedoc-app-server-protocol",
  "xedoc-git-utils",
  "xedoc-install-context",
@@ -14476,7 +14299,6 @@ dependencies = [
 name = "xedoc-tool-output-reduce"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "serde_json",
  "sha2 0.10.9",
  "xedoc-protocol",
@@ -14636,8 +14458,6 @@ name = "xedoc-tui-agents"
 version = "1.69.0"
 dependencies = [
  "crossterm",
- "insta",
- "pretty_assertions",
  "ratatui",
  "xedoc-app-server-protocol",
  "xedoc-protocol",
@@ -14796,8 +14616,6 @@ name = "xedoc-tui-completion"
 version = "1.69.0"
 dependencies = [
  "crossterm",
- "insta",
- "pretty_assertions",
  "ratatui",
  "strum 0.27.2",
  "strum_macros 0.28.0",
@@ -14845,19 +14663,13 @@ dependencies = [
 name = "xedoc-tui-debug"
 version = "1.69.0"
 dependencies = [
- "insta",
- "pretty_assertions",
  "ratatui",
- "tempfile",
- "tokio",
  "toml 0.9.11+spec-1.1.0",
- "xedoc-app-server-protocol",
  "xedoc-config",
  "xedoc-core-config",
  "xedoc-protocol",
  "xedoc-tui-render",
  "xedoc-tui-transcript",
- "xedoc-utils-absolute-path",
 ]
 
 [[package]]
@@ -14865,7 +14677,6 @@ name = "xedoc-tui-events"
 version = "1.69.0"
 dependencies = [
  "chrono",
- "pretty_assertions",
  "ratatui",
  "serde",
  "serde_json",
@@ -14891,9 +14702,7 @@ dependencies = [
 name = "xedoc-tui-frame"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "tokio",
- "tokio-util",
 ]
 
 [[package]]
@@ -14902,12 +14711,10 @@ version = "1.69.0"
 dependencies = [
  "color-eyre",
  "crossterm",
- "insta",
  "ratatui",
  "serde_json",
  "strum 0.27.2",
  "textwrap 0.16.2",
- "tokio",
  "unicode-width 0.2.1",
  "uuid",
  "xedoc-app-server-client",
@@ -14918,7 +14725,6 @@ dependencies = [
  "xedoc-tui-overlays",
  "xedoc-tui-render",
  "xedoc-tui-status",
- "xedoc-tui-test-support",
  "xedoc-tui-transcript",
 ]
 
@@ -14927,12 +14733,8 @@ name = "xedoc-tui-input"
 version = "1.69.0"
 dependencies = [
  "arboard",
- "chrono",
  "crossterm",
  "image",
- "insta",
- "pretty_assertions",
- "rand 0.9.3",
  "ratatui",
  "serde",
  "serde_json",
@@ -14954,8 +14756,6 @@ name = "xedoc-tui-markdown"
 version = "1.69.0"
 dependencies = [
  "dirs",
- "insta",
- "pretty_assertions",
  "pulldown-cmark",
  "ratatui",
  "regex-lite",
@@ -14970,21 +14770,15 @@ dependencies = [
 name = "xedoc-tui-overlays"
 version = "1.69.0"
 dependencies = [
- "chrono",
  "crossterm",
- "insta",
  "itertools 0.14.0",
- "pretty_assertions",
  "ratatui",
  "serde_json",
  "strum 0.27.2",
  "strum_macros 0.28.0",
- "tempfile",
  "textwrap 0.16.2",
- "tokio",
  "unicode-width 0.2.1",
  "url",
- "uuid",
  "xedoc-app-server-protocol",
  "xedoc-config",
  "xedoc-features",
@@ -14995,7 +14789,6 @@ dependencies = [
  "xedoc-tui-frame",
  "xedoc-tui-input",
  "xedoc-tui-render",
- "xedoc-tui-test-support",
  "xedoc-tui-transcript",
  "xedoc-utils-absolute-path",
  "xedoc-utils-fuzzy-match",
@@ -15023,16 +14816,12 @@ dependencies = [
  "crossterm",
  "diffy",
  "dirs",
- "insta",
- "itertools 0.14.0",
  "libc",
  "pathdiff",
- "pretty_assertions",
  "ratatui",
  "serde",
  "supports-color 3.0.2",
  "syntect",
- "tempfile",
  "textwrap 0.16.2",
  "tracing",
  "two-face",
@@ -15050,10 +14839,7 @@ dependencies = [
  "chrono",
  "color-eyre",
  "crossterm",
- "insta",
- "pretty_assertions",
  "ratatui",
- "tempfile",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -15069,9 +14855,7 @@ dependencies = [
  "xedoc-tui-overlays",
  "xedoc-tui-render",
  "xedoc-tui-status",
- "xedoc-tui-test-support",
  "xedoc-tui-transcript",
- "xedoc-utils-absolute-path",
  "xedoc-utils-path",
 ]
 
@@ -15080,12 +14864,8 @@ name = "xedoc-tui-settings"
 version = "1.69.0"
 dependencies = [
  "crossterm",
- "dirs",
- "insta",
- "pretty_assertions",
  "ratatui",
  "textwrap 0.16.2",
- "tokio",
  "unicode-width 0.2.1",
  "xedoc-config",
  "xedoc-core-config",
@@ -15094,7 +14874,6 @@ dependencies = [
  "xedoc-protocol",
  "xedoc-tui-bottom-pane",
  "xedoc-tui-events",
- "xedoc-tui-frame",
  "xedoc-tui-input",
  "xedoc-tui-render",
  "xedoc-tui-status",
@@ -15154,17 +14933,14 @@ dependencies = [
 name = "xedoc-tui-thread-state"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "serde_json",
  "tokio",
  "xedoc-app-server-protocol",
- "xedoc-config",
  "xedoc-protocol",
  "xedoc-tui-app-server-session",
  "xedoc-tui-chatwidget",
  "xedoc-tui-events",
  "xedoc-tui-transcript",
- "xedoc-utils-absolute-path",
 ]
 
 [[package]]
@@ -15227,12 +15003,9 @@ dependencies = [
 name = "xedoc-tui-workspace"
 version = "1.69.0"
 dependencies = [
- "insta",
  "libc",
- "pretty_assertions",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "uuid",
@@ -15249,8 +15022,6 @@ name = "xedoc-uds"
 version = "1.69.0"
 dependencies = [
  "async-io",
- "pretty_assertions",
- "tempfile",
  "tokio",
  "tokio-util",
  "uds_windows",
@@ -15262,11 +15033,8 @@ version = "1.69.0"
 dependencies = [
  "dirs",
  "dunce",
- "pretty_assertions",
  "schemars 0.8.22",
  "serde",
- "serde_json",
- "tempfile",
  "ts-rs",
 ]
 
@@ -15300,7 +15068,6 @@ name = "xedoc-utils-cli"
 version = "1.69.0"
 dependencies = [
  "clap",
- "pretty_assertions",
  "serde",
  "toml 0.9.11+spec-1.1.0",
  "xedoc-protocol",
@@ -15320,8 +15087,6 @@ name = "xedoc-utils-home-dir"
 version = "1.69.0"
 dependencies = [
  "dirs",
- "pretty_assertions",
- "tempfile",
  "xedoc-utils-absolute-path",
 ]
 
@@ -15342,7 +15107,6 @@ dependencies = [
 name = "xedoc-utils-json-to-toml"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "serde_json",
  "toml 0.9.11+spec-1.1.0",
 ]
@@ -15361,7 +15125,6 @@ dependencies = [
 name = "xedoc-utils-output-truncation"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "xedoc-protocol",
  "xedoc-utils-string",
 ]
@@ -15371,7 +15134,6 @@ name = "xedoc-utils-path"
 version = "1.69.0"
 dependencies = [
  "dunce",
- "pretty_assertions",
  "tempfile",
  "xedoc-utils-absolute-path",
 ]
@@ -15381,10 +15143,8 @@ name = "xedoc-utils-path-uri"
 version = "1.69.0"
 dependencies = [
  "base64 0.22.1",
- "pretty_assertions",
  "schemars 0.8.22",
  "serde",
- "serde_json",
  "thiserror 2.0.18",
  "ts-rs",
  "url",
@@ -15398,8 +15158,6 @@ version = "1.69.0"
 dependencies = [
  "serde",
  "serde_json",
- "tempfile",
- "tokio",
  "xedoc-exec-server",
  "xedoc-exec-server-protocol",
  "xedoc-utils-absolute-path",
@@ -15416,7 +15174,6 @@ dependencies = [
  "libc",
  "log",
  "portable-pty",
- "pretty_assertions",
  "shared_library",
  "tokio",
  "winapi",
@@ -15426,7 +15183,6 @@ dependencies = [
 name = "xedoc-utils-readiness"
 version = "1.69.0"
 dependencies = [
- "assert_matches",
  "thiserror 2.0.18",
  "time",
  "tokio",
@@ -15443,7 +15199,6 @@ dependencies = [
 name = "xedoc-utils-sandbox-summary"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "xedoc-protocol",
  "xedoc-utils-absolute-path",
 ]
@@ -15461,15 +15216,11 @@ dependencies = [
 [[package]]
 name = "xedoc-utils-stream-parser"
 version = "1.69.0"
-dependencies = [
- "pretty_assertions",
-]
 
 [[package]]
 name = "xedoc-utils-string"
 version = "1.69.0"
 dependencies = [
- "pretty_assertions",
  "regex-lite",
  "serde",
  "serde_json",
@@ -15478,9 +15229,6 @@ dependencies = [
 [[package]]
 name = "xedoc-utils-template"
 version = "1.69.0"
-dependencies = [
- "pretty_assertions",
-]
 
 [[package]]
 name = "xedoc-web-search-extension"
@@ -15488,7 +15236,6 @@ version = "1.69.0"
 dependencies = [
  "futures",
  "http 1.4.0",
- "pretty_assertions",
  "regex",
  "reqwest 0.12.28",
  "schemars 0.8.22",
@@ -15497,7 +15244,6 @@ dependencies = [
  "tokio",
  "url",
  "urlencoding",
- "wiremock",
  "xedoc-api",
  "xedoc-core",
  "xedoc-extension-api",
@@ -15516,15 +15262,12 @@ name = "xedoc-websocket-client"
 version = "1.69.0"
 dependencies = [
  "futures",
- "pretty_assertions",
- "rcgen",
  "rustls",
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite",
  "url",
  "xedoc-http-client",
- "xedoc-utils-rustls-provider",
 ]
 
 [[package]]

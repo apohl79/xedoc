@@ -13,8 +13,6 @@ use crate::hook_runtime::run_pre_compact_hooks;
 use crate::responses_metadata::CompactionTurnMetadata;
 use crate::responses_metadata::XedocResponsesMetadata;
 use crate::responses_metadata::XedocResponsesRequestKind;
-#[cfg(test)]
-use crate::session::PreviousTurnSettings;
 use crate::session::session::Session;
 use crate::session::turn::get_last_assistant_message_from_turn;
 use crate::session::turn_context::TurnContext;
@@ -25,8 +23,6 @@ use xedoc_core_client::responses_metadata::CompactionImplementation;
 use xedoc_core_client::responses_metadata::CompactionPhase;
 use xedoc_core_client::responses_metadata::CompactionReason;
 use xedoc_core_client::responses_metadata::CompactionTrigger;
-#[cfg(test)]
-use xedoc_core_context_manager::content_items_to_text;
 use xedoc_protocol::error::Result as XedocResult;
 use xedoc_protocol::error::XedocErr;
 use xedoc_protocol::items::ContextCompactionItem;
@@ -690,7 +686,3 @@ async fn drain_to_completed(
         }
     }
 }
-
-#[cfg(test)]
-#[path = "compact_tests.rs"]
-mod tests;

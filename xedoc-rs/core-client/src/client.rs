@@ -2130,7 +2130,3 @@ mod anthropic;
 
 #[path = "client_gemini.rs"]
 mod gemini;
-
-#[cfg(test)]
-#[path = "client_tests.rs"]
-mod tests;

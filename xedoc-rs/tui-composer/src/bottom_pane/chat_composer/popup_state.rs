@@ -111,7 +111,3 @@ pub(super) enum ActivePopup {
     Skill(SkillPopup),
     MentionV2(MentionV2Popup),
 }
-
-#[cfg(test)]
-#[path = "popup_state_tests.rs"]
-mod tests;

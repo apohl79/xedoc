@@ -9,6 +9,7 @@ description = "Xedoc exec policy: prefix-based Starlark rules for command decisi
 name = "xedoc_execpolicy"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [[bin]]
 name = "xedoc-execpolicy"

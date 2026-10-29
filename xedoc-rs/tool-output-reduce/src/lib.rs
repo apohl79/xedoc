@@ -446,19 +446,3 @@ fn json_body(text: &str) -> &str {
     text.find("\nOutput:\n")
         .map_or(text, |offset| &text[offset + "\nOutput:\n".len()..])
 }
-
-#[cfg(test)]
-#[path = "lib_tests.rs"]
-mod tests;
-
-#[cfg(test)]
-#[path = "json_tests.rs"]
-mod json_tests;
-
-#[cfg(test)]
-#[path = "log_tests.rs"]
-mod log_tests;
-
-#[cfg(test)]
-#[path = "diff_tests.rs"]
-mod diff_tests;

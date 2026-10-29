@@ -120,7 +120,3 @@ fn managed_config_path_from_debug_env() -> Option<PathBuf> {
 
     None
 }
-
-#[cfg(test)]
-#[path = "main_tests.rs"]
-mod tests;

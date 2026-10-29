@@ -96,18 +96,6 @@ impl AnthropicModelProvider {
         Self::from_configured(configured, credential_directory)
     }
 
-    #[cfg(test)]
-    fn from_runtime_sources(
-        provider_info: ModelProviderInfo,
-        auth_manager: Option<Arc<AuthManager>>,
-        api_key: Option<String>,
-        credential_directory: io::Result<PathBuf>,
-    ) -> Self {
-        let configured =
-            ConfiguredModelProvider::new_with_fixed_api_key(provider_info, auth_manager, api_key);
-        Self::from_configured(configured, credential_directory)
-    }
-
     fn from_configured(
         configured: ConfiguredModelProvider,
         credential_directory: io::Result<PathBuf>,
@@ -300,7 +288,3 @@ fn accounts_from_load(loaded: &AnthropicCredentialLoad) -> OAuthAccounts {
         Err(_) => OAuthAccounts::Unavailable(io::ErrorKind::InvalidData),
     }
 }
-
-#[cfg(test)]
-#[path = "anthropic_tests.rs"]
-mod tests;

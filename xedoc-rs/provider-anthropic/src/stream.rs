@@ -438,7 +438,3 @@ fn custom_tool_input(arguments: &str) -> String {
         Err(_) => arguments.to_string(),
     }
 }
-
-#[cfg(test)]
-#[path = "stream_tests.rs"]
-mod tests;

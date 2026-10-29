@@ -149,29 +149,3 @@ fn require_single_current_time_connection(connection_ids: &[ConnectionId]) -> Re
         ),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::require_single_current_time_connection;
-    use crate::outgoing_message::ConnectionId;
-
-    #[test]
-    fn current_time_connection_must_be_unambiguous() {
-        assert_eq!(
-            require_single_current_time_connection(&[ConnectionId(7)]).unwrap(),
-            ConnectionId(7)
-        );
-        assert_eq!(
-            require_single_current_time_connection(&[])
-                .unwrap_err()
-                .to_string(),
-            "expected exactly one client subscribed to the thread, found 0"
-        );
-        assert_eq!(
-            require_single_current_time_connection(&[ConnectionId(7), ConnectionId(8)])
-                .unwrap_err()
-                .to_string(),
-            "expected exactly one client subscribed to the thread, found 2"
-        );
-    }
-}

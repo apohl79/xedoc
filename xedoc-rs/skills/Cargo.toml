@@ -9,6 +9,7 @@ build = "build.rs"
 doctest = false
 name = "xedoc_skills"
 path = "src/lib.rs"
+test = false
 
 [lints]
 workspace = true

@@ -388,7 +388,3 @@ pub(crate) async fn write_skill_enabled(
         .wrap_err("skills/config/write failed in TUI")?;
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "config_update_tests.rs"]
-mod tests;

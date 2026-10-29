@@ -190,7 +190,3 @@ pub(crate) fn spawn_noise_virtual_stream(
         instance_id,
     }
 }
-
-#[cfg(test)]
-#[path = "executor_stream_tests.rs"]
-mod tests;

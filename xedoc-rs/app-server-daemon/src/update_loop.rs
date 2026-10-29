@@ -195,7 +195,3 @@ async fn install_latest_standalone() -> Result<()> {
         anyhow::bail!("standalone Xedoc updater exited with status {status}")
     }
 }
-
-#[cfg(all(test, unix))]
-#[path = "update_loop_tests.rs"]
-mod tests;

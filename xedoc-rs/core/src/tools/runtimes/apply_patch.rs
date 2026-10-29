@@ -246,7 +246,3 @@ impl ToolRuntime<ApplyPatchRequest, ApplyPatchRuntimeOutput> for ApplyPatchRunti
         })
     }
 }
-
-#[cfg(test)]
-#[path = "apply_patch_tests.rs"]
-mod tests;

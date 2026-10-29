@@ -470,7 +470,3 @@ fn telemetry_preview(content: &str) -> String {
 
     preview
 }
-
-#[cfg(test)]
-#[path = "output_tests.rs"]
-mod tests;

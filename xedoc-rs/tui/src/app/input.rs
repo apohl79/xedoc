@@ -285,19 +285,3 @@ impl App {
         self.chat_widget.refresh_status_line();
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::super::test_support::make_test_app;
-
-    #[tokio::test]
-    async fn app_keymap_shortcuts_are_disabled_while_keymap_view_is_active() {
-        let mut app = make_test_app().await;
-        assert!(app.app_keymap_shortcuts_available());
-
-        let keymap = app.keymap.clone();
-        app.chat_widget.open_keymap_debug(&keymap);
-
-        assert!(!app.app_keymap_shortcuts_available());
-    }
-}

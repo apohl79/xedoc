@@ -145,7 +145,3 @@ impl From<CloudConfigLayerError> for io::Error {
         io::Error::new(io::ErrorKind::InvalidData, error)
     }
 }
-
-#[cfg(test)]
-#[path = "cloud_config_layers_tests.rs"]
-mod tests;

@@ -1270,15 +1270,6 @@ impl ThreadManager {
     fn agent_control_for_config(&self, config: &Config) -> AgentControl {
         AgentControl::new(Arc::downgrade(&self.state), config.rollout_budget.clone())
     }
-
-    #[cfg(test)]
-    pub(crate) fn captured_ops(&self) -> Vec<(ThreadId, Op)> {
-        self.state
-            .ops_log
-            .as_ref()
-            .and_then(|ops_log| ops_log.lock().ok().map(|log| log.clone()))
-            .unwrap_or_default()
-    }
 }
 
 impl ThreadManagerState {
@@ -2118,7 +2109,3 @@ fn append_interrupted_boundary(
         }
     }
 }
-
-#[cfg(test)]
-#[path = "thread_manager_tests.rs"]
-mod tests;

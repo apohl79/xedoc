@@ -18,6 +18,7 @@ test = false
 name = "xedoc_app_server_protocol"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true

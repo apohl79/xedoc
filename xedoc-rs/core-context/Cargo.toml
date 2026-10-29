@@ -7,6 +7,8 @@ version.workspace = true
 [lib]
 name = "xedoc_core_context"
 path = "src/lib.rs"
+test = false
+doctest = false
 
 [lints]
 workspace = true
@@ -28,9 +30,3 @@ serde_json = { workspace = true }
 sha1 = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
-
-[dev-dependencies]
-anyhow = { workspace = true }
-xedoc-utils-absolute-path = { workspace = true }
-insta = { workspace = true }
-pretty_assertions = { workspace = true }

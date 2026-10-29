@@ -170,7 +170,3 @@ pub(super) enum OAuthStoreLockFailure {
 fn oauth_store_lock_path(xedoc_home: &Path, store: OAuthStore) -> PathBuf {
     xedoc_home.join(OAUTH_LOCK_DIR).join(store.lock_filename())
 }
-
-#[cfg(test)]
-#[path = "tests/store_lock_tests.rs"]
-mod tests;

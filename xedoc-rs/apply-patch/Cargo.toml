@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_apply_patch"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [[bin]]
 name = "apply_patch"

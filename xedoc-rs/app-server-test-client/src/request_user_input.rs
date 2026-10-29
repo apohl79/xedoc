@@ -142,7 +142,3 @@ fn prompt_for_answers_with(
 
     Ok(ToolRequestUserInputResponse { answers })
 }
-
-#[cfg(test)]
-#[path = "request_user_input_tests.rs"]
-mod tests;

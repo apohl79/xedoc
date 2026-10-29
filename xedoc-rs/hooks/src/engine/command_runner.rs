@@ -232,7 +232,3 @@ fn default_shell_command(environment_variables: Option<&BTreeMap<String, String>
         command
     }
 }
-
-#[cfg(all(test, windows))]
-#[path = "command_runner_tests.rs"]
-mod tests;

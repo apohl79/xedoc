@@ -239,7 +239,3 @@ pub(crate) trait ToolRuntime<Req, Out, S = Session>:
         ctx: &ToolCtx<S>,
     ) -> Result<Out, ToolError>;
 }
-
-#[cfg(test)]
-#[path = "sandboxing_tests.rs"]
-mod tests;

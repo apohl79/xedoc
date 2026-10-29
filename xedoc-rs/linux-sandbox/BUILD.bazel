@@ -6,4 +6,5 @@ xedoc_rust_crate(
     extra_binaries = [
         "//xedoc-rs/bwrap:bwrap",
     ],
+    functional_tests = True,
 )

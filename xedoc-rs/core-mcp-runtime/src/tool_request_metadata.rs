@@ -51,7 +51,3 @@ pub fn with_mcp_tool_call_thread_id_meta(meta: Option<Value>, thread_id: &str) -
         other => other,
     }
 }
-
-#[cfg(test)]
-#[path = "tool_request_metadata_tests.rs"]
-mod tests;

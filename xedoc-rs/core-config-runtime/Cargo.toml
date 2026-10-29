@@ -8,6 +8,7 @@ version.workspace = true
 name = "xedoc_core_config_runtime"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -21,8 +22,3 @@ xedoc-otel = { workspace = true }
 xedoc-protocol = { workspace = true }
 xedoc-utils-absolute-path = { workspace = true }
 tracing = { workspace = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
-tempfile = { workspace = true }
-toml = { workspace = true }

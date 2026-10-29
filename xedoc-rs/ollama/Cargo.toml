@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_ollama"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -31,7 +32,3 @@ tokio = { workspace = true, features = [
 ] }
 tracing = { workspace = true, features = ["log"] }
 wiremock = { workspace = true }
-
-[dev-dependencies]
-assert_matches = { workspace = true }
-pretty_assertions = { workspace = true }

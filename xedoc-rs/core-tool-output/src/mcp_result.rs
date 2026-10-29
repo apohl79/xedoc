@@ -75,7 +75,3 @@ pub fn truncate_mcp_tool_result_for_event(
         Err(message) => Err(truncate_text(message, TruncationPolicy::Bytes(max_bytes))),
     }
 }
-
-#[cfg(test)]
-#[path = "mcp_result_tests.rs"]
-mod tests;

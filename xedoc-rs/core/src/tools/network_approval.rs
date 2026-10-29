@@ -399,12 +399,6 @@ impl NetworkApprovalService {
         (created, true)
     }
 
-    #[cfg(test)]
-    async fn take_call_outcome(&self, registration_id: &str) -> Option<NetworkApprovalOutcome> {
-        let mut calls = self.calls.lock().await;
-        calls.call_outcomes.remove(registration_id)
-    }
-
     async fn record_call_outcome(&self, registration_id: &str, outcome: NetworkApprovalOutcome) {
         let mut calls = self.calls.lock().await;
         let Some(call) = calls.active_calls.get(registration_id).cloned() else {
@@ -897,7 +891,3 @@ pub(crate) async fn finish_deferred_network_approval(
     };
     deferred.finish(&session.services.network_approval).await
 }
-
-#[cfg(test)]
-#[path = "network_approval_tests.rs"]
-mod tests;

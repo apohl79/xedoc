@@ -1,13 +1,4 @@
-#[cfg(test)]
-use xedoc_core_context::AvailablePluginsInstructions;
-#[cfg(test)]
-use xedoc_core_context::ContextualUserFragment;
 use xedoc_plugin::PluginCapabilitySummary;
-
-#[cfg(test)]
-pub(crate) fn render_plugins_section(plugins: &[PluginCapabilitySummary]) -> Option<String> {
-    (!plugins.is_empty()).then(|| AvailablePluginsInstructions.render())
-}
 
 /// Renders guidance for a plugin's currently available capabilities.
 pub fn render_explicit_plugin_instructions(
@@ -45,7 +36,3 @@ pub fn render_explicit_plugin_instructions(
 
     Some(lines.join("\n"))
 }
-
-#[cfg(test)]
-#[path = "render_tests.rs"]
-mod tests;

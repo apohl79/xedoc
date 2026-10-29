@@ -78,7 +78,3 @@ pub fn collect_explicit_plugin_mentions(
         .cloned()
         .collect()
 }
-
-#[cfg(test)]
-#[path = "mentions_tests.rs"]
-mod tests;

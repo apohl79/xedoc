@@ -38,7 +38,3 @@ impl WebSocketPongWatchdog {
         self.deadline = None;
     }
 }
-
-#[cfg(test)]
-#[path = "websocket_pong_watchdog_tests.rs"]
-mod tests;

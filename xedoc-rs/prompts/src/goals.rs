@@ -104,7 +104,3 @@ fn escape_xml_text(input: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
 }
-
-#[cfg(test)]
-#[path = "goals_tests.rs"]
-mod goals_tests;

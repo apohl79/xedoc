@@ -8,6 +8,7 @@ version.workspace = true
 name = "xedoc_tui_workspace"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -34,8 +35,3 @@ windows-sys = { version = "0.52", features = [
     "Win32_System_Pipes",
     "Win32_System_Threading",
 ] }
-
-[dev-dependencies]
-insta = { workspace = true }
-pretty_assertions = { workspace = true }
-tempfile = { workspace = true }

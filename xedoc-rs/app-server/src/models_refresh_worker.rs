@@ -66,7 +66,3 @@ fn spawn_with_interval(
         _task: task,
     }
 }
-
-#[cfg(test)]
-#[path = "models_refresh_worker_tests.rs"]
-mod tests;

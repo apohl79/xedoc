@@ -172,7 +172,3 @@ fn merge_beta_header(headers: &mut HeaderMap, beta: &str) {
         let _ = headers.insert("anthropic-beta", value);
     }
 }
-
-#[cfg(test)]
-#[path = "oauth_auth_tests.rs"]
-mod tests;

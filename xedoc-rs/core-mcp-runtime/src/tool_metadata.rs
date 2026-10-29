@@ -25,7 +25,3 @@ pub fn get_mcp_app_resource_uri(meta: Option<&Map<String, Value>>) -> Option<Str
             .map(str::to_string)
     })
 }
-
-#[cfg(test)]
-#[path = "tool_metadata_tests.rs"]
-mod tests;

@@ -18,7 +18,3 @@ pub use stream_items::response_input_to_response_item;
 #[doc(hidden)]
 pub use stream_items::sanitize_agent_message;
 pub use web_search::web_search_action_detail;
-
-#[cfg(test)]
-#[path = "event_mapping_tests.rs"]
-mod tests;

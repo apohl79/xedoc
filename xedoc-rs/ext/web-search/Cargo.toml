@@ -8,6 +8,7 @@ version.workspace = true
 name = "xedoc_web_search_extension"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -34,7 +35,3 @@ serde_json = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 url = { workspace = true }
 urlencoding = { workspace = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
-wiremock = { workspace = true }

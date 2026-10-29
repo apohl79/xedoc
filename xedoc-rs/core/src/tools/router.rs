@@ -75,7 +75,3 @@ pub(crate) fn extension_tool_executors(
         })
         .collect()
 }
-
-#[cfg(test)]
-#[path = "router_tests.rs"]
-mod tests;

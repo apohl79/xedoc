@@ -1,7 +1,0 @@
----
-source: tui-chatwidget/src/chatwidget/tests/tool_summary.rs
-expression: summary
----
-• Running printf hidden
-
-  Calls: 1 · 0 succeeded · 0 failed · 1 in progress

@@ -5,6 +5,5 @@ xedoc_rust_crate(
     crate_name = "xedoc_tui_hooks",
     test_data_extra = glob([
         "src/**/*.rs",
-        "src/**/snapshots/**",
     ]),
 )

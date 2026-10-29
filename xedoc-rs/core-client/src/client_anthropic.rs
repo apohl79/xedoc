@@ -177,7 +177,3 @@ impl ModelClientSession {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "client_anthropic_tests.rs"]
-mod tests;

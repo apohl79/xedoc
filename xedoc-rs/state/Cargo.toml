@@ -25,10 +25,13 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 
-[dev-dependencies]
-xedoc-git-utils = { workspace = true }
-pretty_assertions = { workspace = true }
-scopeguard = { workspace = true }
-
 [lints]
 workspace = true
+
+[lib]
+test = false
+doctest = false
+[[bin]]
+name = "logs_client"
+path = "src/bin/logs_client.rs"
+test = false

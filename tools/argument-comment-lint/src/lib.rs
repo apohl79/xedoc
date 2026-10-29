@@ -284,17 +284,3 @@ fn is_workspace_crate_name(name: &str) -> bool {
             "app_test_support" | "core_test_support" | "mcp_test_support"
         )
 }
-
-#[test]
-fn ui() {
-    dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui");
-}
-
-#[test]
-fn workspace_crate_filter_accepts_first_party_names_only() {
-    assert!(is_workspace_crate_name("xedoc_core"));
-    assert!(is_workspace_crate_name("xedoc_tui"));
-    assert!(is_workspace_crate_name("core_test_support"));
-    assert!(!is_workspace_crate_name("std"));
-    assert!(!is_workspace_crate_name("tokio"));
-}

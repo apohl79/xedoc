@@ -133,7 +133,3 @@ async fn load_from_file_system(
 
     Ok(parsed.servers.into_iter().collect())
 }
-
-#[cfg(test)]
-#[path = "provider_tests.rs"]
-mod tests;

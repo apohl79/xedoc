@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_tui_session_picker"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -34,10 +35,3 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tokio-stream = { workspace = true }
 tracing = { workspace = true }
 unicode-width = { workspace = true }
-
-[dev-dependencies]
-xedoc-tui-test-support = { workspace = true }
-xedoc-utils-absolute-path = { workspace = true }
-insta = { workspace = true }
-pretty_assertions = { workspace = true }
-tempfile = { workspace = true }

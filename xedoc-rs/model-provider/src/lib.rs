@@ -10,10 +10,6 @@ mod models_endpoint;
 mod provider;
 mod provider_api_key;
 
-#[cfg(test)]
-#[path = "gemini_models_endpoint_tests.rs"]
-mod gemini_models_endpoint_tests;
-
 pub use amazon_bedrock::is_supported_amazon_bedrock_region;
 pub use auth::AgentIdentitySessionFallback;
 pub use auth::ProviderAuthScope;

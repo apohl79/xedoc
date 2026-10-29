@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_tui_overlays"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -36,12 +37,3 @@ strum_macros = { workspace = true }
 textwrap = { workspace = true }
 unicode-width = { workspace = true }
 url = { workspace = true }
-
-[dev-dependencies]
-chrono = { workspace = true }
-xedoc-tui-test-support = { workspace = true }
-insta = { workspace = true }
-pretty_assertions = { workspace = true }
-tempfile = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "time"] }
-uuid = { workspace = true }

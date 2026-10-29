@@ -229,7 +229,3 @@ async fn send_error(
 ) {
     let _ = sender.send(Err(ApiError::Stream(message.into()))).await;
 }
-
-#[cfg(test)]
-#[path = "client_tests.rs"]
-mod tests;

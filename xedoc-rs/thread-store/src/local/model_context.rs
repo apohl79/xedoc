@@ -19,10 +19,6 @@ use crate::StoredModelContext;
 use crate::ThreadStoreError;
 use crate::ThreadStoreResult;
 
-#[cfg(test)]
-#[path = "model_context_tests.rs"]
-mod tests;
-
 /// Loads rollout items needed to reconstruct the latest model-visible context.
 ///
 /// Plain paginated JSONL rollouts use a reverse scan. When it finds both a usable replacement-

@@ -7,6 +7,8 @@ version.workspace = true
 [lib]
 name = "xedoc_core_approval_policy"
 path = "src/lib.rs"
+test = false
+doctest = false
 
 [lints]
 workspace = true
@@ -26,8 +28,3 @@ rmcp = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-
-[dev-dependencies]
-xedoc-utils-absolute-path = { workspace = true }
-pretty_assertions = { workspace = true }
-tempfile = { workspace = true }

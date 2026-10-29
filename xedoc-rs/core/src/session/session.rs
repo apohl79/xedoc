@@ -222,15 +222,6 @@ impl SessionConfiguration {
         permissions.set_permission_profile_state(self.permission_profile_state.clone());
     }
 
-    #[cfg(test)]
-    pub(super) fn set_permission_profile_for_tests(
-        &mut self,
-        permission_profile: PermissionProfile,
-    ) -> ConstraintResult<()> {
-        self.permission_profile_state
-            .set_legacy_permission_profile(permission_profile)
-    }
-
     pub(super) fn sandbox_policy(&self) -> SandboxPolicy {
         let permission_profile = self.materialized_permission_profile();
         xedoc_sandboxing::compatibility_sandbox_policy_for_permission_profile(

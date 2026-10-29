@@ -186,8 +186,6 @@ use xedoc_app_server_protocol::ThreadGoalSetResponse;
 use xedoc_app_server_protocol::ThreadGoalStatus;
 use xedoc_app_server_protocol::ThreadGoalUpdatedNotification;
 use xedoc_app_server_protocol::ThreadHistoryBuilder;
-#[cfg(test)]
-use xedoc_app_server_protocol::ThreadHistoryMode;
 use xedoc_app_server_protocol::ThreadIncrementElicitationParams;
 use xedoc_app_server_protocol::ThreadIncrementElicitationResponse;
 use xedoc_app_server_protocol::ThreadInjectItemsParams;
@@ -264,8 +262,6 @@ use xedoc_config::loader::project_trust_key;
 use xedoc_config::types::McpServerTransportConfig;
 use xedoc_core::ForkSnapshot;
 use xedoc_core::NewThread;
-#[cfg(test)]
-use xedoc_core::SessionMeta;
 use xedoc_core::StartThreadOptions;
 use xedoc_core::SteerInputError;
 use xedoc_core::ThreadConfigSnapshot;
@@ -282,8 +278,6 @@ use xedoc_core::exec::ExecExpiration;
 use xedoc_core::exec::ExecParams;
 use xedoc_core::exec_env::create_env;
 use xedoc_core::path_utils;
-#[cfg(test)]
-use xedoc_core::read_head_for_summary;
 use xedoc_core::sandboxing::SandboxPermissions;
 use xedoc_core::truncate_rollout_after_turn_id;
 use xedoc_core::truncate_rollout_before_turn_id;
@@ -340,16 +334,10 @@ use xedoc_protocol::config_types::ReasoningSummary;
 use xedoc_protocol::config_types::TrustLevel;
 use xedoc_protocol::error::Result as XedocResult;
 use xedoc_protocol::error::XedocErr;
-#[cfg(test)]
-use xedoc_protocol::items::TurnItem;
 use xedoc_protocol::models::ResponseItem;
 use xedoc_protocol::openai_models::ReasoningEffort;
-#[cfg(test)]
-use xedoc_protocol::permissions::FileSystemSandboxPolicy;
 use xedoc_protocol::protocol::AgentStatus;
 use xedoc_protocol::protocol::EventMsg;
-#[cfg(test)]
-use xedoc_protocol::protocol::GitInfo as CoreGitInfo;
 use xedoc_protocol::protocol::InitialHistory;
 use xedoc_protocol::protocol::McpAuthStatus as CoreMcpAuthStatus;
 use xedoc_protocol::protocol::Op;
@@ -359,8 +347,6 @@ use xedoc_protocol::protocol::ReviewRequest;
 use xedoc_protocol::protocol::ReviewTarget as CoreReviewTarget;
 use xedoc_protocol::protocol::RolloutItem;
 use xedoc_protocol::protocol::SessionConfiguredEvent;
-#[cfg(test)]
-use xedoc_protocol::protocol::SessionMetaLine;
 use xedoc_protocol::protocol::TurnEnvironmentSelection;
 use xedoc_protocol::protocol::TurnEnvironmentSelections;
 use xedoc_protocol::protocol::W3cTraceContext;
@@ -397,9 +383,6 @@ use xedoc_thread_store::ThreadStore;
 use xedoc_thread_store::ThreadStoreError;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
 use xedoc_utils_pty::DEFAULT_OUTPUT_BYTES_CAP;
-
-#[cfg(test)]
-use xedoc_app_server_protocol::ServerRequest;
 
 mod account_processor;
 mod bedrock_auth;
@@ -537,10 +520,6 @@ use self::thread_summary::*;
 
 pub(crate) use self::thread_lifecycle::populate_thread_turns_from_history;
 pub(crate) use self::thread_processor::thread_from_stored_thread;
-#[cfg(test)]
-pub(crate) use self::thread_summary::read_summary_from_rollout;
-#[cfg(test)]
-pub(crate) use self::thread_summary::summary_to_thread;
 pub(crate) use self::thread_summary::thread_settings_from_config_snapshot;
 pub(crate) use self::thread_summary::thread_settings_from_core_snapshot;
 

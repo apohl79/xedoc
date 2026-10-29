@@ -8,6 +8,7 @@ version.workspace = true
 doctest = false
 name = "xedoc_aws_auth"
 path = "src/lib.rs"
+test = false
 
 [lints]
 workspace = true
@@ -20,7 +21,3 @@ aws-types = { workspace = true }
 bytes = { workspace = true }
 http = { workspace = true }
 thiserror = { workspace = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

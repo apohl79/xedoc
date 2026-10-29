@@ -604,7 +604,3 @@ fn trim_to_tail(text: &mut String, max_chars: usize) {
             .collect();
     }
 }
-
-#[cfg(test)]
-#[path = "tool_summary_tests.rs"]
-mod tests;

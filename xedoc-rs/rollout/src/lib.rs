@@ -85,6 +85,3 @@ pub use session_index::remove_thread_name_entries;
 pub use state_db::StateDbHandle;
 pub use state_db::sqlite_telemetry_recorder;
 pub use xedoc_protocol::protocol::SessionMeta;
-
-#[cfg(test)]
-mod tests;

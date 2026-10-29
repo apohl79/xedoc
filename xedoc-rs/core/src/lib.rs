@@ -34,10 +34,6 @@ mod agent_communication;
 mod command_canonicalization;
 mod xedoc_delegate;
 pub use xedoc_core_config::config;
-#[cfg(test)]
-mod config_requirements_exec_policy_tests;
-#[cfg(test)]
-mod config_test_support;
 pub mod context;
 mod context_manager;
 mod current_time;
@@ -45,15 +41,11 @@ mod elicitation;
 pub(crate) mod environment_selection {
     pub(crate) use xedoc_core_environment::ThreadEnvironments;
     pub(crate) use xedoc_core_environment::TurnEnvironmentSnapshot;
-    #[cfg(test)]
-    pub(crate) use xedoc_core_environment::TurnEnvironmentState;
     pub(crate) use xedoc_core_environment::default_thread_environment_selections;
 }
 pub mod exec;
 pub mod exec_env;
 mod exec_policy;
-#[cfg(test)]
-mod git_info_tests;
 mod hook_runtime;
 mod image_preparation;
 mod installation_id;

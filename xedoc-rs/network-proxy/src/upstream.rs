@@ -259,10 +259,6 @@ fn build_http_connector(
     connector.boxed()
 }
 
-#[cfg(test)]
-#[path = "upstream_tests.rs"]
-mod tests;
-
 #[cfg(target_os = "macos")]
 fn build_unix_connector(
     path: &str,

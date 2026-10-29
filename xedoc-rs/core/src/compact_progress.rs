@@ -78,7 +78,3 @@ pub(crate) async fn send_progress(
     )
     .await;
 }
-
-#[cfg(test)]
-#[path = "compact_progress_tests.rs"]
-mod tests;

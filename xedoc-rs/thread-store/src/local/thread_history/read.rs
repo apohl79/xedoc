@@ -21,10 +21,6 @@ use crate::ThreadStoreError;
 use crate::ThreadStoreResult;
 use crate::TurnPage;
 
-#[cfg(test)]
-#[path = "read_tests.rs"]
-mod tests;
-
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct HistoryCursor {

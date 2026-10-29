@@ -76,11 +76,6 @@ impl Shell {
     }
 }
 
-#[cfg(all(test, unix))]
-fn ultimate_fallback_shell() -> Shell {
-    xedoc_shell_command::shell_detect::ultimate_fallback_shell().into()
-}
-
 pub fn get_shell_by_model_provided_path(shell_path: &PathBuf) -> Shell {
     xedoc_shell_command::shell_detect::get_shell_by_model_provided_path(shell_path).into()
 }
@@ -92,13 +87,3 @@ pub fn get_shell(shell_type: ShellType, path: Option<&PathBuf>) -> Option<Shell>
 pub fn default_user_shell() -> Shell {
     xedoc_shell_command::shell_detect::default_user_shell().into()
 }
-
-#[cfg(all(test, target_os = "macos"))]
-fn default_user_shell_from_path(user_shell_path: Option<PathBuf>) -> Shell {
-    xedoc_shell_command::shell_detect::default_user_shell_from_path(user_shell_path).into()
-}
-
-#[cfg(test)]
-#[cfg(unix)]
-#[path = "shell_tests.rs"]
-mod tests;

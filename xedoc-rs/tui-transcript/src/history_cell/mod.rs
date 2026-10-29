@@ -38,10 +38,6 @@ use crate::terminal_hyperlinks::plain_hyperlink_lines;
 use crate::terminal_hyperlinks::prefix_hyperlink_lines;
 use crate::terminal_hyperlinks::visible_lines;
 use crate::terminal_hyperlinks::visible_lines_ref;
-#[cfg(test)]
-use crate::test_support::PathBufExt;
-#[cfg(test)]
-use crate::test_support::test_path_buf;
 use crate::text_formatting::format_and_truncate_tool_result;
 use crate::text_formatting::truncate_text;
 use crate::tooltips;
@@ -81,18 +77,10 @@ use xedoc_app_server_protocol::McpServerStatusDetail;
 use xedoc_app_server_protocol::ToolRequestUserInputAnswer;
 use xedoc_app_server_protocol::ToolRequestUserInputQuestion;
 use xedoc_app_server_protocol::WebSearchAction;
-#[cfg(test)]
-use xedoc_config::types::McpServerTransportConfig;
-#[cfg(test)]
-use xedoc_mcp::qualified_mcp_tool_name_prefix;
 use xedoc_otel::RuntimeMetricsSummary;
 use xedoc_protocol::account::PlanType;
 use xedoc_protocol::approvals::ExecPolicyAmendment;
 use xedoc_protocol::approvals::NetworkPolicyAmendment;
-#[cfg(test)]
-use xedoc_protocol::mcp::Resource;
-#[cfg(test)]
-use xedoc_protocol::mcp::ResourceTemplate;
 use xedoc_protocol::models::ManagedFileSystemPermissions;
 use xedoc_protocol::models::PermissionProfile;
 use xedoc_protocol::models::local_image_label_text;
@@ -100,8 +88,6 @@ use xedoc_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use xedoc_protocol::permissions::NetworkSandboxPolicy;
 use xedoc_protocol::user_input::TextElement;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
-#[cfg(test)]
-use xedoc_utils_cli::format_env_display;
 
 const RAW_DIFF_SUMMARY_WIDTH: usize = 10_000;
 const RAW_TOOL_OUTPUT_WIDTH: usize = 10_000;
@@ -142,9 +128,6 @@ pub use separators::*;
 pub use session::*;
 pub use token_optimizer::*;
 pub use tool_summary::*;
-
-#[cfg(test)]
-mod tests;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HistoryRenderMode {

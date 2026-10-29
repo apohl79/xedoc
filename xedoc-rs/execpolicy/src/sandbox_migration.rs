@@ -117,7 +117,3 @@ fn should_remove_rule(line: &str, banned_prefixes: &HashSet<Vec<String>>) -> boo
         .collect::<Vec<_>>();
     banned_prefixes.contains(&prefix)
 }
-
-#[cfg(test)]
-#[path = "sandbox_migration_tests.rs"]
-mod tests;

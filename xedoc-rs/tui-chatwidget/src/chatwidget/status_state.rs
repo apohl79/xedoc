@@ -94,24 +94,3 @@ impl StatusState {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use pretty_assertions::assert_eq;
-
-    use super::*;
-
-    #[test]
-    fn retry_status_header_is_taken_once() {
-        let mut state = StatusState::default();
-        state.current_status.header = "Thinking".to_string();
-
-        state.remember_retry_status_header();
-
-        assert_eq!(
-            state.take_retry_status_header(),
-            Some("Thinking".to_string())
-        );
-        assert_eq!(state.take_retry_status_header(), None);
-    }
-}

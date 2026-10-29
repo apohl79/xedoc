@@ -232,7 +232,3 @@ fn safety_retry_fork_point(turns: &[Turn], turn_id: &str) -> Result<()> {
 
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "safety_buffering_tests.rs"]
-mod tests;

@@ -9,6 +9,7 @@ version.workspace = true
 doctest = false
 name = "xedoc_utils_plugins"
 path = "src/lib.rs"
+test = false
 
 [lints]
 workspace = true
@@ -20,7 +21,3 @@ xedoc-utils-absolute-path = { workspace = true }
 xedoc-utils-path-uri = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-
-[dev-dependencies]
-tempfile = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }

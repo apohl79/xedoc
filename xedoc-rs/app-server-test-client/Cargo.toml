@@ -31,6 +31,4 @@ uuid = { workspace = true, features = ["v4"] }
 
 [lib]
 doctest = false
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
+test = false

@@ -2,8 +2,6 @@ use chrono::Utc;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde::Serialize;
-#[cfg(test)]
-use serial_test::serial;
 use std::env;
 use std::fmt::Debug;
 use std::future::Future;
@@ -2658,7 +2656,3 @@ impl AuthManager {
         Ok(())
     }
 }
-
-#[cfg(test)]
-#[path = "auth_tests.rs"]
-mod tests;

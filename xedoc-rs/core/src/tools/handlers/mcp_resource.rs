@@ -337,7 +337,3 @@ where
         None => Ok(T::default()),
     }
 }
-
-#[cfg(test)]
-#[path = "mcp_resource_tests.rs"]
-mod tests;

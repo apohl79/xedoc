@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_sandboxing"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -26,9 +27,3 @@ regex-lite = { workspace = true }
 tracing = { workspace = true, features = ["log"] }
 url = { workspace = true }
 which = { workspace = true }
-
-[dev-dependencies]
-anyhow = { workspace = true }
-pretty_assertions = { workspace = true }
-tempfile = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }

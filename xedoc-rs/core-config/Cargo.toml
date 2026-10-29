@@ -8,6 +8,7 @@ version.workspace = true
 name = "xedoc_core_config"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -56,9 +57,3 @@ tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread"] 
 toml = { workspace = true }
 toml_edit = { workspace = true }
 tracing = { workspace = true }
-
-[dev-dependencies]
-assert_matches = { workspace = true }
-xedoc-utils-cargo-bin = { workspace = true }
-pretty_assertions = { workspace = true }
-tempfile = { workspace = true }

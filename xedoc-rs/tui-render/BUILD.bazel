@@ -6,10 +6,4 @@ xedoc_rust_crate(
         "src/render/themes/**",
     ]),
     crate_name = "xedoc_tui_render",
-    test_data_extra = glob([
-        "src/**/snapshots/**",
-    ]),
-    test_shard_counts = {
-        "tui-render-unit-tests": 4,
-    },
 )

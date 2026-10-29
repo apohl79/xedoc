@@ -133,11 +133,6 @@ impl KeymapDebugView {
     fn should_show_delayed_hint(&self, now: Instant) -> bool {
         self.last_report.is_none() && now.duration_since(self.opened_at) >= MISSING_KEY_HINT_DELAY
     }
-
-    #[cfg(test)]
-    pub(crate) fn show_delayed_hint_for_test(&mut self) {
-        self.opened_at = Instant::now() - MISSING_KEY_HINT_DELAY;
-    }
 }
 
 impl Renderable for KeymapDebugView {

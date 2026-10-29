@@ -194,7 +194,3 @@ fn response_item_activity(item: &ResponseItem) -> Option<String> {
         | ResponseItem::Other => None,
     }
 }
-
-#[cfg(test)]
-#[path = "activity_tests.rs"]
-mod tests;

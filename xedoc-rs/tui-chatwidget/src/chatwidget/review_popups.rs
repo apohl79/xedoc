@@ -145,35 +145,3 @@ impl ChatWidget {
         self.bottom_pane.show_view(Box::new(view));
     }
 }
-
-#[cfg(test)]
-pub fn show_review_commit_picker_with_entries(chat: &mut ChatWidget, entries: Vec<CommitLogEntry>) {
-    let mut items: Vec<SelectionItem> = Vec::with_capacity(entries.len());
-    for entry in entries {
-        let subject = entry.subject.clone();
-        let sha = entry.sha.clone();
-        let search_val = format!("{subject} {sha}");
-
-        items.push(SelectionItem {
-            name: subject.clone(),
-            actions: vec![Box::new(move |tx3: &AppEventSender| {
-                tx3.review(ReviewTarget::Commit {
-                    sha: sha.clone(),
-                    title: Some(subject.clone()),
-                });
-            })],
-            dismiss_on_select: true,
-            search_value: Some(search_val),
-            ..Default::default()
-        });
-    }
-
-    chat.bottom_pane.show_selection_view(SelectionViewParams {
-        title: Some("Select a commit to review".to_string()),
-        footer_hint: Some(standard_popup_hint_line()),
-        items,
-        is_searchable: true,
-        search_placeholder: Some("Type to search commits".to_string()),
-        ..Default::default()
-    });
-}

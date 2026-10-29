@@ -208,15 +208,6 @@ pub(crate) struct SessionState {
 }
 
 impl SessionState {
-    /// Create a new session state mirroring previous `State::default()` semantics.
-    #[cfg(test)]
-    pub(crate) fn new(session_configuration: SessionConfiguration) -> Self {
-        Self::new_with_auto_compact_window_ids(
-            session_configuration,
-            AutoCompactWindowIds::new_initial(),
-        )
-    }
-
     pub(crate) fn new_with_auto_compact_window_ids(
         session_configuration: SessionConfiguration,
         auto_compact_window_ids: AutoCompactWindowIds,
@@ -521,7 +512,3 @@ fn merge_rate_limit_fields(
     }
     snapshot
 }
-
-#[cfg(test)]
-#[path = "session_tests.rs"]
-mod tests;

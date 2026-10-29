@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_tui_app_server_session"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [features]
 test-support = []

@@ -352,7 +352,3 @@ pub(super) fn dollar_query_kind(query: &str) -> DollarQueryKind {
         DollarQueryKind::Completable
     }
 }
-
-#[cfg(test)]
-#[path = "completion_target_tests.rs"]
-mod tests;

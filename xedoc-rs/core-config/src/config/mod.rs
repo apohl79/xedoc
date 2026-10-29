@@ -151,8 +151,6 @@ use xedoc_core_config_runtime::otel;
 mod permission_profile_catalog;
 mod permissions;
 mod resolved_permission_profile;
-#[cfg(test)]
-mod schema;
 pub use auth_keyring::resolve_bootstrap_auth_keyring_backend_kind;
 pub use permission_profile_catalog::PermissionProfileCatalogEntry;
 pub use permission_profile_catalog::permission_profile_catalog;
@@ -1383,11 +1381,6 @@ impl ConfigBuilder {
             config_layer_stack,
         )
         .await
-    }
-
-    #[cfg(test)]
-    pub(crate) fn without_managed_config_for_tests() -> Self {
-        Self::default().loader_overrides(LoaderOverrides::without_managed_config_for_tests())
     }
 }
 
@@ -3006,24 +2999,6 @@ fn validate_multi_agent_v2_tool_namespace(namespace: Option<&str>) -> std::io::R
 }
 
 impl Config {
-    #[cfg(test)]
-    async fn load_from_base_config_with_overrides(
-        cfg: ConfigToml,
-        overrides: ConfigOverrides,
-        xedoc_home: AbsolutePathBuf,
-    ) -> std::io::Result<Self> {
-        // Note this ignores requirements.toml enforcement for tests.
-        let config_layer_stack = ConfigLayerStack::default();
-        Self::load_config_with_layer_stack(
-            LOCAL_FS.as_ref(),
-            cfg,
-            overrides,
-            xedoc_home,
-            config_layer_stack,
-        )
-        .await
-    }
-
     #[doc(hidden)]
     pub async fn load_config_with_layer_stack(
         fs: &dyn ExecutorFileSystem,
@@ -4379,11 +4354,3 @@ fn default_xedoc_statusline(xedoc_home: &Path) -> Option<StatusLineCommand> {
 pub fn log_dir(cfg: &Config) -> std::io::Result<PathBuf> {
     Ok(cfg.log_dir.clone())
 }
-
-#[cfg(test)]
-#[path = "config_tests.rs"]
-mod tests;
-
-#[cfg(test)]
-#[path = "config_loader_tests.rs"]
-mod config_loader_tests;

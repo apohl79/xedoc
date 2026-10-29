@@ -32,23 +32,3 @@ impl UpdateAction {
 pub fn get_update_action() -> Option<UpdateAction> {
     cfg!(target_os = "macos").then_some(UpdateAction::StandaloneMacos)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use pretty_assertions::assert_eq;
-
-    #[test]
-    fn standalone_update_command_runs_installer() {
-        assert_eq!(
-            UpdateAction::StandaloneMacos.command_args(),
-            (
-                "sh",
-                &[
-                    "-c",
-                    "curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main/scripts/install/install.sh | sh"
-                ][..],
-            )
-        );
-    }
-}

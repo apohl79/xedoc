@@ -7,6 +7,8 @@ version.workspace = true
 [lib]
 name = "xedoc_core_environment"
 path = "src/lib.rs"
+test = false
+doctest = false
 
 [lints]
 workspace = true
@@ -29,11 +31,3 @@ serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["fs", "process", "rt", "time"] }
 tokio-util = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
-
-[dev-dependencies]
-core_test_support = { workspace = true }
-pretty_assertions = { workspace = true }
-serde_json = { workspace = true }
-tempfile = { workspace = true }
-tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "time"] }
-tokio-tungstenite = { workspace = true }

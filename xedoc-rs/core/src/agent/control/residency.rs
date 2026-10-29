@@ -303,7 +303,3 @@ fn release_unused_allocator_memory() {
 
 #[cfg(not(target_os = "macos"))]
 fn release_unused_allocator_memory() {}
-
-#[cfg(test)]
-#[path = "residency_tests.rs"]
-mod tests;

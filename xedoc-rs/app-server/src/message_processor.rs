@@ -1541,7 +1541,3 @@ impl MessageProcessor {
         Ok(())
     }
 }
-
-#[cfg(test)]
-#[path = "message_processor_tracing_tests.rs"]
-mod message_processor_tracing_tests;

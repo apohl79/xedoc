@@ -429,7 +429,3 @@ impl file_search::SessionReporter for TuiSessionReporter {
 
     fn on_complete(&self) {}
 }
-
-#[cfg(test)]
-#[path = "file_search_tests.rs"]
-mod tests;

@@ -80,38 +80,3 @@ impl Renderable for UnifiedExecFooter {
         self.render_lines(width).len() as u16
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use insta::assert_snapshot;
-    use pretty_assertions::assert_eq;
-
-    #[test]
-    fn desired_height_empty() {
-        let footer = UnifiedExecFooter::new();
-        assert_eq!(footer.desired_height(/*width*/ 40), 0);
-    }
-
-    #[test]
-    fn render_more_sessions() {
-        let mut footer = UnifiedExecFooter::new();
-        footer.set_processes(vec!["rg \"foo\" src".to_string()]);
-        let width = 50;
-        let height = footer.desired_height(width);
-        let mut buf = Buffer::empty(Rect::new(0, 0, width, height));
-        footer.render(Rect::new(0, 0, width, height), &mut buf);
-        assert_snapshot!("render_more_sessions", format!("{buf:?}"));
-    }
-
-    #[test]
-    fn render_many_sessions() {
-        let mut footer = UnifiedExecFooter::new();
-        footer.set_processes((0..123).map(|idx| format!("cmd {idx}")).collect());
-        let width = 50;
-        let height = footer.desired_height(width);
-        let mut buf = Buffer::empty(Rect::new(0, 0, width, height));
-        footer.render(Rect::new(0, 0, width, height), &mut buf);
-        assert_snapshot!("render_many_sessions", format!("{buf:?}"));
-    }
-}

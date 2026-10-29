@@ -22,8 +22,6 @@ use std::process::Command;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::sync::Semaphore;
-#[cfg(test)]
-use tracing::instrument;
 use tracing::warn;
 use xedoc_config::ConfigLayerStack;
 use xedoc_config::HooksFile;
@@ -102,30 +100,6 @@ pub(crate) fn log_plugin_load_errors(plugins: &[LoadedPlugin<McpServerConfig>]) 
     }
 }
 
-/// Load configured plugins without applying auth-dependent runtime policies.
-#[cfg(test)]
-#[instrument(level = "trace", skip_all)]
-pub(crate) async fn load_plugins_from_layer_stack(
-    config_layer_stack: &ConfigLayerStack,
-    store: &PluginStore,
-    plugin_skill_snapshots: Option<&PluginSkillSnapshots>,
-    restriction_product: Option<Product>,
-    root_scan_slots: Arc<Semaphore>,
-) -> Vec<LoadedPlugin<McpServerConfig>> {
-    let skill_config_rules = skill_config_rules_from_stack(config_layer_stack);
-    load_plugins_from_layer_stack_with_scope(
-        config_layer_stack,
-        store,
-        PluginLoadScope::AllCapabilities {
-            restriction_product,
-            skill_config_rules: &skill_config_rules,
-            plugin_skill_snapshots,
-            root_scan_slots,
-        },
-    )
-    .await
-}
-
 pub(crate) async fn load_plugins_from_layer_stack_with_legacy_store(
     config_layer_stack: &ConfigLayerStack,
     store: &PluginStore,
@@ -145,21 +119,6 @@ pub(crate) async fn load_plugins_from_layer_stack_with_legacy_store(
             plugin_skill_snapshots,
             root_scan_slots,
         },
-    )
-    .await
-}
-
-#[cfg(test)]
-async fn load_plugins_from_layer_stack_with_scope(
-    config_layer_stack: &ConfigLayerStack,
-    store: &PluginStore,
-    scope: PluginLoadScope<'_>,
-) -> Vec<LoadedPlugin<McpServerConfig>> {
-    load_plugins_from_layer_stack_with_scope_and_legacy_store(
-        config_layer_stack,
-        store,
-        /*legacy_store*/ None,
-        scope,
     )
     .await
 }
@@ -391,19 +350,6 @@ pub fn curated_plugin_cache_version(plugin_version: &str) -> String {
     }
 }
 
-#[cfg(test)]
-pub(crate) fn refresh_non_curated_plugin_cache(
-    xedoc_home: &Path,
-    additional_roots: &[AbsolutePathBuf],
-    configured_plugin_keys: &[String],
-) -> Result<bool, String> {
-    collapse_non_curated_cache_refresh(refresh_non_curated_plugin_cache_detailed(
-        xedoc_home,
-        additional_roots,
-        configured_plugin_keys,
-    ))
-}
-
 pub(crate) fn refresh_non_curated_plugin_cache_detailed(
     xedoc_home: &Path,
     additional_roots: &[AbsolutePathBuf],
@@ -415,19 +361,6 @@ pub(crate) fn refresh_non_curated_plugin_cache_detailed(
         configured_plugin_keys,
         NonCuratedCacheRefreshMode::IfVersionChanged,
     )
-}
-
-#[cfg(test)]
-pub(crate) fn refresh_non_curated_plugin_cache_force_reinstall(
-    xedoc_home: &Path,
-    additional_roots: &[AbsolutePathBuf],
-    configured_plugin_keys: &[String],
-) -> Result<bool, String> {
-    collapse_non_curated_cache_refresh(refresh_non_curated_plugin_cache_force_reinstall_detailed(
-        xedoc_home,
-        additional_roots,
-        configured_plugin_keys,
-    ))
 }
 
 pub(crate) fn refresh_non_curated_plugin_cache_force_reinstall_detailed(
@@ -594,23 +527,6 @@ fn refresh_non_curated_plugin_cache_with_mode(
         cache_refreshed,
         errors: refresh_errors,
     })
-}
-
-#[cfg(test)]
-fn collapse_non_curated_cache_refresh(
-    outcome: Result<NonCuratedCacheRefreshOutcome, String>,
-) -> Result<bool, String> {
-    let outcome = outcome?;
-    if outcome.errors.is_empty() {
-        Ok(outcome.cache_refreshed)
-    } else {
-        Err(outcome
-            .errors
-            .into_iter()
-            .map(|error| error.message)
-            .collect::<Vec<_>>()
-            .join("; "))
-    }
 }
 
 fn is_full_git_sha(value: &str) -> bool {
@@ -1407,7 +1323,3 @@ fn run_git(args: &[&str], cwd: Option<&Path>) -> Result<(), String> {
         String::from_utf8_lossy(&output.stderr).trim()
     ))
 }
-
-#[cfg(test)]
-#[path = "loader_tests.rs"]
-mod tests;

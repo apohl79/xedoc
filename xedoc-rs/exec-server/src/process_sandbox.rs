@@ -192,7 +192,3 @@ fn native_path(path: &PathUri, label: &str) -> Result<AbsolutePathBuf, JSONRPCEr
         ))
     })
 }
-
-#[cfg(test)]
-#[path = "process_sandbox_tests.rs"]
-mod tests;

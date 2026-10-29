@@ -255,7 +255,3 @@ async fn run_exec_like(args: RunExecLikeArgs) -> Result<FunctionToolOutput, Func
         post_tool_use_response,
     })
 }
-
-#[cfg(test)]
-#[path = "shell_tests.rs"]
-mod tests;

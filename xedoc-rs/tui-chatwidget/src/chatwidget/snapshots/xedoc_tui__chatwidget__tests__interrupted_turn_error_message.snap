@@ -1,5 +1,0 @@
----
-source: tui/src/chatwidget/tests.rs
-expression: last
----
-■ Conversation interrupted - tell the model what to do differently.

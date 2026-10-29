@@ -113,7 +113,3 @@ fn record_resolution(
         source,
     );
 }
-
-#[cfg(all(test, unix))]
-#[path = "approvals_tests.rs"]
-mod tests;

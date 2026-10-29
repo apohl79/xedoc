@@ -45,14 +45,4 @@ pub mod tui {
     pub use xedoc_tui_frame::FrameRequester;
 }
 
-#[cfg(test)]
-pub mod test_backend {
-    pub use xedoc_tui_test_support::VT100Backend;
-}
-
-#[cfg(test)]
-pub mod test_support {
-    pub use xedoc_tui_test_support::*;
-}
-
 pub mod bottom_pane;

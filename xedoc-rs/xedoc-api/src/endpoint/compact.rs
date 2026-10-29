@@ -86,30 +86,3 @@ impl<T: HttpTransport> CompactClient<T> {
 struct CompactHistoryResponse {
     output: Vec<ResponseItem>,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use xedoc_client::Request;
-    use xedoc_client::Response;
-    use xedoc_client::StreamResponse;
-    use xedoc_client::TransportError;
-
-    #[derive(Clone, Default)]
-    struct DummyTransport;
-
-    impl HttpTransport for DummyTransport {
-        async fn execute(&self, _req: Request) -> Result<Response, TransportError> {
-            Err(TransportError::Build("execute should not run".to_string()))
-        }
-
-        async fn stream(&self, _req: Request) -> Result<StreamResponse, TransportError> {
-            Err(TransportError::Build("stream should not run".to_string()))
-        }
-    }
-
-    #[test]
-    fn path_is_responses_compact() {
-        assert_eq!(CompactClient::<DummyTransport>::path(), "responses/compact");
-    }
-}

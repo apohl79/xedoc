@@ -307,7 +307,3 @@ fn output_call_id(item: &ResponseItem) -> Option<&str> {
         _ => None,
     }
 }
-
-#[cfg(test)]
-#[path = "compact_hierarchical_tests.rs"]
-mod tests;

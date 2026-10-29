@@ -650,7 +650,3 @@ fn credential_error(error: io::Error) -> JSONRPCErrorError {
         _ => internal_error(format!("failed to update provider credentials: {error}")),
     }
 }
-
-#[cfg(test)]
-#[path = "model_manager_processor_tests.rs"]
-mod tests;

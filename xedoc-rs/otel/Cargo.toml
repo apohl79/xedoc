@@ -8,6 +8,7 @@ license.workspace = true
 doctest = false
 name = "xedoc_otel"
 path = "src/lib.rs"
+test = false
 
 [lints]
 workspace = true

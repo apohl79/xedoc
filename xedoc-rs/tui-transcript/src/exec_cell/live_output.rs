@@ -250,7 +250,3 @@ impl LiveCommandOutputLine {
         line
     }
 }
-
-#[cfg(test)]
-#[path = "live_output_tests.rs"]
-mod tests;

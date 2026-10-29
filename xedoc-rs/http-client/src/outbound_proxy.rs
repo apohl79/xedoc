@@ -555,15 +555,6 @@ fn cached_system_proxy_decision_from_cache(
     None
 }
 
-#[cfg(test)]
-fn cache_system_proxy_decision(request_url: &str, decision: SystemProxyDecision) {
-    let cache = SYSTEM_PROXY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Ok(mut cache) = cache.lock() {
-        let cache_key = system_proxy_cache_key(request_url);
-        insert_system_proxy_cache_entry(&mut cache, &cache_key, decision, Instant::now());
-    }
-}
-
 fn insert_system_proxy_cache_entry(
     cache: &mut HashMap<String, CachedSystemProxyDecision>,
     cache_key: &str,
@@ -808,7 +799,3 @@ fn proxy_env_value(env: &dyn EnvSource, upper: &str) -> Option<String> {
         .or_else(|| env.var(&lower))
         .filter(|value| !value.is_empty())
 }
-
-#[cfg(test)]
-#[path = "outbound_proxy_tests.rs"]
-mod tests;

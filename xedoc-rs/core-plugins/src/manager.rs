@@ -3,8 +3,6 @@ use super::PluginLoadOutcome;
 use crate::installed_marketplaces::installed_marketplace_roots_from_layer_stack;
 use crate::is_openai_curated_marketplace_name;
 use crate::loader::PluginHookLoadOutcome;
-#[cfg(test)]
-use crate::loader::configured_curated_plugin_ids_from_xedoc_home;
 use crate::loader::configured_plugins_from_layer_stack_with_legacy_store;
 use crate::loader::curated_plugin_cache_version;
 use crate::loader::load_plugin_hooks;
@@ -14,8 +12,6 @@ use crate::loader::load_plugin_skills;
 use crate::loader::load_plugins_from_layer_stack_with_legacy_store;
 use crate::loader::log_plugin_load_errors;
 use crate::loader::materialize_marketplace_plugin_source;
-#[cfg(test)]
-use crate::loader::refresh_curated_plugin_cache;
 use crate::loader::refresh_non_curated_plugin_cache_detailed;
 use crate::loader::refresh_non_curated_plugin_cache_force_reinstall_detailed;
 use crate::manifest::PluginManifestInterface;
@@ -1555,7 +1551,3 @@ impl PluginUninstallError {
         matches!(self, Self::InvalidPluginId(_))
     }
 }
-
-#[cfg(test)]
-#[path = "manager_tests.rs"]
-mod tests;

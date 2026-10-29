@@ -7,6 +7,8 @@ version.workspace = true
 [lib]
 name = "xedoc_core_tool_specs"
 path = "src/lib.rs"
+test = false
+doctest = false
 
 [lints]
 workspace = true
@@ -16,7 +18,3 @@ xedoc-protocol = { workspace = true }
 xedoc-tools = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-
-[dev-dependencies]
-xedoc-features = { workspace = true }
-pretty_assertions = { workspace = true }

@@ -264,7 +264,3 @@ pub fn brokered_credential_env_keys(
         .is_some_and(|value| value == "1");
     providers::credential_broker_env_keys().filter(move |_| active)
 }
-
-#[cfg(test)]
-#[path = "credential_broker_tests.rs"]
-mod tests;

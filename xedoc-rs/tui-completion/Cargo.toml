@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_tui_completion"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -26,7 +27,3 @@ strum = { workspace = true }
 strum_macros = { workspace = true }
 textwrap = { workspace = true }
 unicode-width = { workspace = true }
-
-[dev-dependencies]
-insta = { workspace = true }
-pretty_assertions = { workspace = true }

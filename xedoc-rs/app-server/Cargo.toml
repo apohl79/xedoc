@@ -7,6 +7,7 @@ license.workspace = true
 [[bin]]
 name = "xedoc-app-server"
 path = "src/main.rs"
+test = false
 
 [[bin]]
 name = "xedoc-app-server-test-notify-capture"
@@ -27,6 +28,7 @@ test = false
 name = "xedoc_app_server"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true

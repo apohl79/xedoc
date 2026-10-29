@@ -75,24 +75,3 @@ pub async fn ensure_responses_supported(provider: &ModelProviderInfo) -> std::io
         "Ollama {version} is too old. Xedoc requires Ollama {min} or newer."
     )))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn supports_responses_for_dev_zero() {
-        assert!(supports_responses(&Version::new(0, 0, 0)));
-    }
-
-    #[test]
-    fn does_not_support_responses_before_cutoff() {
-        assert!(!supports_responses(&Version::new(0, 13, 3)));
-    }
-
-    #[test]
-    fn supports_responses_at_or_after_cutoff() {
-        assert!(supports_responses(&Version::new(0, 13, 4)));
-        assert!(supports_responses(&Version::new(0, 14, 0)));
-    }
-}

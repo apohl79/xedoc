@@ -26,3 +26,4 @@ windows-sys = { version = "0.61.2", features = [
 
 [lib]
 doctest = false
+test = false

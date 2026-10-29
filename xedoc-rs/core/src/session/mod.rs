@@ -166,8 +166,6 @@ use xedoc_thread_store::ThreadStore;
 use xedoc_utils_path_uri::PathUri;
 
 use crate::client::ModelClient;
-#[cfg(test)]
-use crate::compact::collect_user_messages;
 use crate::config::Config;
 use crate::config::Constrained;
 use crate::config::ConstraintResult;
@@ -187,8 +185,6 @@ use xedoc_config::types::McpServerConfig;
 use xedoc_model_provider_info::ModelProviderInfo;
 use xedoc_protocol::error::Result as XedocResult;
 use xedoc_protocol::error::XedocErr;
-#[cfg(test)]
-use xedoc_protocol::exec_output::StreamOutput;
 
 pub(crate) mod ab_pairs;
 mod config_lock;
@@ -216,25 +212,17 @@ pub(crate) mod turn_context;
 mod world_state;
 use self::config_lock::export_config_lock_if_configured;
 use self::config_lock::validate_config_lock_if_configured;
-#[cfg(test)]
-use self::handlers::submission_dispatch_span;
 use self::handlers::submission_loop;
 pub(crate) use self::input_queue::InputQueueActivity;
 pub(crate) use self::input_queue::TurnInput;
 pub(crate) use self::input_queue::TurnInputQueue;
 pub use self::mcp_runtime::McpRuntimeSnapshot;
-#[cfg(test)]
-pub(crate) use self::mcp_runtime::new_uninitialized_mcp_runtime_snapshot_for_test;
 use self::review::spawn_review_thread;
 use self::session::Session;
 use self::session::SessionConfiguration;
 pub(crate) use self::session::SessionSettingsUpdate;
-#[cfg(test)]
-use self::turn::AssistantMessageStreamParsers;
 use self::turn_context::TurnContext;
 use self::turn_context::TurnSkillsContext;
-#[cfg(test)]
-mod rollout_reconstruction_tests;
 
 #[derive(Debug, PartialEq)]
 pub enum SteerInputError {
@@ -293,8 +281,6 @@ pub(crate) struct LiveForkHydration {
     pub(crate) token_info: Option<TokenUsageInfo>,
 }
 
-#[cfg(test)]
-use crate::SkillMetadata;
 use crate::SkillsService;
 use crate::exec_policy::ExecPolicyUpdateError;
 use crate::mcp::McpManager;
@@ -302,23 +288,15 @@ use crate::network_policy_decision::execpolicy_network_rule_amendment;
 use crate::rollout::map_session_init_error;
 use crate::session_startup_prewarm::SessionStartupPrewarmHandle;
 use crate::shell;
-#[cfg(test)]
-use crate::skills::SkillLoadOutcome;
 use crate::state::AutoCompactWindowIds;
 use crate::state::AutoCompactWindowSnapshot;
 use crate::state::PendingRequestPermissions;
 use crate::state::SessionServices;
 use crate::state::SessionState;
-#[cfg(test)]
-use crate::stream_events_utils::HandleOutputCtx;
-#[cfg(test)]
-use crate::stream_events_utils::handle_output_item_done;
 use crate::tasks::ReviewTask;
 use crate::tools::network_approval::NetworkApprovalService;
 use crate::tools::network_approval::build_blocked_request_observer;
 use crate::tools::network_approval::build_network_policy_decider;
-#[cfg(test)]
-use crate::tools::parallel::ToolCallRuntime;
 use crate::tools::sandboxing::ApprovalStore;
 use crate::turn_timing::TurnTimingState;
 use crate::turn_timing::record_turn_ttfm_metric;
@@ -337,8 +315,6 @@ use xedoc_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use xedoc_protocol::models::LocalImagePreparation;
 use xedoc_protocol::models::ResponseInputItem;
 use xedoc_protocol::models::ResponseItem;
-#[cfg(test)]
-use xedoc_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use xedoc_protocol::protocol::ApplyPatchApprovalRequestEvent;
 use xedoc_protocol::protocol::AskForApproval;
 use xedoc_protocol::protocol::CompactedItem;
@@ -373,8 +349,6 @@ use xedoc_protocol::protocol::XedocErrorInfo;
 use xedoc_protocol::user_input::UserInput;
 use xedoc_tools::UnifiedExecShellMode;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
-#[cfg(test)]
-use xedoc_utils_stream_parser::ProposedPlanSegment;
 
 /// Queue and lifecycle endpoints for a running [`Session`].
 ///
@@ -1021,11 +995,6 @@ fn session_permission_profile_state_from_config(
     Ok(config.permissions.permission_profile_state().clone())
 }
 
-#[cfg(test)]
-pub(crate) fn completed_session_loop_termination() -> SessionLoopTermination {
-    futures::future::ready(()).boxed().shared()
-}
-
 pub(crate) fn session_loop_termination_from_handle(
     handle: JoinHandle<()>,
 ) -> SessionLoopTermination {
@@ -1240,12 +1209,6 @@ impl Session {
                 warn!("failed to start managed network proxy for sandbox change: {err}");
             }
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) async fn xedoc_home(&self) -> AbsolutePathBuf {
-        let state = self.state.lock().await;
-        state.session_configuration.xedoc_home().clone()
     }
 
     pub(crate) fn subscribe_elicitation_pause_state(&self) -> watch::Receiver<bool> {
@@ -3271,16 +3234,6 @@ impl Session {
             .await;
     }
 
-    #[cfg(test)]
-    pub(crate) async fn replace_history(
-        &self,
-        items: Vec<ResponseItem>,
-        reference_context_item: Option<TurnContextItem>,
-    ) {
-        let mut state = self.state.lock().await;
-        state.replace_history(items, reference_context_item);
-    }
-
     pub(crate) async fn replace_compacted_history(
         &self,
         turn_context: &TurnContext,
@@ -4387,10 +4340,3 @@ async fn build_hooks_for_config(
         shell_args: hook_shell_argv,
     })
 }
-
-#[cfg(test)]
-#[path = "elicitation_holders_tests.rs"]
-mod elicitation_holders_tests;
-
-#[cfg(test)]
-pub(crate) mod tests;

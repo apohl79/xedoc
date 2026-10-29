@@ -101,7 +101,3 @@ fn parse_xedoc_version(output: &str) -> Result<String> {
         .ok_or_else(|| anyhow!("managed Xedoc version output was malformed"))?;
     Ok(version.to_string())
 }
-
-#[cfg(all(test, unix))]
-#[path = "managed_install_tests.rs"]
-mod tests;

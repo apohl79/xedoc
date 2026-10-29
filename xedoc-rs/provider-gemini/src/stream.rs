@@ -353,7 +353,3 @@ fn empty_object() -> Value {
 fn prefixed_id(prefix: &str, id: &str) -> ResponseItemId {
     ResponseItemId::from_server(format!("{prefix}_{id}"))
 }
-
-#[cfg(test)]
-#[path = "stream_tests.rs"]
-mod tests;

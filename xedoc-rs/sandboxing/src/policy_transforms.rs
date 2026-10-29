@@ -527,7 +527,3 @@ pub fn should_require_platform_sandbox(
         FileSystemSandboxKind::Unrestricted | FileSystemSandboxKind::ExternalSandbox => false,
     }
 }
-
-#[cfg(test)]
-#[path = "policy_transforms_tests.rs"]
-mod tests;

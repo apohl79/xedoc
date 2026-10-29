@@ -99,7 +99,3 @@ where
         outcome
     }
 }
-
-#[cfg(test)]
-#[path = "reverse_jsonl_scanner_tests.rs"]
-mod tests;

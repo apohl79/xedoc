@@ -119,7 +119,3 @@ pub trait PluginProvider: Send + Sync {
         root: &SelectedCapabilityRoot,
     ) -> impl Future<Output = Result<Option<ResolvedPlugin>, Self::Error>> + Send;
 }
-
-#[cfg(test)]
-#[path = "provider_tests.rs"]
-mod tests;

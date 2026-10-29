@@ -7,6 +7,7 @@ license.workspace = true
 [lib]
 path = "lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -48,7 +49,3 @@ walkdir = { workspace = true }
 wiremock = { workspace = true }
 shlex = { workspace = true }
 zstd = { workspace = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
-reqwest = { workspace = true }

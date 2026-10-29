@@ -31,8 +31,6 @@ use xedoc_state::apply_rollout_item;
 const BACKFILL_BATCH_SIZE: usize = 200;
 #[cfg(not(test))]
 const BACKFILL_LEASE_SECONDS: i64 = 900;
-#[cfg(test)]
-const BACKFILL_LEASE_SECONDS: i64 = 1;
 
 pub(crate) fn builder_from_session_meta(
     session_meta: &SessionMetaLine,
@@ -412,7 +410,3 @@ async fn collect_rollout_paths(root: &Path) -> std::io::Result<Vec<PathBuf>> {
     }
     Ok(paths)
 }
-
-#[cfg(test)]
-#[path = "metadata_tests.rs"]
-mod tests;

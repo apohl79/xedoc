@@ -82,33 +82,16 @@ impl ToolExecutor<ToolCall> for DirectWebFetchTool {
 
 pub(crate) struct DirectWebSearchTool {
     http_client_factory: HttpClientFactory,
-    #[cfg(test)]
-    search_url: Option<Url>,
 }
 
 impl DirectWebSearchTool {
     pub(crate) const fn new(http_client_factory: HttpClientFactory) -> Self {
         Self {
             http_client_factory,
-            #[cfg(test)]
-            search_url: None,
-        }
-    }
-
-    #[cfg(test)]
-    fn with_search_url(http_client_factory: HttpClientFactory, search_url: Url) -> Self {
-        Self {
-            http_client_factory,
-            search_url: Some(search_url),
         }
     }
 
     fn request_url(&self, query: &str) -> Result<Url, FunctionCallError> {
-        #[cfg(test)]
-        if let Some(url) = self.search_url.as_ref() {
-            return Ok(url.clone());
-        }
-
         search_url(query)
     }
 }
@@ -408,7 +391,3 @@ fn parse_arguments<T: for<'de> Deserialize<'de>>(arguments: &str) -> Result<T, F
     serde_json::from_str(arguments)
         .map_err(|_| FunctionCallError::RespondToModel("invalid web tool arguments".to_string()))
 }
-
-#[cfg(test)]
-#[path = "direct_tests.rs"]
-mod tests;

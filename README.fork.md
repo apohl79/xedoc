@@ -170,8 +170,6 @@ without changing the visible model response.
 - Generated names preserve whole words, trim repeated title prefixes, handle
   malformed model output, and accumulate both final message items and
   `response.output_text.delta` chunks.
-- Integration and snapshot coverage verify generated updates, manual override
-  behavior, fork behavior, setting persistence, and composer rendering.
 
 Primary files:
 
@@ -512,7 +510,6 @@ Primary files:
 - `scripts/build_xedoc_release.sh`
 - `scripts/xedoc-session`
 - `scripts/install/install.sh`
-- `scripts/test_xedoc_release.py`
 - `scripts/xedoc_package/cli.py`
 
 ### Repository Hygiene

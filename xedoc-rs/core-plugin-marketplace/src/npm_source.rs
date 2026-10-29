@@ -182,7 +182,3 @@ fn npm_command() -> &'static str {
 fn npm_command() -> &'static str {
     "npm"
 }
-
-#[cfg(all(test, unix))]
-#[path = "npm_source_tests.rs"]
-mod tests;

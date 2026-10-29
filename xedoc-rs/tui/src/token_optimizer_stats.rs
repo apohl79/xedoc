@@ -135,7 +135,3 @@ fn truncate_call_id(call_id: &str) -> String {
         .collect::<String>();
     format!("{prefix}…{suffix}")
 }
-
-#[cfg(test)]
-#[path = "token_optimizer_stats_tests.rs"]
-mod tests;

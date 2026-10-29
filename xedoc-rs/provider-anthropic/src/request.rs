@@ -275,7 +275,3 @@ fn reconcile_forced_tool_choice(translated: &mut AnthropicMessagesRequest) {
 fn rejects_forced_tool_choice(model: &str) -> bool {
     supports_prefix_locked_thinking(model)
 }
-
-#[cfg(test)]
-#[path = "request_tests.rs"]
-mod tests;

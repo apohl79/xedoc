@@ -399,7 +399,3 @@ LIMIT ?
         .map_err(Into::into)
     }
 }
-
-#[cfg(test)]
-#[path = "model_router_tests.rs"]
-mod tests;

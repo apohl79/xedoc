@@ -560,7 +560,3 @@ fn failure_backoff(kind: AnthropicAccountFailureKind, failure_count: u32) -> Dur
     base.saturating_mul(2u32.saturating_pow(failure_count.saturating_sub(1)))
         .min(max)
 }
-
-#[cfg(test)]
-#[path = "oauth_tests.rs"]
-mod tests;

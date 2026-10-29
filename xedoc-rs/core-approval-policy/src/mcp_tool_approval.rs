@@ -524,7 +524,3 @@ pub fn requires_mcp_tool_approval(annotations: Option<&ToolAnnotations>) -> bool
             .and_then(|annotations| annotations.open_world_hint)
             .unwrap_or(true)
 }
-
-#[cfg(test)]
-#[path = "mcp_tool_approval_tests.rs"]
-mod tests;

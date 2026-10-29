@@ -66,10 +66,6 @@ use crate::resume_picker::SessionTarget;
 use crate::session_state::ThreadSessionState;
 #[cfg(test)]
 use crate::test_support::PathBufExt;
-#[cfg(test)]
-use crate::test_support::test_path_buf;
-#[cfg(test)]
-use crate::test_support::test_path_display;
 use crate::token_usage::TokenUsage;
 use crate::transcript_reflow::TranscriptReflowState;
 use crate::tui;
@@ -1368,7 +1364,5 @@ impl Drop for App {
     }
 }
 
-#[cfg(test)]
-pub(super) mod test_support;
 #[cfg(test)]
 mod tests;

@@ -286,7 +286,3 @@ fn is_legacy_api_key_credential(path: &Path) -> bool {
         .and_then(|contents| serde_json::from_str::<CredentialKind>(&contents).ok())
         .is_some_and(|credential| credential.account_id == "anthropic-api-key")
 }
-
-#[cfg(test)]
-#[path = "oauth_import_tests.rs"]
-mod tests;

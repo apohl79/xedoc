@@ -53,6 +53,10 @@ In the xedoc-rs folder where the rust code lives:
 - Do not call `reset_client_session` unnecessarily; let the incremental check logic decide whether to reuse the previous request.
 - If you change Rust dependencies (`Cargo.toml` or `Cargo.lock`), run `just bazel-lock-update` from the
   repo root to refresh `MODULE.bazel.lock`, and include that lockfile update in the same change.
+- Refresh `xedoc-rs/Cargo.lock` after dependency removals without upgrading unrelated packages
+  (`cargo update --workspace`). Verify resolution with
+  `cargo metadata --locked --format-version 1 --manifest-path xedoc-rs/Cargo.toml`;
+  `--no-deps` does not validate dependency lockfile freshness.
 - After dependency changes, run `just bazel-lock-check` from the repo root so lockfile drift is caught
   locally before CI.
 - Xedoc uses its own semantic version, independent of the upstream Codex version. Every `main`
@@ -89,17 +93,36 @@ Run `just fmt` (in the `xedoc-rs` directory) automatically after you have finish
 
 ### Experimental-harness test policy
 
-Xedoc is a personal experimental harness where iteration speed takes priority. Do not add, run,
-repair, or maintain unit tests unless the user explicitly requests a future testing investment.
-Existing unit-test failures are not blockers. Do not run broad Bazel or Cargo test suites by
-default; use only the narrow behavioral validation that the user specifically asks for.
-When the user requests tmux testing, exercise every changed behavior in a real tmux session
-using a binary built from the current changes. Send the actual changed key bindings through
-tmux, verify the resulting UI and state (including toggling back), and report each observed
-result. A test target that fails before execution, or source inspection alone, does not count
-as a tmux test; report any blocked interaction explicitly.
+Xedoc is a personal experimental harness, not a supported product for other users. Fast local
+development cycles take priority. Unit tests are retired: do not add, run, repair, or restore
+them unless the user explicitly changes that policy. Do not replace them one for one with a
+large E2E suite or run full suites/platform matrices by default.
 
-Before finalizing a large change to `xedoc-rs`, run `just fix -p <project>` (in `xedoc-rs` directory) to fix any linter issues in the code. Prefer scoping with `-p` to avoid slow workspace‑wide Clippy builds; only run `just fix` without `-p` if you changed shared crates. Do not re-run tests after running `fix` or `fmt`.
+Proactively verify every testable code or configuration change through narrowly scoped
+functional/user acceptance scenarios using the current artifact and configuration. Define the
+observable outcome before editing; execute only scenarios affected by the change and report
+expected versus observed results with evidence. Compilation, linting, parsing, source
+inspection, and reviewer approval are supporting checks, not acceptance verification.
+
+Use `just test <bazel-target> [test-options...]` for an explicitly selected acceptance target.
+External integration tests remain under each crate's `tests/` directory. The small retained
+source-local socket/process/TUI scenarios use manual `*-functional-tests` targets; select the
+relevant target and scenario explicitly. Lint production targets without compiling test harnesses.
+
+For TUI changes, exercise changed interactions in a real tmux session using a binary built from
+the current changes. Send the changed key bindings and verify the resulting UI/state, including
+reverse transitions when relevant. For browser changes, exercise the browser flow and inspect
+the outcome; an HTTP-only check does not prove it. Verify configuration through its consumer.
+
+Use isolated environments where possible. Testing does not authorize destructive actions,
+production changes, restarts, or new integrations. If execution remains blocked after safe
+available routes, report **implemented but acceptance-unverified**, the concrete blocker, and
+the remaining scenario. A test that fails before execution is not acceptance evidence.
+Only the user can waive required acceptance verification.
+
+Use scoped production Bazel targets for lint/build validation. Run acceptance on the final
+artifact; after a relevant fix, formatting change, or review edit, rebuild as needed and rerun
+only affected scenarios. Retain unrelated valid evidence instead of rerunning everything.
 
 ## The `xedoc-core` crate
 
@@ -143,9 +166,9 @@ Search for breaking changes in external integration surfaces:
 
 ### Test authoring guidance
 
-If the user explicitly requests tests in the future, prefer small behavioral or integration tests
-over unit tests. Integration tests are under `core/suite` and use `test_xedoc` to set up a test
-instance of xedoc. Avoid test-only functions in the main implementation.
+Prefer existing acceptance tools and small behavioral scenarios over new infrastructure.
+Core integration tests are under `core/tests/suite` and use `test_xedoc` to set up a test
+instance. Preserve shared support needed by these scenarios; avoid new test-only production APIs.
 
 Check whether there are existing helpers to make tests more streamlined and readable.
 
@@ -191,38 +214,11 @@ See `xedoc-rs/tui/styles.md`.
 
 ## Tests
 
-### Test module organization
-
-- When adding a new test module, define its contents in a separate sibling file rather than inline in the implementation file.
-- Use an explicit `#[path = "..._tests.rs"]` attribute so the test filename is descriptive and easy to locate:
-
-  ```rust
-  #[cfg(test)]
-  #[path = "parser_tests.rs"]
-  mod tests;
-  ```
-
-- This applies only when introducing a new test module. Do not move or rewrite existing inline `#[cfg(test)] mod tests { ... }` modules solely to follow this convention.
-
 ### Snapshot tests
 
-This repo uses snapshot tests (via `insta`), especially in `xedoc-rs/tui`, to validate rendered output.
-
-Only when the user explicitly requests snapshot testing for a UI or text-output change, update the
-snapshots as follows:
-
-- Run tests to generate any updated snapshots:
-  - `bazel test --strategy=TestRunner=local --cache_test_results=no //xedoc-rs/tui:tui-unit-tests`
-- Check what’s pending:
-  - `cargo insta pending-snapshots -p xedoc-tui`
-- Review changes by reading the generated `*.snap.new` files directly in the repo, or preview a specific file:
-  - `cargo insta show -p xedoc-tui path/to/file.snap.new`
-- Only if you intend to accept all new snapshots in this crate, run:
-  - `cargo insta accept -p xedoc-tui`
-
-If you don’t have the tool:
-
-- `cargo install --locked cargo-insta`
+Keep snapshots only when a retained functional/integration scenario asserts them. Run that
+specific scenario and inspect any changed snapshot before accepting it. A rendering snapshot
+alone does not replace exercising the changed interaction through the real UI.
 
 ### Benchmarks
 

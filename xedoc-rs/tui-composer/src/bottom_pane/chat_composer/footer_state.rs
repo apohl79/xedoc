@@ -8,8 +8,6 @@ use crate::bottom_pane::footer::CollaborationModeIndicator;
 use crate::bottom_pane::footer::FooterMode;
 use crate::bottom_pane::footer::GoalStatusIndicator;
 use crate::key_hint::KeyBinding;
-#[cfg(test)]
-use std::time::Duration;
 
 pub(super) struct FooterState {
     pub(super) quit_shortcut_expires_at: Option<Instant>,
@@ -51,14 +49,6 @@ impl FooterState {
         self.flash
             .as_ref()
             .is_some_and(|flash| Instant::now() < flash.expires_at)
-    }
-
-    #[cfg(test)]
-    pub(super) fn show_flash(&mut self, line: Line<'static>, duration: Duration) {
-        let expires_at = Instant::now()
-            .checked_add(duration)
-            .unwrap_or_else(Instant::now);
-        self.flash = Some(FooterFlash { line, expires_at });
     }
 
     pub(super) fn status_line_text(&self) -> Option<String> {

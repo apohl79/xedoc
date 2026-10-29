@@ -283,34 +283,6 @@ impl ConfigManager {
         config.xedoc_linux_sandbox_exe = self.arg0_paths.xedoc_linux_sandbox_exe.clone();
         config.main_execve_wrapper_exe = self.arg0_paths.main_execve_wrapper_exe.clone();
     }
-
-    #[cfg(test)]
-    pub(crate) fn new_for_tests(
-        xedoc_home: PathBuf,
-        cli_overrides: Vec<(String, TomlValue)>,
-        loader_overrides: LoaderOverrides,
-        cloud_config_bundle: CloudConfigBundleLoader,
-    ) -> Self {
-        Self::new(
-            xedoc_home,
-            cli_overrides,
-            loader_overrides,
-            /*strict_config*/ false,
-            cloud_config_bundle,
-            Arg0DispatchPaths::default(),
-            Arc::new(xedoc_config::NoopThreadConfigLoader),
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn without_managed_config_for_tests(xedoc_home: PathBuf) -> Self {
-        Self::new_for_tests(
-            xedoc_home,
-            Vec::new(),
-            LoaderOverrides::without_managed_config_for_tests(),
-            CloudConfigBundleLoader::default(),
-        )
-    }
 }
 
 pub(crate) fn protected_feature_keys(config_layer_stack: &ConfigLayerStack) -> BTreeSet<String> {

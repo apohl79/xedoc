@@ -7,6 +7,8 @@ version.workspace = true
 [lib]
 name = "xedoc_core_agent_registry"
 path = "src/lib.rs"
+test = false
+doctest = false
 
 [lints]
 workspace = true
@@ -15,6 +17,3 @@ workspace = true
 xedoc-otel = { workspace = true }
 xedoc-protocol = { workspace = true }
 rand = { workspace = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }

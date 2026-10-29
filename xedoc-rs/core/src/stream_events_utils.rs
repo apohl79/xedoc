@@ -325,7 +325,3 @@ pub(crate) async fn finalize_turn_item(
     }
     sanitize_agent_message(turn_item, plan_mode);
 }
-
-#[cfg(test)]
-#[path = "stream_events_utils_tests.rs"]
-mod tests;

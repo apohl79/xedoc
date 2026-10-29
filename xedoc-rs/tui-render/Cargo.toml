@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_tui_render"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -32,9 +33,3 @@ url = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
-
-[dev-dependencies]
-insta = { workspace = true }
-itertools = { workspace = true }
-pretty_assertions = { workspace = true }
-tempfile = { workspace = true }

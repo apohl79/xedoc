@@ -195,12 +195,13 @@ def xedoc_rust_crate(
         deps_extra = [],
         integration_compile_data_extra = [],
         integration_test_args = [],
-        unit_test_args = [],
+        functional_tests = False,
+        functional_test_args = [],
         integration_test_timeout = None,
         test_data_extra = [],
         test_shard_counts = {},
         test_tags = [],
-        unit_test_timeout = None,
+        functional_test_timeout = None,
         extra_binaries = [],
         extra_binaries_non_windows = [],
         run_tests_with_wine_exec = False):
@@ -208,7 +209,7 @@ def xedoc_rust_crate(
 
     The macro mirrors Cargo conventions: it builds a library when `src/` exists,
     wires build scripts, exports `CARGO_BIN_EXE_*` for integration tests, and
-    creates unit + integration test targets. Dependency buckets map to the
+    creates integration test targets and optional manual functional targets. Dependency buckets map to the
     Cargo.lock resolution in `@crates`.
 
     Args:
@@ -234,7 +235,9 @@ def xedoc_rust_crate(
             Typically only needed when features add additional deps.
         integration_compile_data_extra: Extra compile_data for integration tests.
         integration_test_args: Optional args for integration test binaries.
-        unit_test_args: Optional args for the unit test binary.
+        functional_tests: Whether this crate retains source-local functional
+            scenarios. These targets are manual and must be selected explicitly.
+        functional_test_args: Optional args for the functional test binary.
         integration_test_timeout: Optional Bazel timeout for integration test
             targets generated from `tests/*.rs`.
         test_data_extra: Extra runtime data for tests.
@@ -245,10 +248,9 @@ def xedoc_rust_crate(
             and then assigns each libtest case to a stable bucket by hashing
             the test name. Matching tests are also marked flaky, which gives
             them Bazel's default three attempts.
-        test_tags: Tags applied to unit + integration test targets.
+        test_tags: Tags applied to functional + integration test targets.
             Typically used to disable the sandbox, but see https://bazel.build/reference/be/common-definitions#common.tags
-        unit_test_timeout: Optional Bazel timeout for the unit-test target
-            generated from `src/**/*.rs`.
+        functional_test_timeout: Optional timeout for the manual functional target.
         extra_binaries: Additional binary labels to surface as test data and
             `CARGO_BIN_EXE_*` environment variables. These are only needed for binaries from a different crate.
         extra_binaries_non_windows: Like `extra_binaries`, but omitted from
@@ -323,51 +325,34 @@ def xedoc_rust_crate(
             visibility = ["//visibility:public"],
         )
 
-        unit_test_name = name + "-unit-tests"
-        unit_test_binary = name + "-unit-tests-bin"
-        unit_test_shard_count = _test_shard_count(test_shard_counts, unit_test_name)
-
-        # Shard at the workspace_root_test layer. rules_rust's sharding wrapper
-        # expects to run from its own runfiles cwd, while workspace_root_test
-        # deliberately changes cwd so Insta sees Cargo-like snapshot paths.
-        rust_test(
-            name = unit_test_binary,
-            crate = name,
-            crate_features = crate_features,
-            deps = all_crate_deps(normal = True, normal_dev = True) + maybe_deps + deps_extra,
-            # Unit tests also compile to standalone Windows executables, so
-            # keep their stack reserve aligned with binaries and integration
-            # tests under gnullvm.
-            # Bazel has emitted both `xedoc-rs/<crate>/...` and
-            # `../xedoc-rs/<crate>/...` paths for `file!()`. Strip either
-            # prefix so the workspace-root launcher sees Cargo-like metadata
-            # such as `tui/src/...`.
-            rustc_flags = rustc_flags_extra + WINDOWS_RUSTC_LINK_FLAGS + [
-                "--remap-path-prefix=../xedoc-rs=",
-                "--remap-path-prefix=xedoc-rs=",
-            ],
-            rustc_env = rustc_env,
-            data = test_data_extra,
-            tags = test_tags + ["manual"],
-        )
-
-        unit_test_kwargs = {}
-        if unit_test_args:
-            unit_test_kwargs["args"] = unit_test_args
-        if unit_test_timeout:
-            unit_test_kwargs["timeout"] = unit_test_timeout
-        if unit_test_shard_count:
-            unit_test_kwargs["shard_count"] = unit_test_shard_count
-            unit_test_kwargs["flaky"] = True
-
-        workspace_root_test(
-            name = unit_test_name,
-            env = test_env,
-            test_bin = ":" + unit_test_binary,
-            workspace_root_marker = "//xedoc-rs/utils/cargo-bin:repo_root.marker",
-            tags = test_tags,
-            **unit_test_kwargs
-        )
+        if functional_tests:
+            functional_test_name = name + "-functional-tests"
+            functional_test_binary = functional_test_name + "-bin"
+            rust_test(
+                name = functional_test_binary,
+                crate = name,
+                crate_features = crate_features,
+                deps = all_crate_deps(normal = True, normal_dev = True) + maybe_deps + deps_extra,
+                rustc_flags = rustc_flags_extra + WINDOWS_RUSTC_LINK_FLAGS + [
+                    "--remap-path-prefix=../xedoc-rs=",
+                    "--remap-path-prefix=xedoc-rs=",
+                ],
+                rustc_env = rustc_env,
+                data = test_data_extra,
+                tags = test_tags + ["manual"],
+            )
+            functional_test_kwargs = {}
+            if functional_test_timeout:
+                functional_test_kwargs["timeout"] = functional_test_timeout
+            workspace_root_test(
+                name = functional_test_name,
+                args = functional_test_args,
+                env = test_env,
+                test_bin = ":" + functional_test_binary,
+                workspace_root_marker = "//xedoc-rs/utils/cargo-bin:repo_root.marker",
+                tags = test_tags + ["manual"],
+                **functional_test_kwargs
+            )
 
         maybe_deps += [name]
 

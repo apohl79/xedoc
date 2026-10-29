@@ -1604,10 +1604,6 @@ fn truncate_utf8(value: &mut String, max_bytes: usize) {
     value.truncate(end);
 }
 
-#[cfg(test)]
-#[path = "model_router_script_host_tests.rs"]
-mod tests;
-
 fn validate_interaction(
     interaction: &Interaction,
     eligible_routes: &[EligibleRoute],

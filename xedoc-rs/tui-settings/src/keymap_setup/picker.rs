@@ -121,18 +121,6 @@ const KEYMAP_CONTEXT_TABS: &[KeymapContextTab] = &[
     },
 ];
 
-#[cfg(test)]
-pub(crate) fn build_keymap_picker_params(
-    runtime_keymap: &RuntimeKeymap,
-    keymap_config: &TuiKeymap,
-) -> SelectionViewParams {
-    build_keymap_picker_params_with_filter(
-        runtime_keymap,
-        keymap_config,
-        KeymapActionFilter::default(),
-    )
-}
-
 pub fn build_keymap_picker_params_with_filter(
     runtime_keymap: &RuntimeKeymap,
     keymap_config: &TuiKeymap,
@@ -143,22 +131,6 @@ pub fn build_keymap_picker_params_with_filter(
         keymap_config,
         action_filter,
         /*selected_action*/ None,
-    )
-}
-
-#[cfg(test)]
-pub(crate) fn build_keymap_picker_params_for_selected_action(
-    runtime_keymap: &RuntimeKeymap,
-    keymap_config: &TuiKeymap,
-    context: &str,
-    action: &str,
-) -> SelectionViewParams {
-    build_keymap_picker_params_for_selected_action_with_filter(
-        runtime_keymap,
-        keymap_config,
-        KeymapActionFilter::default(),
-        context,
-        action,
     )
 }
 

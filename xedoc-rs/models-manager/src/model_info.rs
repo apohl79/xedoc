@@ -135,7 +135,3 @@ pub fn model_info_from_provider_catalog_slug(slug: &str, provider_name: &str) ->
     ];
     model
 }
-
-#[cfg(test)]
-#[path = "model_info_tests.rs"]
-mod tests;

@@ -351,7 +351,3 @@ fn finalize_skill_outcome(
     outcome.implicit_skills_by_doc_path = Arc::new(by_doc_path);
     outcome
 }
-
-#[cfg(test)]
-#[path = "service_tests.rs"]
-mod tests;

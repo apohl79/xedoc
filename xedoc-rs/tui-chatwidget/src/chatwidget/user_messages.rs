@@ -323,19 +323,6 @@ fn remap_placeholders_for_message_and_history_record(
     )
 }
 
-#[cfg(test)]
-pub(super) fn remap_placeholders_for_message(
-    message: UserMessage,
-    next_label: &mut usize,
-) -> UserMessage {
-    remap_placeholders_for_message_and_history_record(
-        message,
-        UserMessageHistoryRecord::UserMessageText,
-        next_label,
-    )
-    .0
-}
-
 fn remap_user_messages_with_history_records(
     messages: Vec<(UserMessage, UserMessageHistoryRecord)>,
 ) -> Vec<(UserMessage, UserMessageHistoryRecord)> {

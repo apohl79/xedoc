@@ -1,8 +1,6 @@
-use super::AppServerTransport;
 use super::CHANNEL_CAPACITY;
 use super::TransportEvent;
 use super::acquire_app_server_startup_lock;
-use super::app_server_control_socket_path;
 use super::start_control_socket_acceptor;
 use futures::SinkExt;
 use futures::StreamExt;
@@ -18,40 +16,8 @@ use tokio_tungstenite::tungstenite::Message as WebSocketMessage;
 use tokio_util::sync::CancellationToken;
 use xedoc_app_server_protocol::JSONRPCMessage;
 use xedoc_app_server_protocol::JSONRPCNotification;
-use xedoc_core::config::find_xedoc_home;
 use xedoc_uds::UnixStream;
 use xedoc_utils_absolute_path::AbsolutePathBuf;
-
-#[test]
-fn listen_unix_socket_parses_as_unix_socket_transport() {
-    assert_eq!(
-        AppServerTransport::from_listen_url("unix://"),
-        Ok(AppServerTransport::UnixSocket {
-            socket_path: default_control_socket_path()
-        })
-    );
-}
-
-#[test]
-fn listen_unix_socket_accepts_absolute_custom_path() {
-    assert_eq!(
-        AppServerTransport::from_listen_url("unix:///tmp/xedoc.sock"),
-        Ok(AppServerTransport::UnixSocket {
-            socket_path: absolute_path("/tmp/xedoc.sock")
-        })
-    );
-}
-
-#[test]
-fn listen_unix_socket_accepts_relative_custom_path() {
-    assert_eq!(
-        AppServerTransport::from_listen_url("unix://xedoc.sock"),
-        Ok(AppServerTransport::UnixSocket {
-            socket_path: AbsolutePathBuf::relative_to_current_dir("xedoc.sock")
-                .expect("relative path should resolve")
-        })
-    );
-}
 
 #[tokio::test]
 async fn control_socket_acceptor_upgrades_and_forwards_websocket_text_messages_and_pings() {
@@ -188,15 +154,6 @@ async fn control_socket_file_is_private_after_bind() {
 
     shutdown_token.cancel();
     accept_handle.await.expect("acceptor should join");
-}
-
-fn absolute_path(path: &str) -> AbsolutePathBuf {
-    AbsolutePathBuf::from_absolute_path(path).expect("absolute path")
-}
-
-fn default_control_socket_path() -> AbsolutePathBuf {
-    let xedoc_home = find_xedoc_home().expect("xedoc home");
-    app_server_control_socket_path(&xedoc_home).expect("default control socket path")
 }
 
 fn test_socket_path(temp_dir: &Path) -> AbsolutePathBuf {

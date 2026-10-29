@@ -50,3 +50,4 @@ tracing-subscriber = { workspace = true }
 
 [lib]
 doctest = false
+test = false

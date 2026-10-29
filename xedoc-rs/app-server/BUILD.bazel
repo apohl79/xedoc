@@ -24,7 +24,6 @@ xedoc_rust_crate(
         # long. Using a higher shard count for app-server-all-test should help
         # mitigate this risk.
         "app-server-all-test": 16,
-        "app-server-unit-tests": 8,
     },
     test_tags = ["no-sandbox"],
 )

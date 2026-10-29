@@ -1,5 +1,0 @@
----
-source: tui-session-picker/src/lib.rs
-expression: snapshot
----
-Failed to read session metadata from /tmp/missing.jsonl

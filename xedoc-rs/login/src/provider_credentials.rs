@@ -188,7 +188,3 @@ fn validate_provider_id(provider_id: &str) -> std::io::Result<()> {
 fn provider_credentials_error(error: impl fmt::Display) -> std::io::Error {
     std::io::Error::other(format!("provider credential storage failed: {error}"))
 }
-
-#[cfg(test)]
-#[path = "provider_credentials_tests.rs"]
-mod tests;

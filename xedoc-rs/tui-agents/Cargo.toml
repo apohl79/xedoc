@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_tui_agents"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -20,7 +21,3 @@ xedoc-tui-render = { workspace = true }
 xedoc-tui-transcript = { workspace = true }
 crossterm = { workspace = true }
 ratatui = { workspace = true }
-
-[dev-dependencies]
-insta = { workspace = true }
-pretty_assertions = { workspace = true }

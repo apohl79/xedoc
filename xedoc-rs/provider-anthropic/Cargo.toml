@@ -8,6 +8,7 @@ version.workspace = true
 doctest = false
 name = "xedoc_provider_anthropic"
 path = "src/lib.rs"
+test = false
 
 [lints]
 workspace = true
@@ -31,9 +32,3 @@ xedoc-api = { workspace = true }
 xedoc-client = { workspace = true }
 xedoc-protocol = { workspace = true }
 xedoc-utils-path = { workspace = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
-tempfile = { workspace = true }
-wiremock = { workspace = true }
-xedoc-http-client = { workspace = true }

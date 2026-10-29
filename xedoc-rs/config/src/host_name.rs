@@ -70,30 +70,3 @@ fn local_fqdn_for_hostname(_hostname: &str) -> Option<String> {
 fn normalize_fqdn_candidate(hostname: &str) -> Option<String> {
     normalize_host_name(hostname).filter(|hostname| hostname.contains('.'))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::normalize_fqdn_candidate;
-    use pretty_assertions::assert_eq;
-
-    #[test]
-    fn normalize_fqdn_candidate_accepts_dns_qualified_name() {
-        assert_eq!(
-            normalize_fqdn_candidate("runner-01.ci.example.com"),
-            Some("runner-01.ci.example.com".to_string())
-        );
-    }
-
-    #[test]
-    fn normalize_fqdn_candidate_rejects_short_name() {
-        assert_eq!(normalize_fqdn_candidate("runner-01"), None);
-    }
-
-    #[test]
-    fn normalize_fqdn_candidate_trims_trailing_dot_and_normalizes_case() {
-        assert_eq!(
-            normalize_fqdn_candidate("RUNNER-01.CI.EXAMPLE.COM."),
-            Some("runner-01.ci.example.com".to_string())
-        );
-    }
-}

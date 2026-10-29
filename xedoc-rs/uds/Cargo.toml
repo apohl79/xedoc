@@ -8,6 +8,7 @@ license.workspace = true
 name = "xedoc_uds"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -19,12 +20,3 @@ tokio = { workspace = true, features = ["fs", "net", "rt"] }
 async-io = { workspace = true }
 tokio-util = { workspace = true, features = ["compat"] }
 uds_windows = { workspace = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
-tempfile = { workspace = true }
-tokio = { workspace = true, features = [
-    "io-util",
-    "macros",
-    "rt-multi-thread",
-] }

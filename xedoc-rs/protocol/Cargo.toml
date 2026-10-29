@@ -8,6 +8,7 @@ version.workspace = true
 name = "xedoc_protocol"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -51,12 +52,6 @@ wildmatch = { workspace = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = { workspace = true }
 seccompiler = { workspace = true }
-
-[dev-dependencies]
-anyhow = { workspace = true }
-http = { workspace = true }
-pretty_assertions = { workspace = true }
-tempfile = { workspace = true }
 
 [package.metadata.cargo-shear]
 # Required because:

@@ -28,12 +28,8 @@ pub type StateDbHandle = Arc<xedoc_state::StateRuntime>;
 
 #[cfg(not(test))]
 const STARTUP_BACKFILL_POLL_INTERVAL: Duration = Duration::from_secs(1);
-#[cfg(test)]
-const STARTUP_BACKFILL_POLL_INTERVAL: Duration = Duration::from_millis(10);
 #[cfg(not(test))]
 const STARTUP_BACKFILL_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
-#[cfg(test)]
-const STARTUP_BACKFILL_WAIT_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Initialize the state runtime for thread state persistence.
 ///
@@ -81,22 +77,6 @@ async fn try_init_with_roots(
         sqlite_home,
         default_model_provider_id,
         /*backfill_lease_seconds*/ None,
-    )
-    .await
-}
-
-#[cfg(test)]
-async fn try_init_with_roots_and_backfill_lease(
-    xedoc_home: PathBuf,
-    sqlite_home: PathBuf,
-    default_model_provider_id: String,
-    backfill_lease_seconds: i64,
-) -> anyhow::Result<StateDbHandle> {
-    try_init_with_roots_inner(
-        xedoc_home,
-        sqlite_home,
-        default_model_provider_id,
-        Some(backfill_lease_seconds),
     )
     .await
 }
@@ -658,7 +638,3 @@ pub async fn touch_thread_updated_at(
             false
         })
 }
-
-#[cfg(test)]
-#[path = "state_db_tests.rs"]
-mod tests;

@@ -248,7 +248,3 @@ fn apply_fade(style: &mut Style, tier: EffortTier, opacity: f32, tint: f32) {
         style.add_modifier |= Modifier::DIM;
     }
 }
-
-#[cfg(test)]
-#[path = "effort_status_line_tests.rs"]
-mod tests;

@@ -49,7 +49,3 @@ impl WorldStateSection for EnvironmentsInstructionsState {
         Some(Box::new(EnvironmentsInstructions))
     }
 }
-
-#[cfg(test)]
-#[path = "environments_instructions_tests.rs"]
-mod tests;

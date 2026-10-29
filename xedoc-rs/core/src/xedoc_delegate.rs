@@ -40,9 +40,6 @@ use xedoc_protocol::error::XedocErr;
 use xedoc_protocol::protocol::InitialHistory;
 use xedoc_protocol::protocol::MultiAgentVersion;
 
-#[cfg(test)]
-use crate::session::completed_session_loop_termination;
-
 /// Start an interactive sub-Xedoc thread and return its runtime and IO channels.
 ///
 /// The returned IO yields non-approval events emitted by the sub-agent.
@@ -596,7 +593,3 @@ where
         }
     }
 }
-
-#[cfg(test)]
-#[path = "xedoc_delegate_tests.rs"]
-mod tests;

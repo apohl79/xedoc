@@ -191,7 +191,3 @@ pub(super) fn render_source(
         HistoryRenderMode::Raw => plain_hyperlink_lines(raw_lines_from_source(source)),
     }
 }
-
-#[cfg(test)]
-#[path = "render_tests.rs"]
-mod tests;

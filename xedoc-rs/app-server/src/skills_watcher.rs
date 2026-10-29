@@ -23,8 +23,6 @@ use xedoc_utils_absolute_path::AbsolutePathBuf;
 
 #[cfg(not(test))]
 const WATCHER_THROTTLE_INTERVAL: Duration = Duration::from_secs(10);
-#[cfg(test)]
-const WATCHER_THROTTLE_INTERVAL: Duration = Duration::from_millis(50);
 
 pub(crate) struct SkillsWatcher {
     subscriber: FileWatcherSubscriber,

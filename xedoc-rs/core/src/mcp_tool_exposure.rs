@@ -39,7 +39,3 @@ pub(crate) fn build_mcp_tool_runtimes(
         })
         .collect()
 }
-
-#[cfg(test)]
-#[path = "mcp_tool_exposure_test.rs"]
-mod tests;

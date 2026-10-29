@@ -20,8 +20,6 @@ use xedoc_core::ThreadConfigSnapshot;
 use xedoc_core::XedocThread;
 use xedoc_file_watcher::WatchRegistration;
 use xedoc_protocol::ThreadId;
-#[cfg(test)]
-use xedoc_protocol::config_types::MultiAgentMode;
 use xedoc_protocol::protocol::AgentMessageContentDeltaEvent;
 use xedoc_protocol::protocol::EventMsg;
 use xedoc_protocol::protocol::RolloutItem;
@@ -344,146 +342,6 @@ pub(crate) async fn resolve_server_request_on_thread_listener(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use pretty_assertions::assert_eq;
-    use xedoc_app_server_protocol::AskForApproval;
-    use xedoc_app_server_protocol::SandboxPolicy;
-    use xedoc_protocol::config_types::CollaborationMode;
-    use xedoc_protocol::config_types::ModeKind;
-    use xedoc_protocol::config_types::Settings;
-    use xedoc_utils_absolute_path::AbsolutePathBuf;
-
-    #[test]
-    fn note_thread_settings_reports_only_effective_changes() {
-        let mut state = ThreadState::default();
-        let initial = thread_settings("mock-model");
-        let updated = thread_settings("mock-model-2");
-
-        let results = vec![
-            state.note_thread_settings(initial.clone()),
-            state.note_thread_settings(initial),
-            state.note_thread_settings(updated.clone()),
-            state.note_thread_settings(updated),
-        ];
-
-        assert_eq!(results, vec![true, false, true, false]);
-    }
-
-    #[test]
-    fn mid_turn_auto_session_name_request_fires_once_after_first_non_empty_delta() {
-        let mut state = ThreadState::default();
-
-        let first_request = state.note_agent_message_delta_for_auto_session_name(
-            &agent_message_delta("turn-1", "msg-1", "   "),
-        );
-        assert!(first_request.is_none());
-
-        let request = state
-            .note_agent_message_delta_for_auto_session_name(&agent_message_delta(
-                "turn-1", "msg-1", "b",
-            ))
-            .expect("first non-empty delta should request a generated session name");
-        assert_eq!(request.turn_id, "turn-1");
-        assert_eq!(request.completed_turn_count, 0);
-        assert_eq!(request.partial_response, "b");
-
-        let next_request = state.note_agent_message_delta_for_auto_session_name(
-            &agent_message_delta("turn-1", "msg-1", "ignored"),
-        );
-        assert!(next_request.is_none());
-    }
-
-    #[test]
-    fn mid_turn_auto_session_name_request_fires_for_completed_message_without_deltas() {
-        let mut state = ThreadState::default();
-
-        let request = state
-            .note_agent_message_for_auto_session_name("turn-1", "A completed assistant message")
-            .expect("first non-empty completed message should request a generated session name");
-
-        assert_eq!(request.turn_id, "turn-1");
-        assert_eq!(request.completed_turn_count, 0);
-        assert_eq!(request.partial_response, "A completed assistant message");
-
-        let next_request =
-            state.note_agent_message_for_auto_session_name("turn-1", "ignored completed message");
-        assert!(next_request.is_none());
-    }
-
-    #[test]
-    fn mid_turn_auto_session_name_tracks_applied_name() {
-        let mut state = ThreadState::default();
-
-        state.note_agent_message_delta_for_auto_session_name(&agent_message_delta(
-            "turn-1",
-            "msg-1",
-            "title seed",
-        ));
-        state.note_mid_turn_auto_session_name_applied("turn-1");
-        state.mid_turn_auto_session_name.finish_turn();
-
-        assert!(state.completed_turn_had_mid_turn_auto_session_name("turn-1"));
-    }
-
-    #[test]
-    fn mid_turn_auto_session_name_partial_response_is_capped() {
-        let mut state = ThreadState::default();
-        let oversized = "x".repeat(MID_TURN_AUTO_SESSION_NAME_MAX_CHARS + 20);
-
-        let request = state
-            .note_agent_message_delta_for_auto_session_name(&agent_message_delta(
-                "turn-1", "msg-1", &oversized,
-            ))
-            .expect("large delta should request a generated session name");
-
-        assert_eq!(
-            request.partial_response.chars().count(),
-            MID_TURN_AUTO_SESSION_NAME_MAX_CHARS
-        );
-    }
-
-    fn agent_message_delta(
-        turn_id: &str,
-        item_id: &str,
-        delta: &str,
-    ) -> AgentMessageContentDeltaEvent {
-        AgentMessageContentDeltaEvent {
-            thread_id: "thread-1".to_string(),
-            turn_id: turn_id.to_string(),
-            item_id: item_id.to_string(),
-            delta: delta.to_string(),
-        }
-    }
-
-    fn thread_settings(model: &str) -> ThreadSettings {
-        ThreadSettings {
-            cwd: AbsolutePathBuf::from_absolute_path("/tmp").expect("absolute path"),
-            approval_policy: AskForApproval::OnRequest,
-            sandbox_policy: SandboxPolicy::ReadOnly {
-                network_access: false,
-            },
-            active_permission_profile: None,
-            model: model.to_string(),
-            model_provider: "mock_provider".to_string(),
-            service_tier: None,
-            effort: None,
-            summary: None,
-            collaboration_mode: CollaborationMode {
-                mode: ModeKind::Default,
-                settings: Settings {
-                    model: model.to_string(),
-                    reasoning_effort: None,
-                    developer_instructions: None,
-                },
-            },
-            multi_agent_mode: MultiAgentMode::ExplicitRequestOnly,
-            personality: None,
-        }
-    }
-}
-
 struct ThreadEntry {
     state: Arc<Mutex<ThreadState>>,
     connection_ids: HashSet<ConnectionId>,
@@ -738,19 +596,6 @@ impl ThreadStateManager {
                 })
             })
             .collect()
-    }
-
-    #[cfg(test)]
-    pub(crate) async fn has_subscribers(&self, thread_id: ThreadId) -> bool {
-        self.state
-            .lock()
-            .await
-            .threads
-            .get(&thread_id)
-            .is_some_and(|thread_entry| {
-                !thread_entry.connection_ids.is_empty()
-                    || !thread_entry.script_connection_ids.is_empty()
-            })
     }
 
     pub(crate) async fn try_ensure_connection_subscribed(

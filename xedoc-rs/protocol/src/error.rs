@@ -575,19 +575,7 @@ fn day_suffix(day: u32) -> &'static str {
     }
 }
 
-#[cfg(test)]
-thread_local! {
-    static NOW_OVERRIDE: std::cell::RefCell<Option<DateTime<Utc>>> =
-        const { std::cell::RefCell::new(None) };
-}
-
 fn now_for_retry() -> DateTime<Utc> {
-    #[cfg(test)]
-    {
-        if let Some(now) = NOW_OVERRIDE.with(|cell| *cell.borrow()) {
-            return now;
-        }
-    }
     Utc::now()
 }
 
@@ -645,7 +633,3 @@ pub fn get_error_message_ui(e: &XedocErr) -> String {
         TruncationPolicy::Bytes(ERROR_MESSAGE_UI_MAX_BYTES),
     )
 }
-
-#[cfg(test)]
-#[path = "error_tests.rs"]
-mod tests;

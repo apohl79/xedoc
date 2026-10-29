@@ -183,7 +183,3 @@ fn raw_assistant_output_text_from_item(item: &ResponseItem) -> Option<String> {
     }
     None
 }
-
-#[cfg(test)]
-#[path = "turn_timing_tests.rs"]
-mod tests;

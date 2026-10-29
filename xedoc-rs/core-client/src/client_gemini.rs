@@ -90,7 +90,3 @@ impl ModelClientSession {
         Ok(stream)
     }
 }
-
-#[cfg(test)]
-#[path = "client_gemini_tests.rs"]
-mod tests;

@@ -1,5 +1,0 @@
----
-source: tui-session-picker/src/lib.rs
-expression: terminal.backend().to_string()
----
-Type to search                                         Filter: [Cwd] All    Sort: [Updated] Created

@@ -1,12 +1,11 @@
 set working-directory := "xedoc-rs"
-set positional-arguments := true
+set positional-arguments
 
 export JUST_SHELL := justfile_directory() / "scripts/just-shell.py"
 
 set shell := ["python3", "-c", 'import os, runpy; runpy.run_path(os.environ["JUST_SHELL"], run_name="__main__")']
 set windows-shell := ["python", "-c", 'import os, runpy; runpy.run_path(os.environ["JUST_SHELL"], run_name="__main__")']
 
-rust_min_stack := "8388608"
 python := if os_family() == "windows" { "python" } else { "python3" }
 
 # Display help
@@ -49,10 +48,10 @@ fmt-check:
     @{{ python }} ../scripts/format.py --check
 
 fix *args:
-    cargo clippy --fix --tests --allow-dirty {args}
+    cargo clippy --fix --allow-dirty {args}
 
 clippy *args:
-    cargo clippy --tests {args}
+    cargo clippy {args}
 
 [unix]
 install:
@@ -72,26 +71,16 @@ install:
     cargo fetch
     exit $LASTEXITCODE
 
-# Run nextest with --no-fail-fast so all tests are run.
-#
-# Run `cargo install --locked cargo-nextest` if you don't have it installed.
-# Prefer this for routine local runs. Workspace crate features are banned, so
-
-# there should be no need to add `--all-features`.
-[unix]
-test *args:
-    RUST_MIN_STACK={{ rust_min_stack }} NEXTEST_PROFILE=local cargo nextest run --no-fail-fast "$@"
-
-[windows]
-test *args:
-    $env:RUST_MIN_STACK = "{{ rust_min_stack }}"; $env:NEXTEST_PROFILE = "local"; cargo nextest run --no-fail-fast @($args | Select-Object -Skip 1)
+# Run one explicitly selected behavioral target, optionally filtered to a scenario.
+test target *args:
+    bazel test --test_output=errors "{{ target }}" {args}
 
 # Run from the repository root so scripts that resolve paths from `cwd` see
 
 # the same layout they use in GitHub Actions.
 [no-cd]
 test-github-scripts:
-    {{ python }} -m unittest discover -s {{ justfile_directory() }}/.github/scripts -p 'test_*.py'
+    {{ python }} {{ justfile_directory() }}/.github/scripts/test_run_bazel_with_buildbuddy.py
 
 # Run explicit workspace benchmark targets.
 bench *args:
@@ -141,8 +130,8 @@ bazel-lock-check:
 bazel-lock-check:
     bazel mod deps --lockfile_mode=error; if ($LASTEXITCODE -ne 0) { Write-Error "MODULE.bazel.lock is out of date. Run 'just bazel-lock-update' and commit the updated lockfile."; exit 1 }
 
-bazel-test:
-    bazel test --test_tag_filters=-argument-comment-lint //... --keep_going
+bazel-test target *args:
+    bazel test --test_output=errors "{{ target }}" {args}
 
 # Run one exact core integration test without Bazel's retry loop.
 [no-cd]

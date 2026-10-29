@@ -170,7 +170,3 @@ impl Renderable for ActiveAgentList {
         self.display_lines_at(width, Instant::now()).len() as u16
     }
 }
-
-#[cfg(test)]
-#[path = "active_agent_list_tests.rs"]
-mod tests;

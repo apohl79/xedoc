@@ -75,7 +75,3 @@ impl WorldStateSection for AgentsMdState {
         Some(Box::new(instructions))
     }
 }
-
-#[cfg(test)]
-#[path = "agents_md_tests.rs"]
-mod tests;

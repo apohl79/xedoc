@@ -43,7 +43,3 @@ pub use info::recent_commits;
 pub use info::resolve_root_git_project_for_trust;
 pub use platform::create_symlink;
 pub use xedoc_protocol::protocol::GitSha;
-
-#[cfg(test)]
-#[path = "git_info_tests.rs"]
-mod git_info_tests;

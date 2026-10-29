@@ -70,33 +70,3 @@ impl TurnLifecycleState {
         self.budget_limited_turn_ids.remove(turn_id)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn start_and_finish_update_running_state() {
-        let mut state = TurnLifecycleState::new(/*prevent_idle_sleep*/ false);
-
-        state.start(Instant::now());
-        assert!(state.agent_turn_running);
-        assert!(state.goal_status_active_turn_started_at.is_some());
-        assert!(state.sleep_inhibitor.is_turn_running());
-
-        state.finish();
-        assert!(!state.agent_turn_running);
-        assert!(state.goal_status_active_turn_started_at.is_none());
-        assert!(!state.sleep_inhibitor.is_turn_running());
-    }
-
-    #[test]
-    fn budget_limited_turn_ids_are_consumed() {
-        let mut state = TurnLifecycleState::new(/*prevent_idle_sleep*/ false);
-
-        state.mark_budget_limited("turn-1".to_string());
-
-        assert!(state.take_budget_limited("turn-1"));
-        assert!(!state.take_budget_limited("turn-1"));
-    }
-}

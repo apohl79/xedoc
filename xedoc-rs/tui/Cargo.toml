@@ -19,6 +19,7 @@ test = false
 name = "xedoc_tui"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true

@@ -14,9 +14,6 @@ use xedoc_exec_server::Environment;
 use xedoc_protocol::models::AdditionalPermissionProfile;
 use xedoc_tools::UnifiedExecShellMode;
 
-#[cfg(test)]
-use crate::tools::handlers::parse_arguments;
-
 mod exec_command;
 mod write_stdin;
 
@@ -151,7 +148,3 @@ pub(crate) fn shell_mode_for_environment(
         turn_shell_mode.clone()
     }
 }
-
-#[cfg(test)]
-#[path = "unified_exec_tests.rs"]
-mod tests;

@@ -11,6 +11,8 @@ xedoc_rust_crate(
     extra_binaries = [
         "//xedoc-rs/bwrap:bwrap",
     ],
+    functional_test_args = ["--test-threads=1"],
+    functional_tests = True,
     integration_compile_data_extra = [
         "src/proto/xedoc.exec_server.relay.v1.rs",
     ],
@@ -19,5 +21,4 @@ xedoc_rust_crate(
     # cases already rely on serialization around the full CLI path.
     integration_test_args = ["--test-threads=1"],
     test_tags = ["no-sandbox"],
-    unit_test_args = ["--test-threads=1"],
 )

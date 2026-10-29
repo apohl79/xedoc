@@ -306,20 +306,6 @@ impl ToolRegistry {
         Self::new(tools_by_name)
     }
 
-    #[cfg(test)]
-    pub(crate) fn empty_for_test() -> Self {
-        Self::new(HashMap::new())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn with_handler_for_test<T>(handler: Arc<T>) -> Self
-    where
-        T: CoreToolRuntime + 'static,
-    {
-        let name = handler.tool_name();
-        Self::new(HashMap::from([(name, handler as Arc<dyn CoreToolRuntime>)]))
-    }
-
     fn tool(&self, name: &ToolName) -> Option<Arc<dyn CoreToolRuntime>> {
         self.tools.get(name).map(Arc::clone)
     }
@@ -785,7 +771,3 @@ fn shell_script_for_invocation(invocation: &ToolInvocation) -> Option<String> {
         (Some(_), _) | (None, _) => None,
     }
 }
-
-#[cfg(test)]
-#[path = "registry_tests.rs"]
-mod tests;

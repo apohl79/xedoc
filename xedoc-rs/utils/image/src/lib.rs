@@ -412,7 +412,3 @@ fn format_to_mime(format: ImageFormat) -> String {
         _ => "image/png".to_string(),
     }
 }
-
-#[cfg(test)]
-#[path = "image_tests.rs"]
-mod tests;

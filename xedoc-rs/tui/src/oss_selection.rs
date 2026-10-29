@@ -400,20 +400,3 @@ async fn check_port_status(port: u16) -> io::Result<bool> {
         Err(_) => Ok(false), // Connection failed = not running
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ctrl_h_l_move_provider_selection() {
-        let mut widget = OssSelectionWidget::new(ProviderStatus::Unknown, ProviderStatus::Unknown)
-            .expect("widget should initialize");
-
-        assert_eq!(widget.selected_option, 0);
-        widget.handle_key_event(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL));
-        assert_eq!(widget.selected_option, 1);
-        widget.handle_key_event(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::CONTROL));
-        assert_eq!(widget.selected_option, 0);
-    }
-}

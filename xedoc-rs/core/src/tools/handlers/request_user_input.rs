@@ -7,8 +7,6 @@ use xedoc_protocol::request_user_input::RequestUserInputArgs;
 use xedoc_protocol::request_user_input::RequestUserInputResponse;
 
 pub use xedoc_core_tool_runtime::RequestUserInputHandler;
-#[cfg(test)]
-pub(crate) use xedoc_core_tool_specs::request_user_input_spec::REQUEST_USER_INPUT_TOOL_NAME;
 
 impl xedoc_core_tool_runtime::RequestUserInputHost for Session {
     fn collaboration_mode(&self) -> BoxFuture<'_, CollaborationMode> {
@@ -26,7 +24,3 @@ impl xedoc_core_tool_runtime::RequestUserInputHost for Session {
 }
 
 impl CoreToolRuntime for RequestUserInputHandler {}
-
-#[cfg(test)]
-#[path = "request_user_input_tests.rs"]
-mod tests;

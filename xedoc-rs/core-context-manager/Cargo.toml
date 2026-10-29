@@ -7,6 +7,8 @@ version.workspace = true
 [lib]
 name = "xedoc_core_context_manager"
 path = "src/lib.rs"
+test = false
+doctest = false
 
 [lints]
 workspace = true
@@ -25,8 +27,3 @@ symphonia = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true, features = ["v5"] }
-
-[dev-dependencies]
-xedoc-utils-absolute-path = { workspace = true }
-pretty_assertions = { workspace = true }
-regex-lite = { workspace = true }

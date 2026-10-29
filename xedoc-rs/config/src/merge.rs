@@ -48,7 +48,3 @@ fn normalize_network_domain_keys(table: &mut toml::map::Map<String, TomlValue>) 
         table.insert(normalize_host(&pattern), value);
     }
 }
-
-#[cfg(test)]
-#[path = "merge_tests.rs"]
-mod tests;

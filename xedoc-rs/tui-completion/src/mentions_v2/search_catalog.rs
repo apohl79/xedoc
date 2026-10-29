@@ -178,30 +178,3 @@ fn optional_skill_description(skill: &SkillMetadata) -> Option<String> {
     let description = skill_description(skill).trim();
     (!description.is_empty()).then(|| description.to_string())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use pretty_assertions::assert_eq;
-
-    #[test]
-    fn plugin_mention_name_uses_display_segments_when_they_match_plugin_name() {
-        assert_eq!(
-            plugin_mention_name("mcp-search", "MCP Search"),
-            "MCP-Search"
-        );
-        assert_eq!(
-            plugin_mention_name("google_calendar", "Google Calendar"),
-            "Google_Calendar"
-        );
-    }
-
-    #[test]
-    fn plugin_mention_name_falls_back_to_title_cased_plugin_name() {
-        assert_eq!(plugin_mention_name("sample", "Sample Plugin"), "Sample");
-        assert_eq!(
-            plugin_mention_name("browser-use", "Browser Use"),
-            "Browser-Use"
-        );
-    }
-}

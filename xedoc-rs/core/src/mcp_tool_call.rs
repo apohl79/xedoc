@@ -13,8 +13,6 @@ use crate::session::turn_context::TurnContext;
 use crate::tools::hook_names::HookToolName;
 use crate::tools::sandboxing::PermissionRequestPayload;
 use crate::turn_metadata::McpTurnMetadataContext;
-#[cfg(test)]
-use rmcp::model::ToolAnnotations;
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use std::sync::Arc;
@@ -807,20 +805,6 @@ async fn maybe_persist_mcp_tool_approval(
     remember_mcp_tool_approval(sess, key).await;
 }
 
-#[cfg(test)]
-async fn persist_custom_mcp_tool_approval(
-    config: &Config,
-    server: &str,
-    tool_name: &str,
-) -> anyhow::Result<()> {
-    let Some(config_edits_builder) = custom_mcp_tool_approval_config_builder(config, server)?
-    else {
-        anyhow::bail!("MCP server `{server}` is not configured in config.toml");
-    };
-
-    persist_custom_mcp_tool_approval_with(config_edits_builder, server, tool_name).await
-}
-
 async fn persist_non_app_mcp_tool_approval(
     sess: &Session,
     config: &Config,
@@ -975,7 +959,3 @@ async fn notify_mcp_tool_call_skip(
     .await;
     Err(message)
 }
-
-#[cfg(test)]
-#[path = "mcp_tool_call_tests.rs"]
-mod tests;

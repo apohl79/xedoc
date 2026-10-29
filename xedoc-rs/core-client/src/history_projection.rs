@@ -134,7 +134,3 @@ fn is_fernet_token(value: &str) -> bool {
             character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '=')
         })
 }
-
-#[cfg(test)]
-#[path = "history_projection_tests.rs"]
-mod tests;

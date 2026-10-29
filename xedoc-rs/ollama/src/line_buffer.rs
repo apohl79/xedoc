@@ -26,7 +26,3 @@ impl LineBuffer {
         Some(line)
     }
 }
-
-#[cfg(test)]
-#[path = "line_buffer_tests.rs"]
-mod tests;

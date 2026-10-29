@@ -8,6 +8,7 @@ version.workspace = true
 name = "xedoc_core_tool_output"
 path = "src/lib.rs"
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -22,7 +23,3 @@ xedoc-utils-output-truncation = { workspace = true }
 xedoc-utils-string = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }
-regex-lite = { workspace = true }

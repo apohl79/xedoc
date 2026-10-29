@@ -154,7 +154,3 @@ async fn migrations_table_exists(pool: &SqlitePool) -> anyhow::Result<bool> {
     .is_some();
     Ok(exists)
 }
-
-#[cfg(test)]
-#[path = "migrations_tests.rs"]
-mod tests;

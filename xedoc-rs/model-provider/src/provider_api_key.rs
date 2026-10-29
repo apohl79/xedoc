@@ -40,15 +40,6 @@ impl ProviderApiKeySource {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn fixed(api_key: Option<String>) -> Self {
-        Self {
-            provider_id: None,
-            credential_store: None,
-            fixed_api_key: Some(api_key),
-        }
-    }
-
     pub(crate) fn resolve(&self, provider: &ModelProviderInfo) -> Result<Option<String>> {
         if let Some(api_key) = &self.fixed_api_key {
             return Ok(api_key.clone());

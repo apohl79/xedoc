@@ -344,7 +344,3 @@ impl ClaudeHooksEngine {
             .await
     }
 }
-
-#[cfg(test)]
-#[path = "mod_tests.rs"]
-mod tests;

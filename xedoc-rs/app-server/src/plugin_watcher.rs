@@ -17,8 +17,6 @@ use xedoc_file_watcher::WatchRegistration;
 
 #[cfg(not(test))]
 const WATCHER_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(250);
-#[cfg(test)]
-const WATCHER_DEBOUNCE_INTERVAL: Duration = Duration::from_millis(50);
 
 use crate::effective_plugin_change::EffectivePluginsChangedCallback;
 
@@ -85,19 +83,6 @@ impl PluginWatcher {
         })
     }
 
-    #[cfg(test)]
-    pub(crate) fn new_with_legacy_plugin_home_for_tests(
-        xedoc_home: &Path,
-        legacy_plugin_home: &Path,
-        on_effective_plugins_changed: EffectivePluginsChangedCallback,
-    ) -> Arc<Self> {
-        Self::new_with_legacy_plugin_home(
-            xedoc_home,
-            Some(legacy_plugin_home),
-            on_effective_plugins_changed,
-        )
-    }
-
     pub(crate) fn shutdown(&self) {
         self.shutdown_token.cancel();
     }
@@ -133,7 +118,3 @@ fn plugin_cache_paths(xedoc_home: &Path, legacy_plugin_home: Option<&Path>) -> V
         .map(|home| home.join(PLUGINS_CACHE_DIR))
         .collect()
 }
-
-#[cfg(test)]
-#[path = "plugin_watcher_tests.rs"]
-mod tests;

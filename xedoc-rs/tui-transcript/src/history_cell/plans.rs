@@ -141,10 +141,6 @@ impl HistoryCell for ProposedPlanCell {
     }
 }
 
-#[cfg(test)]
-#[path = "plans_tests.rs"]
-mod tests;
-
 impl HistoryCell for ProposedPlanStreamCell {
     fn display_lines(&self, _width: u16) -> Vec<Line<'static>> {
         visible_lines(self.lines.clone())

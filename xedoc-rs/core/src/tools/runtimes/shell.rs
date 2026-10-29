@@ -303,7 +303,3 @@ impl ToolRuntime<ShellRequest, ExecToolCallOutput> for ShellRuntime {
         Ok(out)
     }
 }
-
-#[cfg(test)]
-#[path = "shell_tests.rs"]
-mod tests;

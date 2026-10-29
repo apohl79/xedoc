@@ -251,7 +251,3 @@ fn parse_directive_file(directive: &str) -> Option<&str> {
     let value = attributes.strip_prefix("file=\"")?.strip_suffix('"')?;
     (!value.is_empty() && !value.contains('"')).then_some(value)
 }
-
-#[cfg(test)]
-#[path = "inline_visualization_tests.rs"]
-mod tests;

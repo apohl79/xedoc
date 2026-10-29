@@ -328,7 +328,3 @@ fn read_configured_git_marketplace(
     };
     parse_configured_git_marketplace(marketplace_name, marketplace)
 }
-
-#[cfg(test)]
-#[path = "marketplace_upgrade_tests.rs"]
-mod tests;

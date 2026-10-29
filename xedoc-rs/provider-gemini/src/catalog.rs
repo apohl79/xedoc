@@ -200,7 +200,3 @@ impl GeminiModelResource {
         })
     }
 }
-
-#[cfg(test)]
-#[path = "catalog_tests.rs"]
-mod tests;

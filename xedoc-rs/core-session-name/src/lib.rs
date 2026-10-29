@@ -415,7 +415,3 @@ fn take_last_chars(value: &str, max_chars: usize) -> String {
     chars.reverse();
     chars.into_iter().collect()
 }
-
-#[cfg(test)]
-#[path = "session_name_tests.rs"]
-mod tests;

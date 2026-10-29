@@ -83,7 +83,3 @@ pub fn project_rollout_line(line: &RolloutLine) -> ThreadHistoryChangeSet {
         | RolloutItem::EventMsg(_) => ThreadHistoryChangeSet::default(),
     }
 }
-
-#[cfg(test)]
-#[path = "thread_history_projection_tests.rs"]
-mod tests;

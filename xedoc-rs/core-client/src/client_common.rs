@@ -165,7 +165,3 @@ impl Drop for ResponseStream {
         self.consumer_dropped.cancel();
     }
 }
-
-#[cfg(test)]
-#[path = "client_common_tests.rs"]
-mod tests;

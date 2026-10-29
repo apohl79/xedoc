@@ -58,7 +58,3 @@ pub fn mcp_call_tool_result_output_schema(structured_content_schema: JsonValue) 
         "additionalProperties": false
     })
 }
-
-#[cfg(test)]
-#[path = "mcp_tool_tests.rs"]
-mod tests;

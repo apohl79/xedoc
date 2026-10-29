@@ -22,11 +22,6 @@ pub use xedoc_rollout::read_head_for_summary;
 pub use xedoc_rollout::read_session_meta_line;
 pub use xedoc_rollout::rollout_date_parts;
 
-#[cfg(test)]
-pub(crate) mod recorder {
-    pub use xedoc_rollout::RolloutRecorder;
-}
-
 pub(crate) use crate::session_rollout_init_error::map_session_init_error;
 
 pub(crate) mod truncation {

@@ -138,8 +138,6 @@ use xedoc_config::ConstraintResult;
 use xedoc_config::types::Notifications;
 use xedoc_features::FEATURES;
 use xedoc_features::Feature;
-#[cfg(test)]
-use xedoc_git_utils::CommitLogEntry;
 use xedoc_git_utils::current_branch_name;
 use xedoc_git_utils::get_git_repo_root;
 use xedoc_git_utils::local_git_branches;
@@ -313,8 +311,6 @@ use self::exec_state::is_standard_tool_call;
 use self::exec_state::is_unified_exec_source;
 mod goal_status;
 use self::goal_status::GoalStatusState;
-#[cfg(test)]
-use self::goal_status::goal_status_indicator_from_app_goal;
 mod goal_menu;
 mod ide_context;
 use self::ide_context::IdeContextState;
@@ -368,8 +364,6 @@ mod replay;
 mod review;
 mod review_popups;
 use self::review::ReviewState;
-#[cfg(test)]
-pub use self::review_popups::show_review_commit_picker_with_entries;
 mod safety_buffering;
 mod service_tiers;
 mod session_extensions;
@@ -413,16 +407,12 @@ pub use self::user_messages::ThreadInputState;
 pub use self::user_messages::ThreadInputStateRestoreMode;
 pub use self::user_messages::UserMessage;
 use self::user_messages::UserMessageDisplay;
-#[cfg(test)]
-use self::user_messages::UserMessageHistoryOverride;
 use self::user_messages::UserMessageHistoryRecord;
 use self::user_messages::app_server_text_elements;
 pub use self::user_messages::create_initial_user_message;
 pub use self::user_messages::mention_bindings_from_user_inputs;
 use self::user_messages::merge_user_messages;
 use self::user_messages::merge_user_messages_with_history_record;
-#[cfg(test)]
-use self::user_messages::remap_placeholders_for_message;
 use self::user_messages::user_message_display_for_history;
 use self::user_messages::user_message_for_restore;
 use self::user_messages::user_message_preview_text;
@@ -1853,9 +1843,6 @@ fn extract_first_bold(s: &str) -> Option<String> {
     }
     None
 }
-
-#[cfg(test)]
-pub mod tests;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod dependency_test_support;

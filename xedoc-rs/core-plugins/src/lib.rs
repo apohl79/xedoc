@@ -2,8 +2,6 @@ pub mod loader;
 mod manager;
 mod provider;
 pub mod startup_sync;
-#[cfg(test)]
-mod test_support;
 
 pub use xedoc_core_plugin_marketplace::OPENAI_API_CURATED_MARKETPLACE_NAME;
 pub use xedoc_core_plugin_marketplace::OPENAI_BUNDLED_MARKETPLACE_NAME;

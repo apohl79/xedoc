@@ -57,7 +57,3 @@ pub fn create_test_sync_tool() -> ToolSpec {
         output_schema: None,
     })
 }
-
-#[cfg(test)]
-#[path = "test_sync_spec_tests.rs"]
-mod tests;

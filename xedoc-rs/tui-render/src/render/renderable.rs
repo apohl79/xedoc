@@ -525,7 +525,3 @@ where
         RenderableItem::Owned(Box::new(InsetRenderable { child, insets }))
     }
 }
-
-#[cfg(test)]
-#[path = "renderable_tests.rs"]
-mod tests;

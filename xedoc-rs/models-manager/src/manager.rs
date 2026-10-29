@@ -934,7 +934,3 @@ pub(crate) fn construct_model_info_from_candidates(
     };
     model_info::with_config_overrides(model_info, config)
 }
-
-#[cfg(test)]
-#[path = "manager_tests.rs"]
-mod tests;

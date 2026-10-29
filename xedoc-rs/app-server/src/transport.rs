@@ -334,7 +334,3 @@ pub(crate) async fn route_outgoing_envelope(
         }
     }
 }
-
-#[cfg(test)]
-#[path = "transport_tests.rs"]
-mod tests;

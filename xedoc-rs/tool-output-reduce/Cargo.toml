@@ -6,6 +6,7 @@ version.workspace = true
 
 [lib]
 doctest = false
+test = false
 
 [lints]
 workspace = true
@@ -17,6 +18,3 @@ xedoc-utils-string = { workspace = true }
 xedoc-utils-output-truncation = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
-
-[dev-dependencies]
-pretty_assertions = { workspace = true }

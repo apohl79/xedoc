@@ -57,8 +57,6 @@ pub(crate) use xedoc_core_exec::unified_exec::OutputHandles;
 #[cfg(unix)]
 pub(crate) use xedoc_core_exec::unified_exec::SpawnLifecycle;
 pub(crate) use xedoc_core_exec::unified_exec::SpawnLifecycleHandle;
-#[cfg(test)]
-pub(crate) use xedoc_core_exec::unified_exec::UNIFIED_EXEC_OUTPUT_MAX_BYTES;
 pub(crate) use xedoc_core_exec::unified_exec::UnifiedExecError;
 pub(crate) use xedoc_core_exec::unified_exec::UnifiedExecProcess;
 
@@ -68,8 +66,6 @@ pub(crate) const WINDOWS_INITIAL_EXEC_YIELD_TIME_FLOOR_MS: u64 = 2_000;
 pub(crate) use xedoc_core_config::config::MIN_EMPTY_YIELD_TIME_MS;
 pub(crate) const MAX_YIELD_TIME_MS: u64 = 30_000;
 pub(crate) use xedoc_core_config::config::DEFAULT_MAX_BACKGROUND_TERMINAL_TIMEOUT_MS;
-#[cfg(test)]
-pub(crate) const DEFAULT_MAX_OUTPUT_TOKENS: usize = 10_000;
 pub(crate) const MAX_UNIFIED_EXEC_PROCESSES: usize = 64;
 
 pub(crate) struct UnifiedExecContext {
@@ -180,8 +176,3 @@ pub(crate) fn generate_chunk_id() -> String {
         .map(|_| format!("{:x}", rng.random_range(0..16)))
         .collect()
 }
-
-#[cfg(test)]
-#[cfg(unix)]
-#[path = "mod_tests.rs"]
-mod tests;

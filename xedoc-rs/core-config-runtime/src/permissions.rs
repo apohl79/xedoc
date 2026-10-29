@@ -22,8 +22,6 @@ use xedoc_features::NetworkProxyModeToml;
 use xedoc_features::NetworkProxyUnixSocketPermissionToml;
 use xedoc_network_proxy::NetworkMode;
 use xedoc_network_proxy::NetworkProxyConfig;
-#[cfg(test)]
-use xedoc_network_proxy::NetworkUnixSocketPermission as ProxyNetworkUnixSocketPermission;
 use xedoc_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
 use xedoc_protocol::models::BUILT_IN_PERMISSION_PROFILE_READ_ONLY;
 use xedoc_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
@@ -885,7 +883,3 @@ fn maybe_push_unknown_special_path_warning(
         },
     );
 }
-
-#[cfg(test)]
-#[path = "permissions_tests.rs"]
-mod tests;

@@ -399,7 +399,3 @@ fn invalid_registry(message: impl Into<String>) -> io::Error {
         format!("invalid model registry: {}", message.into()),
     )
 }
-
-#[cfg(test)]
-#[path = "registry_tests.rs"]
-mod tests;

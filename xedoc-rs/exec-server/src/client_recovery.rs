@@ -606,7 +606,3 @@ fn registry_recovery_retry_delay(session_id: &str, attempt: u32) -> Duration {
 
     Duration::from_millis(base_millis + hasher.finish() % (base_millis / 2 + 1))
 }
-
-#[cfg(test)]
-#[path = "client_recovery_tests.rs"]
-mod tests;

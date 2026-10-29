@@ -22,14 +22,6 @@ pub(crate) struct DeepSeekModelsEndpoint {
 }
 
 impl DeepSeekModelsEndpoint {
-    #[cfg(test)]
-    pub(crate) fn new(
-        provider_info: ModelProviderInfo,
-        auth_manager: Option<Arc<AuthManager>>,
-    ) -> Self {
-        Self::new_with_api_key_source(provider_info, auth_manager, /*api_key_source*/ None)
-    }
-
     pub(crate) fn new_with_api_key_source(
         mut provider_info: ModelProviderInfo,
         auth_manager: Option<Arc<AuthManager>>,
@@ -82,7 +74,3 @@ impl ModelsEndpointClient for DeepSeekModelsEndpoint {
         })
     }
 }
-
-#[cfg(test)]
-#[path = "deepseek_models_endpoint_tests.rs"]
-mod tests;

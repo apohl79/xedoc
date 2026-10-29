@@ -46,13 +46,3 @@ pub use insert_history::insert_history_lines;
 pub use live_wrap::RowBuilder;
 pub use update_action::UpdateAction;
 pub use version::set_xedoc_cli_version;
-
-#[cfg(test)]
-pub mod test_backend {
-    pub use xedoc_tui_test_support::VT100Backend;
-}
-
-#[cfg(test)]
-pub mod test_support {
-    pub use xedoc_tui_test_support::*;
-}

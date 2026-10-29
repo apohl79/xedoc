@@ -261,7 +261,3 @@ impl<'a> SandboxAttempt<'a> {
         Ok(exec_request)
     }
 }
-
-#[cfg(test)]
-#[path = "tool_sandboxing_tests.rs"]
-mod tests;

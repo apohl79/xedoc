@@ -4,8 +4,6 @@ mod environment;
 mod environments_instructions;
 mod permissions;
 mod plugins_instructions;
-#[cfg(test)]
-mod test_support;
 
 use crate::ContextualUserFragment;
 use indexmap::IndexMap;
@@ -451,7 +449,3 @@ fn apply_merge_patch_value(target: &mut Value, patch: &Value) {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "world_state_tests.rs"]
-mod tests;

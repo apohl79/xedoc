@@ -49,7 +49,3 @@ impl WorldStateSection for PluginsInstructionsState {
         Some(Box::new(AvailablePluginsInstructions))
     }
 }
-
-#[cfg(test)]
-#[path = "plugins_instructions_tests.rs"]
-mod tests;

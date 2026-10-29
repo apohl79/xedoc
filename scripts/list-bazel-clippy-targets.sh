@@ -5,11 +5,9 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repo_root}"
 
-windows_cross_compile=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --windows-cross-compile)
-      windows_cross_compile=1
       shift
       ;;
     *)
@@ -22,29 +20,9 @@ done
 # Resolve the dynamic targets before printing anything so callers do not
 # continue with a partial list if `bazel query` fails. Target discovery is
 # local on all platforms.
-manual_rust_test_targets="$(
+production_targets="$(
   ./.github/scripts/run-bazel-query-ci.sh \
     --output=label \
-    -- 'kind("rust_test rule", attr(tags, "manual", //xedoc-rs/...))'
+    -- 'kind("rust_(library|proc_macro|binary) rule", //xedoc-rs/...) except attr(testonly, 1, //xedoc-rs/...)'
 )"
-if [[ "${RUNNER_OS:-}" != "Windows" ]]; then
-  # Non-Windows clippy jobs lint the native test binaries; the
-  # Windows-cross binaries exist only for the fast Windows test leg.
-  manual_rust_test_targets="$(printf '%s\n' "${manual_rust_test_targets}" | grep -v -- '-windows-cross-bin$' || true)"
-elif [[ $windows_cross_compile -eq 1 ]]; then
-  # `bazel query` is intentionally pre-analysis and does not remove targets
-  # made incompatible by `target_compatible_with`. Sharded integration tests
-  # add native-only manual helpers such as `core-agent-test-bin`, plus separate
-  # Windows-cross helpers. Keep
-  # the Windows helpers and unit-test helpers, but do not pass the native-only
-  # sharded integration helpers as explicit clippy targets.
-  manual_rust_test_targets="$(printf '%s\n' "${manual_rust_test_targets}" | grep -v -- '-test-bin$' || true)"
-fi
-
-printf '%s\n' "//xedoc-rs/..."
-
-# `--config=clippy` on the `workspace_root_test` wrappers does not lint the
-# underlying `rust_test` binaries. Add the internal manual `*-unit-tests-bin`
-# targets explicitly so inline `#[cfg(test)]` code is linted like
-# `cargo clippy --tests`.
-printf '%s\n' "${manual_rust_test_targets}"
+printf '%s\n' "${production_targets}"

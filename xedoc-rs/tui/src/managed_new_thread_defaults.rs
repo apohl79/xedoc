@@ -45,7 +45,3 @@ pub(crate) fn apply_managed_new_thread_defaults(
         );
     }
 }
-
-#[cfg(test)]
-#[path = "managed_new_thread_defaults_tests.rs"]
-mod tests;

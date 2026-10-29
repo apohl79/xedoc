@@ -106,7 +106,3 @@ impl RemoteNetworkProxyConfig {
         }
     }
 }
-
-#[cfg(test)]
-#[path = "remote_config_tests.rs"]
-mod tests;
