@@ -13,6 +13,7 @@ from urllib.parse import unquote, urlsplit
 
 from .controller import _LiveTurnItems, _default_client_factory
 from .errors import BrokerError, ErrorCode, map_controller_error
+from .host_outside_projects import OTHER_WORKSPACE, outside_directory, outside_projects
 from .work_admission import WorkAdmissionGate
 from .workspaces import _validate_workspace_id, load_bootstrap_descriptor
 
@@ -465,7 +466,11 @@ class HostWorkspaces:
             del roots[workspace_id]
             self._write(roots, layer)
 
-    def projects(self, workspace_id: str, *, activity_only: bool = False) -> list[dict]:
+    def projects(
+        self, workspace_id: str, *, activity_only: bool = False, username: str = ""
+    ) -> list[dict]:
+        if workspace_id == OTHER_WORKSPACE:
+            return outside_projects(self, username)
         _validate_workspace_id(workspace_id)
         with self._lock:
             roots, _ = self._config()
@@ -717,6 +722,8 @@ class HostWorkspaces:
             self._project_clone_slots.release()
 
     def _project_path(self, workspace_id: str, project_name: str) -> Path:
+        if workspace_id == OTHER_WORKSPACE:
+            return outside_directory(project_name)
         _validate_workspace_id(workspace_id)
         if not _valid_project_name(project_name):
             raise BrokerError.invalid_request(
@@ -776,6 +783,13 @@ class HostWorkspaces:
         with self._lock:
             project = self._project_path(workspace_id, project_name)
             closed = set(self._closed_sessions.get(username, []))
+            if workspace_id == OTHER_WORKSPACE and not include_history:
+                return [
+                    {**session, "archived": False}
+                    for entry in outside_projects(self, username)
+                    if entry["path"] == str(project)
+                    for session in entry["sessionActivity"]
+                ]
             cutoff = int(time.time()) - 48 * 3600
             sessions = []
             for archived in [False, True] if include_history else [False]:

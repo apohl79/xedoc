@@ -173,7 +173,8 @@ aside {
 #workspaces { display: grid; gap: 2px; }
 .workspace-row { position: relative; min-width: 0; }
 aside button.workspace {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   text-align: left;
   padding: 3px 34px 3px 7px;
@@ -181,6 +182,8 @@ aside button.workspace {
   background: transparent;
   overflow-wrap: anywhere;
 }
+.workspace-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.external-workspace .workspace-label { font-style: italic; }
 aside button.workspace.selected, aside button.project.selected {
   position: relative;
   background: #292631;

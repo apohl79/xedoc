@@ -28,6 +28,7 @@ from .host_ca_discovery import HostCADiscovery, discover_shared_cas
 from .host_gui_discovery import HostGuiDiscovery, discover_host_guis
 from .host_gui_config import HostGuiConfig
 from .host_workspace import HostWorkspaces
+from .host_outside_projects import OTHER_WORKSPACE, outside_directory, session_inventory
 from .host_session_gui import HostSessionGuis, proxy_session_gui
 from .host_updates import HostUpdates
 from .work_admission import WorkAdmissionGate
@@ -438,6 +439,15 @@ class HostHandler(BaseHTTPRequestHandler):
                     for entry in state["workspaces"]
                     if entry["workspaceId"] in allowed
                 ]
+                if admin:
+                    state["workspaces"].append(
+                        {
+                            "workspaceId": OTHER_WORKSPACE,
+                            "label": "Other folders",
+                            "root": "",
+                            "external": True,
+                        }
+                    )
                 self.reply(
                     200,
                     {
@@ -445,6 +455,23 @@ class HostHandler(BaseHTTPRequestHandler):
                         "account": account,
                         "hostname": self.server.hostname,
                         "instanceId": self.server.instance_id,
+                    },
+                )
+                return
+            if self.command == "GET" and path == "/api/activity":
+                roots, _ = service._config()
+                inventory = session_inventory(
+                    service, account["username"], roots, include_outside=admin
+                )
+                self.reply(
+                    200,
+                    {
+                        "workspaces": [
+                            {"workspaceId": key, "sessions": sessions}
+                            for key, sessions in inventory.items()
+                            if admin
+                            or (key != OTHER_WORKSPACE and key in account["workspaces"])
+                        ]
                     },
                 )
                 return
@@ -462,7 +489,10 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/api/session/turn",
                 "/api/session/gui",
             ):
-                if not admin and workspace_id not in account["workspaces"]:
+                if not admin and (
+                    workspace_id == OTHER_WORKSPACE
+                    or workspace_id not in account["workspaces"]
+                ):
                     self.reply(403, {"error": "Workspace access denied"})
                     return
                 project_name = (
@@ -565,7 +595,10 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/api/project/create",
                 "/api/project/clone",
             ):
-                if not admin and workspace_id not in account["workspaces"]:
+                if not admin and (
+                    workspace_id == OTHER_WORKSPACE
+                    or workspace_id not in account["workspaces"]
+                ):
                     self.reply(403, {"error": "Workspace access denied"})
                     return
                 if self.command == "GET" and path == "/api/projects":
@@ -574,6 +607,7 @@ class HostHandler(BaseHTTPRequestHandler):
                         {
                             "projects": service.projects(
                                 workspace_id,
+                                username=account["username"],
                                 activity_only=parse_qs(parsed.query).get(
                                     "activity", [""]
                                 )[0]
@@ -605,6 +639,31 @@ class HostHandler(BaseHTTPRequestHandler):
                     return
             if not admin:
                 self.reply(403, {"error": "Administrator access required"})
+                return
+            if self.command == "POST" and path == "/api/project/open-folder":
+                directory = outside_directory(body.get("path"))
+                roots, _ = service._config()
+                workspace_id = next(
+                    (
+                        key
+                        for key, root in roots.items()
+                        if directory.parent == Path(root).resolve()
+                        and not directory.name.startswith(".")
+                    ),
+                    OTHER_WORKSPACE,
+                )
+                project = (
+                    str(directory)
+                    if workspace_id == OTHER_WORKSPACE
+                    else directory.name
+                )
+                result = service.new_session(
+                    account["username"], workspace_id, project
+                )
+                self.reply(
+                    200,
+                    {"workspaceId": workspace_id, "projectName": project, **result},
+                )
                 return
             if self.command == "GET" and path == "/api/update/check":
                 self.reply(200, self.server.updates.check())

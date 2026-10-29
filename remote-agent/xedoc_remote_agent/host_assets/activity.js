@@ -62,6 +62,20 @@ window.XedocHostActivity = class {
     } catch {}
   }
 
+  observeWorkspaces(workspaces) {
+    const visible = new Set();
+    for (const workspace of workspaces) {
+      for (const session of workspace.sessions) {
+        visible.add(session.threadId);
+        this.observe(session, workspace.workspaceId, session.projectName);
+      }
+    }
+    for (const threadId of this.sessions.keys()) {
+      if (!visible.has(threadId)) this.sessions.delete(threadId);
+    }
+    this.paint();
+  }
+
   attach(element, workspaceId, projectName, threadId = "") {
     const group = document.createElement("span");
     group.className = "session-state";
@@ -102,7 +116,7 @@ window.XedocHostActivity = class {
     for (const group of document.querySelectorAll(".session-state")) {
       const sessions = [...this.sessions.values()].filter((session) =>
         session.workspaceId === group.dataset.workspace
-        && session.projectName === group.dataset.project
+        && (!group.dataset.project || session.projectName === group.dataset.project)
         && (!group.dataset.thread || session.threadId === group.dataset.thread));
       const selectedTab = group.closest(".session-tab")
         ?.getAttribute("aria-selected") === "true";

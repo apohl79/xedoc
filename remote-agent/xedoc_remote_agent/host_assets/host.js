@@ -5,6 +5,7 @@
   let selectedWorkspace = null;
   let selectedProject = null;
   let projectSource = "create";
+  let chooseDirectory = null;
   let activeThread = null;
   const savedViewKey = "xedoc-host-view-v1";
   let pendingView = (() => {
@@ -374,21 +375,23 @@
     }
     byId("workspaces").replaceChildren(...state.workspaces.map((entry) => {
       const row = text("div", "", "workspace-row");
-      const element = button(entry.workspaceId, async () => {
+      const element = button("", async () => {
         selectedWorkspace = entry.workspaceId;
         selectedProject = null;
         activeThread = null;
         sessionRequest++;
         await renderWorkspace();
       });
-      element.className = `workspace${selectedWorkspace === entry.workspaceId ? " selected" : ""}`;
+      element.className = `workspace${entry.external ? " external-workspace" : ""}${selectedWorkspace === entry.workspaceId ? " selected" : ""}`;
       element.dataset.id = entry.workspaceId;
+      element.append(text("span", entry.label || entry.workspaceId, "workspace-label"));
+      activity.attach(element, entry.workspaceId, "");
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "workspace-remove";
       remove.title = `Remove ${entry.workspaceId}`;
       remove.setAttribute("aria-label", remove.title);
-      remove.hidden = !admin;
+      remove.hidden = !admin || entry.external;
       const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       icon.setAttribute("viewBox", "0 0 20 20");
       icon.setAttribute("fill", "none");
@@ -424,16 +427,32 @@
       notice("Workspace configuration saved. The broker will restart automatically after active turns finish.");
     }
     await renderWorkspace();
+    void refreshWorkspaceActivity().catch(() => {});
+  }
+
+  async function refreshWorkspaceActivity() {
+    const generation = accountGeneration;
+    const result = await api("activity");
+    if (!state || generation !== accountGeneration) return;
+    activity.observeWorkspaces(result.workspaces || []);
+    markActiveSessionVisited();
   }
 
   function applyProjectActivity(workspaceId, projects) {
     const key = projectCacheKey(workspaceId);
     if (!key) return;
+    const previous = projectCache.get(key) || [];
+    const changed = previous.length !== projects.length
+      || previous.some((project) => !projects.some((item) => item.name === project.name));
     projectCache.set(key, projects);
     projectActivityLoaded.add(key);
     projectActivityRefreshAt.set(key, Date.now());
     activity.observeProjects(projects, workspaceId);
     if (workspaceId !== selectedWorkspace) return;
+    if (changed) {
+      void renderWorkspace().catch((error) => notice(error.message));
+      return;
+    }
     const rows = new Map([...byId("projects").children].map((row) => {
       const project = row.querySelector(".project");
       return [project?.dataset.name, row];
@@ -482,12 +501,16 @@
           if (sessionFrames.get(threadId) === frame) frame.src = result.guiUrl;
         }
       }
+      await refreshWorkspaceActivity();
       const workspaceId = selectedWorkspace;
       const key = projectCacheKey(workspaceId);
       if (
         key
         && projectActivityLoaded.has(key)
-        && Date.now() - (projectActivityRefreshAt.get(key) || 0) >= 30_000
+        && Date.now() - (projectActivityRefreshAt.get(key) || 0) >= (
+          state.workspaces.find((entry) => entry.workspaceId === workspaceId)?.external
+            ? 10_000 : 30_000
+        )
       ) {
         await refreshProjectActivity(workspaceId, true);
         if (workspaceId === selectedWorkspace && state) {
@@ -512,6 +535,8 @@
     projectViewRequest++;
     sessionFrames.forEach((frame) => { frame.hidden = true; });
     const entry = state.workspaces.find((workspace) => workspace.workspaceId === selectedWorkspace);
+    byId("new-project").title = entry?.external ? "Open folder" : "Add project";
+    byId("new-project").setAttribute("aria-label", byId("new-project").title);
     byId("host-view").classList.toggle("has-project", Boolean(entry && selectedProject));
     byId("new-project").hidden = !entry;
     byId("project-empty").hidden = Boolean(entry && selectedProject);
@@ -594,7 +619,7 @@
       element.className = `project${selectedProject === project.name ? " selected" : ""}`;
       element.title = project.path;
       element.dataset.name = project.name;
-      element.append(text("span", project.name, "project-label"));
+      element.append(text("span", project.label || project.name, "project-label"));
       activity.attach(element, selectedWorkspace, project.name);
       const pin = button(pins.has(project.name) ? "★" : "☆", async () => {
         if (pins.has(project.name)) pins.delete(project.name);
@@ -603,7 +628,7 @@
         await renderWorkspace();
       });
       pin.className = "project-pin";
-      pin.title = `${pins.has(project.name) ? "Unpin" : "Pin"} ${project.name}`;
+      pin.title = `${pins.has(project.name) ? "Unpin" : "Pin"} ${project.label || project.name}`;
       pin.setAttribute("aria-label", pin.title);
       pin.setAttribute("aria-pressed", String(pins.has(project.name)));
       const row = text("div", "", "project-row");
@@ -614,9 +639,14 @@
     activity.paint();
     if (!projects.length) {
       byId("projects").append(text("p", "No projects yet.", "muted"));
-      byId("project-empty").textContent = "Create a project directory to start a session.";
+      byId("project-empty").textContent = entry.external
+        ? "Choose a folder to start a session."
+        : "Create a project directory to start a session.";
       byId("project-empty").hidden = false;
       byId("session-workspace").hidden = true;
+      if (entry.external && request === projectRequest && !projectActivityLoaded.has(cacheKey)) {
+        void refreshProjectActivity(selectedWorkspace).catch(() => {});
+      }
       return;
     }
     if (selectedProject) {
@@ -645,7 +675,7 @@
     if (!project || !workspaceId || !projectName) return;
     byId("project-empty").hidden = true;
     byId("session-workspace").hidden = false;
-    byId("project-title").textContent = project.name;
+    byId("project-title").textContent = project.label || project.name;
     const key = projectSessionKey(workspaceId, projectName, username);
     const cachedSessions = sessionCache.get(key);
     if (cachedSessions) {
@@ -835,6 +865,7 @@
     sessionFrames.get(threadId)?.remove();
     sessionFrames.delete(threadId);
     openedSessions.delete(threadId);
+    projectCache.delete(projectCacheKey(workspaceId));
     sessionCache.delete(projectSessionKey(workspaceId, projectName));
     if (threadId === activeThread) {
       activeThread = null;
@@ -991,12 +1022,33 @@
   document.querySelectorAll("[data-project-source]").forEach((button) => {
     button.addEventListener("click", () => setProjectSource(button.dataset.projectSource));
   });
-  byId("new-project").addEventListener("click", () => {
+  byId("new-project").addEventListener("click", () => run(async () => {
     if (!selectedWorkspace) return;
+    if (state.workspaces.find((entry) => entry.workspaceId === selectedWorkspace)?.external) {
+      await browse();
+      chooseDirectory = async (path) => {
+        byId("choose-directory").disabled = true;
+        try {
+          const result = await api("project/open-folder", { path });
+          const workspaceId = result.workspaceId;
+          selectedWorkspace = workspaceId;
+          selectedProject = result.projectName;
+          activeThread = result.threadId;
+          sessionCache.set(projectSessionKey(workspaceId, selectedProject), [result]);
+          projectCache.delete(projectCacheKey(workspaceId));
+          byId("picker").close();
+          await renderWorkspace();
+        } finally {
+          byId("choose-directory").disabled = false;
+        }
+      };
+      byId("picker").showModal();
+      return;
+    }
     byId("project-form").reset();
     setProjectSource("create");
     byId("project-dialog").showModal();
-  });
+  }));
   form("project-form", async (data) => {
     let name = data.get("name");
     if (projectSource === "clone" || projectSource === "github") {
@@ -1036,12 +1088,18 @@
   }
   byId("browse").addEventListener("click", () => run(async () => {
     await browse(byId("workspace-form").elements.root.value);
+    chooseDirectory = (path) => {
+      byId("workspace-form").elements.root.value = path;
+      byId("picker").close();
+    };
     byId("picker").showModal();
   }));
   form("picker-form", async () => browse(byId("picker-path").value));
-  byId("choose-directory").addEventListener("click", () => {
-    byId("workspace-form").elements.root.value = byId("picker-path").value;
-    byId("picker").close();
+  byId("choose-directory").addEventListener("click", () => run(async () => {
+    await chooseDirectory?.(byId("picker-path").value);
+  }));
+  byId("picker").addEventListener("close", () => {
+    chooseDirectory = null;
   });
   byId("session-menu-button").addEventListener("click", () => {
     if (!selectedProject) return;
@@ -1081,7 +1139,7 @@
       element.append(actions);
       return element;
     }));
-    byId("assignments").replaceChildren(text("legend", "Assigned workspaces"), ...state.workspaces.map((workspace) => {
+    byId("assignments").replaceChildren(text("legend", "Assigned workspaces"), ...state.workspaces.filter((workspace) => !workspace.external).map((workspace) => {
       const label = text("label", "", "check");
       const input = document.createElement("input");
       input.type = "checkbox";
