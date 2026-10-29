@@ -10,6 +10,8 @@ import threading
 import time
 from urllib.parse import urlsplit
 
+from .lan_interfaces import ipv4_broadcasts
+
 
 DISCOVERY_PROTOCOL = "xedoc.host-gui.ca-discovery"
 DISCOVERY_VERSION = 1
@@ -28,6 +30,7 @@ class SharedCACandidate:
     fingerprint: str
     challenge: str
     client_address: str
+    server_address: str
 
 
 class HostCADiscovery:
@@ -52,7 +55,12 @@ class HostCADiscovery:
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             listener.bind(("", DISCOVERY_PORT))
             membership = socket.inet_aton(DISCOVERY_GROUP) + socket.inet_aton("0.0.0.0")
-            listener.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership)
+            try:
+                listener.setsockopt(
+                    socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, membership
+                )
+            except OSError:
+                pass
             listener.settimeout(0.25)
         except OSError:
             if listener is not None:
@@ -154,7 +162,12 @@ class HostCADiscovery:
         }
 
 
-def discover_shared_cas(timeout_seconds: float = 3.0) -> tuple[SharedCACandidate, ...]:
+def discover_shared_cas(
+    timeout_seconds: float = 3.0,
+    *,
+    current_origin: str | None = None,
+    local_hostnames: tuple[str, ...] = (),
+) -> tuple[SharedCACandidate, ...]:
     if (
         not isinstance(timeout_seconds, (int, float))
         or isinstance(timeout_seconds, bool)
@@ -172,10 +185,30 @@ def discover_shared_cas(timeout_seconds: float = 3.0) -> tuple[SharedCACandidate
     )
     deadline = time.monotonic() + timeout_seconds
     candidates: dict[tuple[str, str], SharedCACandidate] = {}
+    local_hosts = {
+        hostname.casefold().rstrip(".")
+        for hostname in local_hostnames
+        if isinstance(hostname, str) and hostname
+    }
+    local_short_hosts = {hostname.split(".", 1)[0] for hostname in local_hosts}
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as client:
         client.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
         client.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
-        client.sendto(query, (DISCOVERY_GROUP, DISCOVERY_PORT))
+        client.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        destinations = {DISCOVERY_GROUP, "255.255.255.255", "127.0.0.1"}
+        try:
+            destinations.update(ipv4_broadcasts())
+        except OSError:
+            pass
+        sent = False
+        for destination in sorted(destinations):
+            try:
+                client.sendto(query, (destination, DISCOVERY_PORT))
+                sent = True
+            except OSError:
+                continue
+        if not sent:
+            raise OSError("No network interface available for Host GUI CA discovery")
         while len(candidates) < MAX_CANDIDATES:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -185,17 +218,35 @@ def discover_shared_cas(timeout_seconds: float = 3.0) -> tuple[SharedCACandidate
                 payload, responder = client.recvfrom(MAX_PACKET_BYTES + 1)
             except TimeoutError:
                 continue
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as route:
+            server_address = _normalized_address(responder[0])
+            if server_address is None or ":" in server_address:
+                continue
+            with socket.socket(
+                socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP
+            ) as route:
                 try:
-                    route.connect((responder[0], 1))
+                    route.connect((server_address, 1))
                 except OSError:
                     continue
-                peer_address = _normalized_address(route.getsockname()[0])
-            if peer_address is None:
+                client_address = _normalized_address(route.getsockname()[0])
+            if client_address is None:
                 continue
-            candidate = _candidate(payload, query_id, peer_address)
-            if candidate is not None:
-                candidates[(candidate.origin, candidate.fingerprint)] = candidate
+            candidate = _candidate(payload, query_id, client_address, server_address)
+            if candidate is None:
+                continue
+            if (
+                current_origin is not None
+                and candidate.origin.casefold() == current_origin.casefold()
+            ):
+                continue
+            candidate_host = candidate.hostname.casefold().rstrip(".")
+            candidate_short_host = candidate_host.split(".", 1)[0]
+            if (
+                candidate_host in local_hosts
+                or candidate_short_host in local_short_hosts
+            ):
+                continue
+            candidates[(candidate.origin, candidate.fingerprint)] = candidate
     return tuple(
         sorted(
             candidates.values(),
@@ -221,7 +272,7 @@ def _query_id(payload: bytes) -> str | None:
 
 
 def _candidate(
-    payload: bytes, query_id: str, client_address: str
+    payload: bytes, query_id: str, client_address: str, server_address: str
 ) -> SharedCACandidate | None:
     value = _decode(payload)
     required = {
@@ -247,6 +298,8 @@ def _candidate(
     origin = value["origin"]
     fingerprint = value["fingerprint"]
     challenge = value["challenge"]
+    client_ip = _normalized_address(client_address)
+    server_ip = _normalized_address(server_address)
     if (
         not isinstance(hostname, str)
         or not 1 <= len(hostname) <= 255
@@ -260,25 +313,17 @@ def _candidate(
         or not _is_fingerprint(fingerprint)
         or not isinstance(challenge, str)
         or not 32 <= len(challenge) <= 128
-        or _normalized_address(client_address) is None
+        or client_ip is None
+        or server_ip is None
     ):
-        return None
-    origin_parts = urlsplit(origin)
-    try:
-        socket.getaddrinfo(
-            origin_parts.hostname,
-            origin_parts.port or 443,
-            family=socket.AF_INET,
-            type=socket.SOCK_STREAM,
-        )
-    except OSError:
         return None
     return SharedCACandidate(
         hostname=hostname,
         origin=origin,
         fingerprint=fingerprint,
         challenge=challenge,
-        client_address=_normalized_address(client_address) or client_address,
+        client_address=client_ip,
+        server_address=server_ip,
     )
 
 

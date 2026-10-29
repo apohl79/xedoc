@@ -25,6 +25,31 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from .host_gui_config import _write_file
 
 
+class _RoutedHTTPSConnection(HTTPSConnection):
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        server_address: str,
+        **kwargs,
+    ) -> None:
+        super().__init__(host, port, **kwargs)
+        self._server_address = server_address
+
+    def connect(self) -> None:
+        self.sock = self._create_connection(
+            (self._server_address, self.port),
+            self.timeout,
+            self.source_address,
+        )
+        if self._tunnel_host:
+            self._tunnel()
+        server_hostname = self._tunnel_host or self.host
+        self.sock = self._context.wrap_socket(
+            self.sock, server_hostname=server_hostname
+        )
+
+
 def approved_names(text: str) -> list[x509.GeneralName]:
     names = []
     for value in text.split(","):
@@ -436,6 +461,7 @@ def join_authority(home: Path, invitation: str, names: str) -> tuple[Path, Path,
 def join_discovered_authority(
     home: Path,
     origin_value: str,
+    server_address: str,
     expected_fingerprint: str,
     challenge: str,
     client_address: str,
@@ -466,13 +492,17 @@ def join_discovered_authority(
     client_ip = _normalized_ip(client_address)
     if client_ip is None or ":" in client_ip:
         raise ValueError("CA discovery requires a local IPv4 network address")
+    server_ip = _normalized_ip(server_address)
+    if server_ip is None or ":" in server_ip:
+        raise ValueError("CA discovery requires an IPv4 coordinator address")
 
     fetch_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     fetch_context.check_hostname = False
     fetch_context.verify_mode = ssl.CERT_NONE
-    connection = HTTPSConnection(
+    connection = _RoutedHTTPSConnection(
         origin.hostname,
         origin.port or 443,
+        server_ip,
         timeout=10,
         source_address=(client_ip, 0),
         context=fetch_context,
@@ -511,9 +541,10 @@ def join_discovered_authority(
         .sign(key, hashes.SHA256())
     )
     context = ssl.create_default_context(cadata=ca_pem.decode())
-    connection = HTTPSConnection(
+    connection = _RoutedHTTPSConnection(
         origin.hostname,
         origin.port or 443,
+        server_ip,
         timeout=15,
         source_address=(client_ip, 0),
         context=context,

@@ -800,7 +800,10 @@ def main(argv=None) -> int:
                             flush=True,
                         )
                         try:
-                            candidates = discover_shared_cas()
+                            candidates = discover_shared_cas(
+                                current_origin=origin,
+                                local_hostnames=(socket.gethostname(),),
+                            )
                         except OSError as error:
                             print(f"CA discovery failed: {error}", flush=True)
                             candidates = ()
@@ -860,6 +863,7 @@ def main(argv=None) -> int:
                             tls_cert, tls_key, ca_cert = join_discovered_authority(
                                 args.xedoc_home,
                                 candidate.origin,
+                                candidate.server_address,
                                 candidate.fingerprint,
                                 candidate.challenge,
                                 candidate.client_address,
