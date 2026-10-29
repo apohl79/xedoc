@@ -1110,7 +1110,7 @@
       }
     } else if (popupActive
         && !event.shiftKey
-        && ["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab", "PageUp", "PageDown"].includes(event.key)) {
+        && ["ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Enter", "Escape", "Tab", "PageUp", "PageDown"].includes(event.key)) {
       event.preventDefault();
       pendingActions.push({ type: "key", key: event.key, ctrl: event.ctrlKey, alt: event.altKey, shift: event.shiftKey });
       dirty = editorText() !== composerState?.text;
