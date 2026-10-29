@@ -141,9 +141,16 @@ impl SessionCostTracker {
             cached_price_per_1m
         };
 
-        let cache_write_price_per_1m = model_prices
-            .cache_write_input_price_per_1m_tokens
-            .unwrap_or(input_price);
+        let cache_write_price_per_1m = if is_long_context {
+            model_prices
+                .long_context_cache_write_input_price_per_1m_tokens
+                .or(model_prices.cache_write_input_price_per_1m_tokens)
+                .unwrap_or(input_price)
+        } else {
+            model_prices
+                .cache_write_input_price_per_1m_tokens
+                .unwrap_or(input_price)
+        };
 
         let output_price = if is_long_context {
             model_prices

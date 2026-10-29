@@ -386,7 +386,7 @@ reasoning_effort = "medium"
 [[classes]]
 id = "implementation"
 provider = "openai"
-model = "gpt-5.6-terra"
+model = "gpt-6.1-terra"
 reasoning_effort = "high"
 ```
 

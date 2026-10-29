@@ -1722,6 +1722,11 @@
           "format": "double",
           "type": "number"
         },
+        "long_context_cache_write_input_price_per_1m_tokens": {
+          "description": "Long-context (>272K tokens) price per 1M cache-write input tokens in USD.\n\nWhen `None`, long-context cache-write tokens use the standard `cache_write_input_price_per_1m_tokens` rate (falling back to the long-context input rate, then the standard input rate).",
+          "format": "double",
+          "type": "number"
+        },
         "long_context_cached_input_price_per_1m_tokens": {
           "description": "Long-context (>272K tokens) price per 1M cached input tokens in USD.\n\nWhen `None`, long-context cached input tokens use the standard `cached_input_price_per_1m_tokens` rate (falling back to `input_price_per_1m_tokens` if that is also unset).",
           "format": "double",

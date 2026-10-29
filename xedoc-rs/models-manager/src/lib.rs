@@ -17,25 +17,7 @@ pub use xedoc_protocol::auth::AuthMode;
 /// Load the bundled model catalog shipped with `xedoc-models-manager`.
 pub fn bundled_models_response()
 -> std::result::Result<xedoc_protocol::openai_models::ModelsResponse, serde_json::Error> {
-    let mut catalog: xedoc_protocol::openai_models::ModelsResponse =
-        serde_json::from_str(include_str!("../models.json"))?;
-    if let Some(mut model) = catalog
-        .models
-        .iter()
-        .find(|model| model.slug == "gpt-6-sol")
-        .cloned()
-    {
-        model.slug = "gpt-6.1-sol".to_string();
-        model.display_name = "GPT-6.1-Sol".to_string();
-        model.context_window = Some(1_050_000);
-        model.max_context_window = Some(1_050_000);
-        model.auto_compact_token_limit = Some(945_000);
-        model
-            .supported_reasoning_levels
-            .retain(|level| level.effort != xedoc_protocol::openai_models::ReasoningEffort::Ultra);
-        catalog.models.push(model);
-    }
-    Ok(catalog)
+    serde_json::from_str(include_str!("../models.json"))
 }
 
 /// Convert the client version string to a whole version string (e.g. "1.2.3-alpha.4" -> "1.2.3").

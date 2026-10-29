@@ -262,9 +262,16 @@ fn invocation_prices(usage: &TokenUsage, prices: &ModelTokenPrices) -> Invocatio
             .cached_input_price_per_1m_tokens
             .unwrap_or(prices.input_price_per_1m_tokens)
     };
-    let cache_write = prices
-        .cache_write_input_price_per_1m_tokens
-        .unwrap_or(input);
+    let cache_write = if long_context {
+        prices
+            .long_context_cache_write_input_price_per_1m_tokens
+            .or(prices.cache_write_input_price_per_1m_tokens)
+            .unwrap_or(input)
+    } else {
+        prices
+            .cache_write_input_price_per_1m_tokens
+            .unwrap_or(input)
+    };
     let output = if long_context {
         prices
             .long_context_output_price_per_1m_tokens

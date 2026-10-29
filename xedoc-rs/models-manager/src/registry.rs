@@ -12,7 +12,7 @@ use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_utils_path::write_atomically;
 
-pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 9;
+pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 10;
 pub const MODEL_REGISTRY_FILE: &str = "models.json";
 
 /// User-managed model settings stored under `$XEDOC_HOME`.
@@ -49,6 +49,8 @@ pub struct ModelTokenPrices {
     pub cached_input: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_write_input: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub long_context_cache_write_input: Option<f64>,
     pub output: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub long_context_input: Option<f64>,
@@ -275,12 +277,13 @@ impl ModelRegistry {
                 .entry(provider_id)
                 .or_insert_with(|| default_provider.clone());
             if is_openai {
-                // GPT-5.6 Sol, GPT-5.6 Luna, every model before GPT-5.6, and the former
-                // auto-review alias are retired.
+                // Retired model IDs and the former auto-review alias are removed.
                 provider.models.retain(|model_id, _| {
                     !((model_id.starts_with("gpt-5") && !model_id.starts_with("gpt-5.6"))
                         || model_id == "gpt-5.6-sol"
                         || model_id == "gpt-5.6-luna"
+                        || model_id == "gpt-5.6-terra"
+                        || model_id == "gpt-6-sol"
                         || model_id == "xedoc-auto-review")
                 });
             }
@@ -301,6 +304,44 @@ impl ModelRegistry {
                     .models
                     .entry(model_id.clone())
                     .or_insert_with(|| model.clone());
+                let previous_default_openai_prices = match model_id.as_str() {
+                    "gpt-6.1-sol" => Some(ModelTokenPrices {
+                        input: 2.0,
+                        cached_input: Some(0.1),
+                        cache_write_input: Some(2.5),
+                        long_context_cache_write_input: None,
+                        output: 10.0,
+                        long_context_input: Some(4.0),
+                        long_context_cached_input: Some(0.2),
+                        long_context_output: Some(15.0),
+                    }),
+                    "gpt-6-astra" => Some(ModelTokenPrices {
+                        input: 2.0,
+                        cached_input: Some(0.2),
+                        cache_write_input: None,
+                        long_context_cache_write_input: None,
+                        output: 10.0,
+                        long_context_input: Some(4.0),
+                        long_context_cached_input: Some(0.4),
+                        long_context_output: Some(15.0),
+                    }),
+                    "gpt-6-luna" => Some(ModelTokenPrices {
+                        input: 0.1,
+                        cached_input: Some(0.01),
+                        cache_write_input: None,
+                        long_context_cache_write_input: None,
+                        output: 0.5,
+                        long_context_input: Some(0.2),
+                        long_context_cached_input: Some(0.02),
+                        long_context_output: Some(0.75),
+                    }),
+                    _ => None,
+                };
+                if is_openai
+                    && previous_default_openai_prices.as_ref() == configured.prices.as_ref()
+                {
+                    configured.prices = model.prices.clone();
+                }
                 let mut previous_default_prices = model.prices.clone();
                 if is_anthropic && let Some(prices) = &mut previous_default_prices {
                     prices.cache_write_input = None;
@@ -377,6 +418,7 @@ fn validate_managed_model(
             Some(prices.input),
             prices.cached_input,
             prices.cache_write_input,
+            prices.long_context_cache_write_input,
             Some(prices.output),
             prices.long_context_input,
             prices.long_context_cached_input,

@@ -1,19 +1,19 @@
-use xedoc_model_provider_info::AMAZON_BEDROCK_GPT_5_6_TERRA_MODEL_ID;
+use xedoc_model_provider_info::AMAZON_BEDROCK_GPT_6_1_TERRA_MODEL_ID;
 use xedoc_models_manager::bundled_models_response;
 use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ModelVisibility;
 use xedoc_protocol::openai_models::ModelsResponse;
 use xedoc_protocol::openai_models::ReasoningEffort;
 
-const GPT_5_BEDROCK_CONTEXT_WINDOW: i64 = 272_000;
-const GPT_5_6_TERRA_OPENAI_MODEL_ID: &str = "gpt-5.6-terra";
+const GPT_6_1_BEDROCK_CONTEXT_WINDOW: i64 = 1_050_000;
+const GPT_6_1_TERRA_OPENAI_MODEL_ID: &str = "gpt-6.1-terra";
 
 pub(crate) fn static_model_catalog() -> ModelsResponse {
     with_default_only_service_tier(ModelsResponse {
-        models: vec![gpt_5_bedrock_model(
-            GPT_5_6_TERRA_OPENAI_MODEL_ID,
-            AMAZON_BEDROCK_GPT_5_6_TERRA_MODEL_ID,
-            "GPT-5.6 Terra",
+        models: vec![gpt_6_1_bedrock_model(
+            GPT_6_1_TERRA_OPENAI_MODEL_ID,
+            AMAZON_BEDROCK_GPT_6_1_TERRA_MODEL_ID,
+            "GPT-6.1 Terra",
             /*priority*/ 0,
         )],
     })
@@ -29,7 +29,7 @@ pub(crate) fn with_default_only_service_tier(mut catalog: ModelsResponse) -> Mod
     catalog
 }
 
-fn gpt_5_bedrock_model(
+fn gpt_6_1_bedrock_model(
     openai_slug: &str,
     bedrock_slug: &str,
     display_name: &str,
@@ -39,8 +39,8 @@ fn gpt_5_bedrock_model(
     model.slug = bedrock_slug.to_string();
     model.display_name = display_name.to_string();
     model.priority = priority;
-    model.context_window = Some(GPT_5_BEDROCK_CONTEXT_WINDOW);
-    model.max_context_window = Some(GPT_5_BEDROCK_CONTEXT_WINDOW);
+    model.context_window = Some(GPT_6_1_BEDROCK_CONTEXT_WINDOW);
+    model.max_context_window = Some(GPT_6_1_BEDROCK_CONTEXT_WINDOW);
     // Bedrock does not offer the `ultra` reasoning effort.
     model
         .supported_reasoning_levels

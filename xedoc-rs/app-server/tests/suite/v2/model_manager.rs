@@ -385,7 +385,7 @@ async fn start_in_process_client(
 ) -> Result<InProcessClientHandle> {
     let config_toml = match active_provider {
         ActiveTestProvider::OpenAi => r#"
-model = "gpt-5.6-terra"
+model = "gpt-6.1-terra"
 model_provider = "openai"
 approval_policy = "never"
 sandbox_mode = "read-only"

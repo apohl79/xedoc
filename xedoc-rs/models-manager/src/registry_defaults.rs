@@ -95,7 +95,7 @@ fn openai_defaults() -> io::Result<ProviderModelConfig> {
         .collect();
     Ok(ProviderModelConfig {
         display_name: "OpenAI".to_string(),
-        default_model: "gpt-6-sol".to_string(),
+        default_model: "gpt-6.1-sol".to_string(),
         fast_model: "gpt-6-luna".to_string(),
         default_reasoning_effort: ReasoningEffort::Medium,
         template: provider_template("OpenAI", /*supports_max*/ true),
@@ -195,6 +195,7 @@ fn price(input: f64, cached_input: Option<f64>, output: f64) -> ModelTokenPrices
         input,
         cached_input,
         cache_write_input: None,
+        long_context_cache_write_input: None,
         output,
         long_context_input: None,
         long_context_cached_input: None,
@@ -214,6 +215,7 @@ fn tiered_price(
         input,
         cached_input,
         cache_write_input: None,
+        long_context_cache_write_input: None,
         output,
         long_context_input: Some(long_context_input),
         long_context_cached_input,
@@ -266,24 +268,27 @@ fn openai_prices() -> BTreeMap<String, ModelTokenPrices> {
         ("gpt-6.1-sol", {
             let mut prices = tiered_price(2.0, Some(0.1), 10.0, 4.0, Some(0.2), 15.0);
             prices.cache_write_input = Some(2.5);
+            prices.long_context_cache_write_input = Some(5.0);
             prices
         }),
-        (
-            "gpt-6-astra",
-            tiered_price(2.0, Some(0.2), 10.0, 4.0, Some(0.4), 15.0),
-        ),
-        (
-            "gpt-6-sol",
-            tiered_price(2.0, Some(0.2), 10.0, 4.0, Some(0.4), 15.0),
-        ),
-        (
-            "gpt-6-luna",
-            tiered_price(0.1, Some(0.01), 0.5, 0.2, Some(0.02), 0.75),
-        ),
-        (
-            "gpt-5.6-terra",
-            tiered_price(2.0, Some(0.2), 12.0, 4.0, Some(0.4), 18.0),
-        ),
+        ("gpt-6.1-terra", {
+            let mut prices = tiered_price(1.0, Some(0.05), 5.0, 2.0, Some(0.1), 7.5);
+            prices.cache_write_input = Some(1.25);
+            prices.long_context_cache_write_input = Some(2.5);
+            prices
+        }),
+        ("gpt-6-astra", {
+            let mut prices = tiered_price(10.0, Some(1.0), 50.0, 20.0, Some(2.0), 75.0);
+            prices.cache_write_input = Some(12.5);
+            prices.long_context_cache_write_input = Some(25.0);
+            prices
+        }),
+        ("gpt-6-luna", {
+            let mut prices = tiered_price(0.1, Some(0.01), 0.5, 0.2, Some(0.02), 0.75);
+            prices.cache_write_input = Some(0.125);
+            prices.long_context_cache_write_input = Some(0.25);
+            prices
+        }),
     ]
     .into_iter()
     .map(|(model, prices)| (model.to_string(), prices))

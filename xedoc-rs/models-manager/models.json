@@ -108,7 +108,7 @@
       "base_instructions": ""
     },
     {
-      "slug": "gpt-6-sol",
+      "slug": "gpt-6.1-sol",
       "prefer_websockets": true,
       "support_verbosity": true,
       "default_verbosity": "low",
@@ -128,14 +128,14 @@
       "multi_agent_version": "v2",
       "use_responses_lite": true,
       "include_skills_usage_instructions": true,
-      "context_window": 272000,
-      "max_context_window": 872000,
-      "auto_compact_token_limit": null,
+      "context_window": 1050000,
+      "max_context_window": 1050000,
+      "auto_compact_token_limit": 945000,
       "comp_hash": "3000",
       "reasoning_summary_format": "experimental",
       "default_reasoning_summary": "none",
-      "display_name": "GPT-6-Sol",
-      "description": "Workhorse model for coding and everyday work.",
+      "display_name": "GPT-6.1-Sol",
+      "description": "Near-Astra performance for complex work at a lower cost.",
       "default_reasoning_level": "medium",
       "supported_reasoning_levels": [
         {
@@ -157,10 +157,6 @@
         {
           "effort": "max",
           "description": "Maximum reasoning depth for the hardest problems"
-        },
-        {
-          "effort": "ultra",
-          "description": "Maximum reasoning with automatic task delegation"
         }
       ],
       "shell_type": "shell_command",
@@ -318,7 +314,7 @@
       "base_instructions": ""
     },
     {
-      "slug": "gpt-5.6-terra",
+      "slug": "gpt-6.1-terra",
       "prefer_websockets": true,
       "support_verbosity": true,
       "default_verbosity": "low",
@@ -338,16 +334,20 @@
       "multi_agent_version": "v2",
       "use_responses_lite": true,
       "include_skills_usage_instructions": true,
-      "context_window": 272000,
-      "max_context_window": 872000,
-      "auto_compact_token_limit": null,
+      "context_window": 1050000,
+      "max_context_window": 1050000,
+      "auto_compact_token_limit": 945000,
       "comp_hash": "3000",
       "reasoning_summary_format": "experimental",
       "default_reasoning_summary": "none",
-      "display_name": "GPT-5.6-Terra",
-      "description": "Older balanced model for straightforward work.",
+      "display_name": "GPT-6.1-Terra",
+      "description": "Fast, efficient model for visual reasoning and precise computer use.",
       "default_reasoning_level": "medium",
       "supported_reasoning_levels": [
+        {
+          "effort": "none",
+          "description": "No reasoning; fastest responses"
+        },
         {
           "effort": "low",
           "description": "Fast responses with lighter reasoning"
@@ -367,10 +367,6 @@
         {
           "effort": "max",
           "description": "Maximum reasoning depth for the hardest problems"
-        },
-        {
-          "effort": "ultra",
-          "description": "Maximum reasoning with automatic task delegation"
         }
       ],
       "shell_type": "shell_command",
@@ -378,10 +374,7 @@
       "minimal_client_version": "0.144.0",
       "supported_in_api": true,
       "availability_nux": null,
-      "upgrade": {
-        "model": "gpt-6-sol",
-        "migration_markdown": "Meet GPT-6 Sol\n\nOur latest Sol is more intelligent and more efficient so your usage limits go further. This model is a great daily driver for complex tasks, especially coding.\n"
-      },
+      "upgrade": null,
       "priority": 4,
       "model_messages": {
         "instructions_template": null,

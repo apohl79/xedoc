@@ -307,9 +307,9 @@ assert policy["ranking"]["minimumScore"] == 3
 assert policy["ranking"]["maximumScore"] == 35
 expected_classes = ["simple"] * 5 + ["smart"] * 5 + ["intelligent"] * 5
 expected_models = (
-    ["gpt-5.6-luna"] * 5
-    + ["gpt-5.6-terra"] * 5
-    + ["gpt-5.6-sol"] * 5
+    ["gpt-6-luna"] * 5
+    + ["gpt-6.1-terra"] * 5
+    + ["gpt-6.1-sol"] * 5
 )
 expected_efforts = ["low", "medium", "high", "xhigh", "max"] * 3
 ladder = policy["ranking"]["ladder"]
@@ -1201,10 +1201,15 @@ input_price_per_1m_tokens = 1.0
 cached_input_price_per_1m_tokens = 0.5
 output_price_per_1m_tokens = 2.0
 
-[model_providers.openai.model_prices."gpt-5.6-terra"]
-input_price_per_1m_tokens = 2.0
-cached_input_price_per_1m_tokens = 1.0
-output_price_per_1m_tokens = 4.0
+[model_providers.openai.model_prices."gpt-6.1-terra"]
+input_price_per_1m_tokens = 1.0
+cached_input_price_per_1m_tokens = 0.05
+cache_write_input_price_per_1m_tokens = 1.25
+long_context_input_price_per_1m_tokens = 2.0
+long_context_cached_input_price_per_1m_tokens = 0.1
+long_context_cache_write_input_price_per_1m_tokens = 2.5
+long_context_output_price_per_1m_tokens = 7.5
+output_price_per_1m_tokens = 5.0
 
 [model_providers.openai.model_prices."gpt-5.6-sol"]
 input_price_per_1m_tokens = 3.0
@@ -1499,7 +1504,7 @@ submit_single_select_if_open() {
 }
 
 set_baseline_terra_high() {
-  set_select_value "Reporting baseline: openai/gpt-5.6-terra/high" 15
+  set_select_value "Reporting baseline: openai/gpt-6.1-terra/high" 15
   submit_single_select_if_open "Reporting baseline"
 }
 
@@ -1560,7 +1565,7 @@ set_reporting_baseline() {
   set_baseline_terra_high
   wait_for_pane "Routing policy"
   assert_policy "reportingBaseline.providerId=openai"
-  assert_policy "reportingBaseline.model=gpt-5.6-terra"
+  assert_policy "reportingBaseline.model=gpt-6.1-terra"
   assert_policy "reportingBaseline.reasoningEffort=high"
 }
 
@@ -1871,7 +1876,7 @@ branches = connection.execute(
 ).fetchall()
 expected = {
     ("orchestrator", "gpt-5.6-luna", "low"),
-    ("routed", "gpt-5.6-terra", "medium"),
+    ("routed", "gpt-6.1-terra", "medium"),
 }
 assert set(branches) == expected, branches
 assert all(sum(row[0] == branch for row in branches) >= 1 for branch, _, _ in expected)
@@ -2042,13 +2047,13 @@ exercise_policy_manager() {
     fi
     send_key Right
     wait_for_pane "> openai/"
-    set_select_value "Model route: openai/gpt-5.6-terra/high" 40
+    set_select_value "Model route: openai/gpt-6.1-terra/high" 40
     wait_for_pane "Model ladder"
   done
   select_menu_item 15 "Routing policy"
   for rank in $(seq 1 15); do
     assert_policy "ranking.ladder.$((rank - 1)).providerId=openai"
-    assert_policy "ranking.ladder.$((rank - 1)).model=gpt-5.6-terra"
+    assert_policy "ranking.ladder.$((rank - 1)).model=gpt-6.1-terra"
     assert_policy "ranking.ladder.$((rank - 1)).reasoningEffort=high"
   done
   record_scenario settings-ladder "all 15 ranked slots persisted through script forms"
@@ -2058,7 +2063,7 @@ exercise_policy_manager() {
   set_baseline_terra_high
   wait_for_pane "Routing policy"
   assert_policy "reportingBaseline.providerId=openai"
-  assert_policy "reportingBaseline.model=gpt-5.6-terra"
+  assert_policy "reportingBaseline.model=gpt-6.1-terra"
   assert_policy "reportingBaseline.reasoningEffort=high"
 
   select_menu_item 2 "Reporting baseline"
@@ -2108,7 +2113,7 @@ run_root_mode() {
   await_turn
   case "$disposition" in
     applied)
-      assert_request_route "$marker" "gpt-5.6-terra" low
+      assert_request_route "$marker" "gpt-6.1-terra" low
       wait_for_pane "model router (root)"
       wait_for_pane "Decision: approved;"
       ;;
@@ -2229,7 +2234,7 @@ run_spawn_mode() {
   assert_child_request_count "ROUTER_E2E_CHILD" "$root_thread_id" "$root_sequence" 1
   if [[ "$expected_child_route" == "routed" ]]; then
     assert_request_route \
-      "ROUTER_E2E_CHILD" "gpt-5.6-terra" medium "$root_thread_id" "$root_sequence"
+      "ROUTER_E2E_CHILD" "gpt-6.1-terra" medium "$root_thread_id" "$root_sequence"
   else
     assert_request_route "ROUTER_E2E_CHILD" "$initial_model" "$initial_effort" "$root_thread_id" "$root_sequence"
   fi
@@ -2239,7 +2244,7 @@ run_spawn_mode() {
     wait_for_pane "Working ("
     local expected_child_display
     if [[ "$expected_child_route" == "routed" ]]; then
-      expected_child_display="openai/gpt-5.6-terra/medium"
+      expected_child_display="openai/gpt-6.1-terra/medium"
     else
       expected_child_display="openai/$initial_model/$initial_effort"
     fi
@@ -2339,14 +2344,14 @@ run_session_mode_override() {
   send_key Enter
   wait_for_request_marker "ROUTER_E2E_SESSION_OVERRIDE"
   await_turn
-  assert_request_route "ROUTER_E2E_SESSION_OVERRIDE" "gpt-5.6-terra" low
+  assert_request_route "ROUTER_E2E_SESSION_OVERRIDE" "gpt-6.1-terra" low
   assert_policy "mode=off"
   record_scenario session-mode-override \
     "session mode full overrode shared off mode and required approval"
 }
 
 run_steering_matrix() {
-  local seeded_model="gpt-5.6-terra"
+  local seeded_model="gpt-6.1-terra"
   local seeded_effort="low"
   reset_policy
   seed_calibration
@@ -2417,7 +2422,7 @@ run_approval_matrix() {
   send_prompt "ROUTER_CASE_CHANGES_SAME"
   wait_for_request_marker "ROUTER_CASE_CHANGES_SAME"
   await_turn
-  assert_request_route "ROUTER_CASE_CHANGES_SAME" "gpt-5.6-terra" low
+  assert_request_route "ROUTER_CASE_CHANGES_SAME" "gpt-6.1-terra" low
   record_scenario approval-policy-direct-confidence-same \
     "direct overall confidence preserved the unchanged route"
 
@@ -2425,7 +2430,7 @@ run_approval_matrix() {
   send_prompt "ROUTER_E2E_CHANGES_CHANGED review workflow security"
   wait_for_request_marker "ROUTER_E2E_CHANGES_CHANGED"
   await_turn
-  assert_request_route "ROUTER_E2E_CHANGES_CHANGED" "gpt-5.6-terra" low
+  assert_request_route "ROUTER_E2E_CHANGES_CHANGED" "gpt-6.1-terra" low
   record_scenario approval-policy-direct-confidence-changed \
     "direct overall confidence routed the changed request"
 
@@ -2437,7 +2442,7 @@ run_approval_matrix() {
   send_key Enter
   wait_for_request_marker "ROUTER_CASE_ALL_SAME"
   await_turn
-  assert_request_route "ROUTER_CASE_ALL_SAME" "gpt-5.6-terra" low
+  assert_request_route "ROUTER_CASE_ALL_SAME" "gpt-6.1-terra" low
   record_scenario approval-all-same "unchanged route still required confirmation"
 
   send_prompt "ROUTER_E2E_REJECT review workflow security"
@@ -2481,7 +2486,7 @@ run_router_permission_hook_matrix() {
   wait_for_request_marker "ROUTER_E2E_PERMISSION_HOOK_ALLOW"
   await_turn
   assert_request_route \
-    "ROUTER_E2E_PERMISSION_HOOK_ALLOW" "gpt-5.6-terra" low
+    "ROUTER_E2E_PERMISSION_HOOK_ALLOW" "gpt-6.1-terra" low
   assert_router_permission_hook 1
   record_scenario permission-hook-allow \
     "PermissionRequest hook accepted the model-router route without rendering confirmation"
@@ -2545,7 +2550,7 @@ run_override_matrix() {
   run_override_case complexity 1 "Complexity: Medium" \
     "Complexity: medium" "score 5 (bounded 5;" "gpt-5.6-luna" medium
   run_override_case orchestration 2 "Orchestration: Coordination" \
-    "Orchestration: coordination" "score 4 (bounded 4;" "gpt-5.6-terra" low
+    "Orchestration: coordination" "score 4 (bounded 4;" "gpt-6.1-terra" low
   run_override_case risk 3 "Risk: Medium" \
     "Risk: medium" "score 5 (bounded 5;" "gpt-5.6-luna" medium
 }
@@ -2561,7 +2566,7 @@ run_feedback_matrix() {
   wait_for_request_marker "ROUTER_E2E_FEEDBACK_OFF"
   await_turn
   wait_for_pane_absent "model router (root)"
-  assert_request_route "ROUTER_E2E_FEEDBACK_OFF" "gpt-5.6-terra" low
+  assert_request_route "ROUTER_E2E_FEEDBACK_OFF" "gpt-6.1-terra" low
   record_scenario feedback-off "script route applied with no visible feedback"
 
   set_feedback true
@@ -2574,7 +2579,7 @@ run_feedback_matrix() {
   wait_for_pane "Classifications: Work type("
   wait_for_pane "Stats: Embedding("
   wait_for_pane "Confidence:"
-  assert_request_route "ROUTER_E2E_FEEDBACK_ON" "gpt-5.6-terra" low
+  assert_request_route "ROUTER_E2E_FEEDBACK_ON" "gpt-6.1-terra" low
   record_scenario feedback-on \
     "classification, confidence, ranking calculation, and exact model choice visible"
 }
@@ -2623,9 +2628,9 @@ run_baseline_report_matrix() {
   send_prompt "ROUTER_E2E_BASELINE_SET review workflow security"
   wait_for_request_marker "ROUTER_E2E_BASELINE_SET"
   await_turn
-  assert_request_route "ROUTER_E2E_BASELINE_SET" "gpt-5.6-terra" medium
+  assert_request_route "ROUTER_E2E_BASELINE_SET" "gpt-6.1-terra" medium
   assert_invocation_baseline \
-    "ROUTER_E2E_BASELINE_SET" "gpt-5.6-terra" high
+    "ROUTER_E2E_BASELINE_SET" "gpt-6.1-terra" high
   record_scenario baseline-set \
     "script baseline reached persisted invocation cost attribution"
   open_report_and_assert
@@ -2635,7 +2640,7 @@ run_baseline_report_matrix() {
   send_prompt "ROUTER_E2E_BASELINE_CLEAR review workflow security"
   wait_for_request_marker "ROUTER_E2E_BASELINE_CLEAR"
   await_turn
-  assert_request_route "ROUTER_E2E_BASELINE_CLEAR" "gpt-5.6-terra" medium
+  assert_request_route "ROUTER_E2E_BASELINE_CLEAR" "gpt-6.1-terra" medium
   assert_invocation_baseline "ROUTER_E2E_BASELINE_CLEAR" null null
   record_scenario baseline-clear \
     "cleared baseline reached persisted invocation as Not set"
@@ -2651,11 +2656,11 @@ run_ab_matrix() {
 
   start_tui
   establish_host_action_thread \
-    "gpt-5.6-terra" medium ROUTER_E2E_HOST_ACTION_THREAD_AB_DISABLE
+    "gpt-6.1-terra" medium ROUTER_E2E_HOST_ACTION_THREAD_AB_DISABLE
   exercise_host_action 4 "arm A/B"
   exercise_host_action 5 "disable A/B"
   finish_host_action_thread \
-    "gpt-5.6-terra" medium ROUTER_E2E_HOST_ACTION_THREAD_AB_DISABLE
+    "gpt-6.1-terra" medium ROUTER_E2E_HOST_ACTION_THREAD_AB_DISABLE
 
   local marker="ROUTER_E2E_SPAWN_ROOT_ab_disabled"
   local root_sequence
@@ -2669,16 +2674,16 @@ run_ab_matrix() {
   sleep 1
   assert_exact_child_routes \
     "ROUTER_E2E_CHILD" "$root_thread_id" "$root_sequence" \
-    '[["gpt-5.6-terra","medium"]]'
+    '[["gpt-6.1-terra","medium"]]'
   record_scenario ab-disable \
     "arm then disable produced one routed child instead of an A/B pair"
 
   start_tui
   establish_host_action_thread \
-    "gpt-5.6-terra" medium ROUTER_E2E_HOST_ACTION_THREAD_AB_PAIR
+    "gpt-6.1-terra" medium ROUTER_E2E_HOST_ACTION_THREAD_AB_PAIR
   exercise_host_action 4 "arm A/B"
   finish_host_action_thread \
-    "gpt-5.6-terra" medium ROUTER_E2E_HOST_ACTION_THREAD_AB_PAIR
+    "gpt-6.1-terra" medium ROUTER_E2E_HOST_ACTION_THREAD_AB_PAIR
 
   marker="ROUTER_E2E_SPAWN_ROOT_ab_pair"
   send_prompt "$marker review workflow security"
@@ -2709,7 +2714,7 @@ PY
   done
   assert_exact_child_routes \
     "ROUTER_E2E_CHILD" "$root_thread_id" "$root_sequence" \
-    '[["gpt-5.6-luna","low"],["gpt-5.6-terra","medium"]]'
+    '[["gpt-6-luna","low"],["gpt-6.1-terra","medium"]]'
   assert_ab_pair_state "$root_thread_id" "$root_turn_id"
   record_scenario ab-pair \
     "arm produced exact routed and orchestrator branches plus persisted pair state"

@@ -38,7 +38,7 @@ pub const OPENAI_PROVIDER_ID: &str = "openai";
 pub const CHATGPT_XEDOC_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 const AMAZON_BEDROCK_PROVIDER_NAME: &str = "Amazon Bedrock";
 pub const AMAZON_BEDROCK_PROVIDER_ID: &str = "amazon-bedrock";
-pub const AMAZON_BEDROCK_GPT_5_6_TERRA_MODEL_ID: &str = "openai.gpt-5.6-terra";
+pub const AMAZON_BEDROCK_GPT_6_1_TERRA_MODEL_ID: &str = "openai.gpt-6.1-terra";
 pub const AMAZON_BEDROCK_DEFAULT_BASE_URL: &str =
     "https://bedrock-mantle.us-east-1.api.aws/openai/v1";
 const AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER: &str = "x-amzn-mantle-client-agent";
@@ -222,6 +222,13 @@ pub struct ModelTokenPrices {
     /// When `None`, cache-write tokens use the standard input rate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_write_input_price_per_1m_tokens: Option<f64>,
+    /// Long-context (>272K tokens) price per 1M cache-write input tokens in USD.
+    ///
+    /// When `None`, long-context cache-write tokens use the standard
+    /// `cache_write_input_price_per_1m_tokens` rate (falling back to the long-context
+    /// input rate, then the standard input rate).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub long_context_cache_write_input_price_per_1m_tokens: Option<f64>,
     /// Long-context (>272K tokens) price per 1M input tokens in USD.
     ///
     /// When `None`, long-context requests use the standard
@@ -533,6 +540,7 @@ impl ModelProviderInfo {
                         input_price_per_1m_tokens: 4.0,
                         cached_input_price_per_1m_tokens: Some(0.2),
                         cache_write_input_price_per_1m_tokens: Some(5.0),
+                        long_context_cache_write_input_price_per_1m_tokens: None,
                         long_context_input_price_per_1m_tokens: None,
                         long_context_cached_input_price_per_1m_tokens: None,
                         long_context_output_price_per_1m_tokens: None,
@@ -545,6 +553,7 @@ impl ModelProviderInfo {
                         input_price_per_1m_tokens: 10.0,
                         cached_input_price_per_1m_tokens: Some(0.25),
                         cache_write_input_price_per_1m_tokens: Some(12.5),
+                        long_context_cache_write_input_price_per_1m_tokens: None,
                         long_context_input_price_per_1m_tokens: None,
                         long_context_cached_input_price_per_1m_tokens: None,
                         long_context_output_price_per_1m_tokens: None,
