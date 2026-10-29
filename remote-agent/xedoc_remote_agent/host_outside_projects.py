@@ -47,11 +47,17 @@ def session_inventory(service, username: str, roots: dict, *, include_outside: b
                 "useStateDbOnly": True,
             },
         )
+        outside_window_exhausted = False
         for thread in page.get("data", []):
-            if isinstance(thread, dict) and isinstance(thread.get("id"), str):
-                threads[thread["id"]] = thread
+            if not isinstance(thread, dict) or not isinstance(thread.get("id"), str):
+                continue
+            updated = thread.get("updatedAt")
+            if include_outside and (not isinstance(updated, int) or updated < cutoff):
+                outside_window_exhausted = True
+                continue
+            threads[thread["id"]] = thread
         cursor = page.get("nextCursor")
-        if not cursor:
+        if not cursor or outside_window_exhausted:
             break
     loaded = set()
     if include_outside:
@@ -107,8 +113,7 @@ def session_inventory(service, username: str, roots: dict, *, include_outside: b
         if workspace_id is None:
             if (
                 not include_outside
-                or thread_id not in loaded
-                or status.get("type") == "notLoaded"
+                or (updated < cutoff and status.get("type") != "active")
             ):
                 continue
             workspace_id, project_name = OTHER_WORKSPACE, str(directory)

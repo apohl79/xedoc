@@ -3592,6 +3592,10 @@ impl ThreadRequestProcessor {
         } else if let Ok(existing_thread_id) = ThreadId::from_string(&params.thread_id)
             && let Ok(existing_thread) = self.thread_manager.get_thread(existing_thread_id).await
         {
+            self.thread_store
+                .persist_thread(existing_thread_id)
+                .await
+                .map_err(thread_store_resume_read_error)?;
             let source_thread = self
                 .read_stored_thread_for_resume(
                     &params.thread_id,
