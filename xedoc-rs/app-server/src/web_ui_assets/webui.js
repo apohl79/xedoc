@@ -927,7 +927,7 @@
         activityLines[agentHeading].classList.add("agent-heading");
         for (const line of activityLines.slice(agentHeading + 1)) {
           const text = line.textContent;
-          const match = /^\s*└\s*□\s+(.+)$/.exec(text);
+          const match = /^\s*(?:└\s*)?□\s+(.+)$/.exec(text);
           if (match) {
             const markerStart = text.indexOf("□");
             const labelStart = markerStart + 2;
