@@ -108,7 +108,7 @@ a { color: #8fc4e7; }
 #activity .task-row { display: grid; grid-template-columns: 1.15em minmax(0, 1fr); gap: 8px; margin: 1px 0 0 2em; }
 #activity .agent-row { display: grid; grid-template-columns: 1.15em minmax(0, 1fr); gap: 8px; margin: 1px 0 0 2em; }
 #activity .agent-label { min-width: 0; }
-#activity .task-marker { display: inline-grid; place-items: center; place-self: center; width: .9em; height: .9em; border: 2px solid #8195a5; border-radius: 2px; font-family: var(--sans); font-size: inherit; line-height: 1; }
+#activity .task-marker { display: inline-grid; place-items: center; place-self: center; width: .9em; height: .9em; border: 2px solid #59616a; border-radius: 2px; font-family: var(--sans); font-size: inherit; line-height: 1; }
 #activity .task-marker-checked { border-color: #47c78a; background: #47c78a; color: var(--bg-main); }
 #activity .task-marker-checked::after { content: "✓"; font-size: .75em; font-weight: 700; }
 #activity .agent-marker, #activity .task-marker-running { display: inline-block; place-self: center; width: .9em; height: .9em; border: 2px solid #59616a; border-top-color: #00a8b5; border-radius: 50%; animation: activity-spin .85s linear infinite; }

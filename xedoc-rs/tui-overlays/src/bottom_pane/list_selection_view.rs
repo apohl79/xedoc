@@ -50,8 +50,8 @@ const MIN_LIST_WIDTH_FOR_SIDE: u16 = 40;
 /// panel when side-by-side layout is active.
 const SIDE_CONTENT_GAP: u16 = 2;
 
-/// Shared menu-surface horizontal inset (2 cells per side) used by selection popups.
-const MENU_SURFACE_HORIZONTAL_INSET: u16 = 4;
+/// Shared menu-surface horizontal inset (1 cell per side) used by selection popups.
+const MENU_SURFACE_HORIZONTAL_INSET: u16 = 2;
 
 /// Controls how the side content panel is sized relative to the popup width.
 ///
@@ -1266,11 +1266,7 @@ impl Renderable for ListSelectionView {
         // -- List rows --
         if list_area.height > 0 {
             let render_area = Rect {
-                x: if rows.is_empty() {
-                    list_area.x
-                } else {
-                    list_area.x.saturating_sub(2)
-                },
+                x: list_area.x,
                 y: list_area.y,
                 width: effective_rows_width.max(1),
                 height: list_area.height,

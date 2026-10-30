@@ -8,17 +8,19 @@ use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::Block;
+use ratatui::widgets::BorderType;
+use ratatui::widgets::Borders;
 use ratatui::widgets::Widget;
 use std::borrow::Cow;
 use unicode_width::UnicodeWidthChar;
 use unicode_width::UnicodeWidthStr;
 
+use crate::city_lights;
 use crate::key_hint::KeyBinding;
 use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
 use crate::render::Insets;
 use crate::render::RectExt as _;
 use crate::style::accent_style;
-use crate::style::user_message_style;
 
 use super::scroll_state::ScrollState;
 
@@ -79,7 +81,7 @@ const FIXED_LEFT_COLUMN_NUMERATOR: usize = 3;
 const FIXED_LEFT_COLUMN_DENOMINATOR: usize = 10;
 
 const MENU_SURFACE_INSET_V: u16 = 1;
-const MENU_SURFACE_INSET_H: u16 = 2;
+const MENU_SURFACE_INSET_H: u16 = 1;
 
 /// Apply the shared "menu surface" padding used by bottom-pane overlays.
 ///
@@ -104,7 +106,9 @@ pub fn render_menu_surface(area: Rect, buf: &mut Buffer) -> Rect {
         return area;
     }
     Block::default()
-        .style(user_message_style())
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(city_lights::composer_border_style())
         .render(area, buf);
     menu_surface_inset(area)
 }
