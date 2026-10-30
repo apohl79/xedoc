@@ -586,7 +586,7 @@
     }
     for (const kind of ["model", "effort", "router"]) {
       const button = document.getElementById(kind);
-      const value = kind === "model" ? state.displayModel ?? state.model
+      const value = kind === "model" ? state.model
         : kind === "effort" && Object.hasOwn(state, "displayEffort") ? state.displayEffort
         : state[kind];
       if (kind === "router") {
