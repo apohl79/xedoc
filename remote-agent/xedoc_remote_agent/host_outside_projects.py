@@ -4,7 +4,7 @@ import os
 import time
 from pathlib import Path
 
-from .errors import BrokerError, ErrorCode
+from .errors import BrokerError
 
 
 OTHER_WORKSPACE = "@other"
@@ -47,42 +47,22 @@ def session_inventory(service, username: str, roots: dict, *, include_outside: b
                 "useStateDbOnly": True,
             },
         )
-        outside_window_exhausted = False
+        recent_window_exhausted = False
         for thread in page.get("data", []):
             if not isinstance(thread, dict) or not isinstance(thread.get("id"), str):
                 continue
             updated = thread.get("updatedAt")
-            if include_outside and (not isinstance(updated, int) or updated < cutoff):
-                outside_window_exhausted = True
+            if not isinstance(updated, int) or updated < cutoff:
+                recent_window_exhausted = True
                 continue
             threads[thread["id"]] = thread
         cursor = page.get("nextCursor")
-        if not cursor or outside_window_exhausted:
+        if not cursor or recent_window_exhausted:
             break
-    loaded = set()
-    if include_outside:
-        cursor = None
-        for _ in range(10):
-            page = service._activity_request(
-                "thread/loaded/list", {"limit": 100, "cursor": cursor}
-            )
-            loaded.update(
-                value for value in page.get("data", []) if isinstance(value, str)
-            )
-            cursor = page.get("nextCursor")
-            if not cursor:
-                break
-        for thread_id in loaded - closed - threads.keys():
-            try:
-                thread = service._activity_request(
-                    "thread/read", {"threadId": thread_id, "includeTurns": False}
-                ).get("thread")
-            except BrokerError as error:
-                if error.code is ErrorCode.NOT_FOUND:
-                    continue
-                raise
-            if isinstance(thread, dict):
-                threads[thread_id] = thread
+    for thread in service.active_loaded_sessions():
+        thread_id = thread.get("id")
+        if isinstance(thread_id, str):
+            threads[thread_id] = thread
     canonical_roots = {
         key: Path(os.path.realpath(value)) for key, value in roots.items()
     }
@@ -111,9 +91,8 @@ def session_inventory(service, username: str, roots: dict, *, include_outside: b
         updated = thread.get("updatedAt")
         updated = updated if isinstance(updated, int) else 0
         if workspace_id is None:
-            if (
-                not include_outside
-                or (updated < cutoff and status.get("type") != "active")
+            if not include_outside or (
+                updated < cutoff and status.get("type") != "active"
             ):
                 continue
             workspace_id, project_name = OTHER_WORKSPACE, str(directory)

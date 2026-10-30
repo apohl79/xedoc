@@ -23,12 +23,13 @@ window.XedocHostActivity = class {
     } catch {}
   }
 
-  observe(session, workspaceId, projectName) {
+  observe(session, workspaceId, projectName, source = "snapshot") {
     const previous = this.sessions.get(session.threadId);
     const saved = this.saved[session.threadId];
     const updatedAt = session.updatedAt ?? previous?.updatedAt ?? 0;
     const needsInput = Boolean(session.needsInput);
     const active = session.status === "active" || needsInput;
+    if (source !== "live" && previous?.liveActive && !active) return;
     const completed = !active && Boolean(
       previous?.completed
       || saved?.completed
@@ -37,7 +38,14 @@ window.XedocHostActivity = class {
       || (!saved && !previous && updatedAt > this.lastVisit)
     );
     const next = {
-      ...session, workspaceId, projectName, updatedAt, active, completed, needsInput,
+      ...session,
+      workspaceId,
+      projectName,
+      updatedAt,
+      active,
+      completed,
+      liveActive: source === "live" ? active : Boolean(previous?.liveActive),
+      needsInput,
     };
     this.sessions.set(session.threadId, next);
     if (saved?.updatedAt !== updatedAt || saved?.completed !== completed) {
@@ -46,12 +54,28 @@ window.XedocHostActivity = class {
     }
   }
 
+  releaseLive(threadId) {
+    const session = this.sessions.get(threadId);
+    if (session) session.liveActive = false;
+  }
+
   observeProjects(projects, workspaceId) {
+    const visibleSessions = new Set();
     let observedActivity = false;
     for (const project of projects) {
       for (const session of project.sessionActivity || []) {
         this.observe(session, workspaceId, project.name);
+        visibleSessions.add(session.threadId);
         observedActivity = true;
+      }
+    }
+    for (const [threadId, session] of this.sessions) {
+      if (
+        session.workspaceId === workspaceId
+        && !visibleSessions.has(threadId)
+        && !session.liveActive
+      ) {
+        this.sessions.delete(threadId);
       }
     }
     this.paint();
@@ -70,8 +94,8 @@ window.XedocHostActivity = class {
         this.observe(session, workspace.workspaceId, session.projectName);
       }
     }
-    for (const threadId of this.sessions.keys()) {
-      if (!visible.has(threadId)) this.sessions.delete(threadId);
+    for (const [threadId, session] of this.sessions) {
+      if (!visible.has(threadId) && !session.liveActive) this.sessions.delete(threadId);
     }
     this.paint();
   }

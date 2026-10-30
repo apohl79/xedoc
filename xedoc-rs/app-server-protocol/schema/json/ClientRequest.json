@@ -4808,6 +4808,9 @@
       ],
       "type": "object"
     },
+    "ThreadActiveListParams": {
+      "type": "object"
+    },
     "ThreadArchiveParams": {
       "properties": {
         "threadId": {
@@ -8683,6 +8686,30 @@
         "params"
       ],
       "title": "Thread/loaded/listRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/active/list"
+          ],
+          "title": "Thread/active/listRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ThreadActiveListParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/active/listRequest",
       "type": "object"
     },
     {

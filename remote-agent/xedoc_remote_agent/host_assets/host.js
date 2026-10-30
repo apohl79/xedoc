@@ -89,7 +89,7 @@
       threadId,
       status: event.data.turnActive || needsInput ? "active" : "idle",
       needsInput,
-    }, session.workspaceId, session.projectName);
+    }, session.workspaceId, session.projectName, "live");
     if (activeThread === threadId) markActiveSessionVisited();
     activity.paint();
   });
@@ -865,6 +865,7 @@
     sessionFrames.get(threadId)?.remove();
     sessionFrames.delete(threadId);
     openedSessions.delete(threadId);
+    activity.releaseLive(threadId);
     projectCache.delete(projectCacheKey(workspaceId));
     sessionCache.delete(projectSessionKey(workspaceId, projectName));
     if (threadId === activeThread) {

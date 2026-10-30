@@ -839,6 +839,15 @@ impl ThreadRequestProcessor {
             .map(|response| Some(response.into()))
     }
 
+    pub(crate) async fn thread_active_list(
+        &self,
+        params: ThreadActiveListParams,
+    ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        self.thread_active_list_response_inner(params)
+            .await
+            .map(|response| Some(response.into()))
+    }
+
     pub(crate) async fn thread_read(
         &self,
         params: ThreadReadParams,
@@ -2311,6 +2320,42 @@ impl ThreadRequestProcessor {
             data: page,
             next_cursor,
         })
+    }
+
+    async fn thread_active_list_response_inner(
+        &self,
+        _params: ThreadActiveListParams,
+    ) -> Result<ThreadActiveListResponse, JSONRPCErrorError> {
+        let thread_ids = self.thread_manager.list_thread_ids().await;
+        let statuses = self
+            .thread_watch_manager
+            .loaded_statuses_for_threads(thread_ids.iter().map(ToString::to_string).collect())
+            .await;
+        let mut data = Vec::new();
+        for thread_id in thread_ids {
+            let thread_id_string = thread_id.to_string();
+            if !matches!(
+                statuses.get(&thread_id_string),
+                Some(ThreadStatus::Active { .. })
+            ) {
+                continue;
+            }
+            let thread = match self
+                .read_thread_view(thread_id, /*include_turns*/ false)
+                .await
+            {
+                Ok(thread) => thread,
+                Err(ThreadReadViewError::InvalidRequest(_)) => continue,
+                Err(error) => return Err(thread_read_view_error(error)),
+            };
+            if matches!(thread.status, ThreadStatus::Active { .. }) {
+                data.push(thread);
+            }
+            if data.len() == 500 {
+                break;
+            }
+        }
+        Ok(ThreadActiveListResponse { data })
     }
 
     pub(super) async fn thread_read_response_inner(

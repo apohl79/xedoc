@@ -440,6 +440,8 @@ export type { TextPosition } from "./TextPosition";
 export type { TextRange } from "./TextRange";
 export type { Thread } from "./Thread";
 export type { ThreadActiveFlag } from "./ThreadActiveFlag";
+export type { ThreadActiveListParams } from "./ThreadActiveListParams";
+export type { ThreadActiveListResponse } from "./ThreadActiveListResponse";
 export type { ThreadArchiveParams } from "./ThreadArchiveParams";
 export type { ThreadArchiveResponse } from "./ThreadArchiveResponse";
 export type { ThreadArchivedNotification } from "./ThreadArchivedNotification";

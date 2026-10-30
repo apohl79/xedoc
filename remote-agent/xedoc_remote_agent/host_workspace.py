@@ -162,6 +162,8 @@ class HostWorkspaces:
         self._client = None
         self._activity_client = None
         self._activity_lock = threading.Lock()
+        self._active_sessions_lock = threading.Lock()
+        self._active_sessions_cache: tuple[float, list[dict]] | None = None
         self._project_clone_slots = threading.BoundedSemaphore(_PROJECT_CLONE_LIMIT)
         self._closed = False
         self._live_items = _LiveTurnItems()
@@ -277,6 +279,23 @@ class HostWorkspaces:
                     self._activity_client.close()
                     self._activity_client = None
                 raise map_controller_error(error) from error
+
+    def active_loaded_sessions(self) -> list[dict]:
+        with self._active_sessions_lock:
+            now = time.monotonic()
+            if (
+                self._active_sessions_cache is None
+                or now - self._active_sessions_cache[0] >= 2
+            ):
+                response = self._activity_request("thread/active/list", {})
+                sessions = response.get("data", [])
+                self._active_sessions_cache = (
+                    time.monotonic(),
+                    [session for session in sessions if isinstance(session, dict)]
+                    if isinstance(sessions, list)
+                    else [],
+                )
+            return [dict(session) for session in self._active_sessions_cache[1]]
 
     def _config(self) -> tuple[dict, dict]:
         response = self._request("config/read", {"includeLayers": True})
@@ -406,6 +425,14 @@ class HostWorkspaces:
 
     def _observe_notification(self, message: Mapping[str, Any]) -> None:
         self._live_items.observe(message)
+        if message.get("method") in {
+            "thread/closed",
+            "thread/status/changed",
+            "turn/started",
+            "turn/completed",
+        }:
+            with self._active_sessions_lock:
+                self._active_sessions_cache = None
         params = message.get("params")
         if not isinstance(params, dict):
             return
@@ -486,6 +513,7 @@ class HostWorkspaces:
         if activity_only:
             cutoff = int(time.time()) - 48 * 3600
             cursor = None
+            recent_window_exhausted = False
             for _ in range(_SESSION_HISTORY_LIMIT):
                 page = self._activity_request(
                     "thread/list",
@@ -501,42 +529,64 @@ class HostWorkspaces:
                     },
                 )
                 for thread in page.get("data", []):
+                    if not isinstance(thread, dict):
+                        continue
                     cwd, updated = thread.get("cwd"), thread.get("updatedAt")
-                    if isinstance(cwd, str) and isinstance(updated, int):
-                        key = os.path.normcase(os.path.realpath(cwd))
-                        activity[key] = max(activity.get(key, 0), updated)
-                        status = thread.get("status")
-                        status = status if isinstance(status, dict) else {}
-                        thread_id = thread.get("id")
-                        if (
-                            isinstance(thread_id, str)
-                            and len(thread_id) <= _SESSION_ID_LIMIT
-                            and (updated >= cutoff or status.get("type") == "active")
-                        ):
-                            entries = session_activity.setdefault(key, [])
-                            if len(entries) < 500:
-                                entries.append(
-                                    {
-                                        "threadId": thread_id,
-                                        "status": status.get("type", "unknown"),
-                                        "needsInput": any(
-                                            flag
-                                            in (
-                                                "waitingOnApproval",
-                                                "waitingOnUserInput",
-                                            )
-                                            for flag in status.get("activeFlags", [])
-                                        ),
-                                        "updatedAt": updated,
-                                    }
-                                )
+                    if not isinstance(updated, int) or updated < cutoff:
+                        recent_window_exhausted = True
+                        continue
+                    if not isinstance(cwd, str):
+                        continue
+                    key = os.path.normcase(os.path.realpath(cwd))
+                    activity[key] = max(activity.get(key, 0), updated)
+                    status = thread.get("status")
+                    status = status if isinstance(status, dict) else {}
+                    thread_id = thread.get("id")
+                    if (
+                        isinstance(thread_id, str)
+                        and len(thread_id) <= _SESSION_ID_LIMIT
+                    ):
+                        session_activity.setdefault(key, {})[thread_id] = {
+                            "threadId": thread_id,
+                            "status": status.get("type", "unknown"),
+                            "needsInput": any(
+                                flag in ("waitingOnApproval", "waitingOnUserInput")
+                                for flag in status.get("activeFlags", [])
+                            ),
+                            "updatedAt": updated,
+                        }
                 cursor = page.get("nextCursor")
-                if not cursor:
+                if not cursor or recent_window_exhausted:
                     break
+            for thread in self.active_loaded_sessions():
+                cwd = thread.get("cwd")
+                thread_id = thread.get("id")
+                if not isinstance(cwd, str) or not isinstance(thread_id, str):
+                    continue
+                key = os.path.normcase(os.path.realpath(cwd))
+                updated = thread.get("updatedAt")
+                updated = updated if isinstance(updated, int) else 0
+                activity[key] = max(activity.get(key, 0), updated)
+                status = thread.get("status")
+                status = status if isinstance(status, dict) else {}
+                if len(thread_id) <= _SESSION_ID_LIMIT:
+                    session_activity.setdefault(key, {})[thread_id] = {
+                        "threadId": thread_id,
+                        "status": status.get("type", "unknown"),
+                        "needsInput": any(
+                            flag in ("waitingOnApproval", "waitingOnUserInput")
+                            for flag in status.get("activeFlags", [])
+                        ),
+                        "updatedAt": updated,
+                    }
         for project in projects:
             key = os.path.normcase(os.path.realpath(project["path"]))
             project["updatedAt"] = activity.get(key, 0)
-            project["sessionActivity"] = session_activity.get(key, [])
+            project["sessionActivity"] = sorted(
+                session_activity.get(key, {}).values(),
+                key=lambda session: session["updatedAt"],
+                reverse=True,
+            )
         return sorted(
             projects, key=lambda project: (-project["updatedAt"], project["name"])
         )
@@ -792,41 +842,52 @@ class HostWorkspaces:
                 ]
             cutoff = int(time.time()) - 48 * 3600
             sessions = []
+            find_loaded_active = False
             for archived in [False, True] if include_history else [False]:
                 cursor = None
+                window_exhausted = False
                 for _ in range(_SESSION_HISTORY_LIMIT):
-                    page = self._request(
+                    request = (
+                        self._request if include_history else self._activity_request
+                    )
+                    params = {
+                        "limit": _SESSION_PAGE_SIZE,
+                        "cursor": cursor,
+                        "sortKey": "updated_at",
+                        "sortDirection": "desc",
+                        "cwd": str(project),
+                        "modelProviders": [],
+                        "sourceKinds": _THREAD_SOURCES,
+                        "archived": archived,
+                    }
+                    if not include_history:
+                        params["useStateDbOnly"] = True
+                    page = request(
                         "thread/list",
-                        {
-                            "limit": _SESSION_PAGE_SIZE,
-                            "cursor": cursor,
-                            "sortKey": "updated_at",
-                            "sortDirection": "desc",
-                            "cwd": str(project),
-                            "modelProviders": [],
-                            "sourceKinds": _THREAD_SOURCES,
-                            "archived": archived,
-                        },
+                        params,
                     )
                     for item in page.get("data", []):
+                        updated = item.get("updatedAt", 0)
+                        if not include_history and (
+                            not isinstance(updated, int) or updated < cutoff
+                        ):
+                            window_exhausted = True
                         thread_id = item.get("id")
                         cwd = item.get("cwd")
-                        updated = item.get("updatedAt", 0)
                         if not isinstance(thread_id, str) or not isinstance(cwd, str):
+                            continue
+                        status = item.get("status")
+                        status = status if isinstance(status, dict) else {}
+                        if (
+                            not include_history
+                            and window_exhausted
+                            and status.get("type") != "active"
+                        ):
                             continue
                         try:
                             if Path(cwd).resolve(strict=True) != project:
                                 continue
                         except (OSError, ValueError, RuntimeError):
-                            continue
-                        if (
-                            not include_history
-                            and (not isinstance(updated, int) or updated < cutoff)
-                            and (
-                                not isinstance(item.get("status"), dict)
-                                or item["status"].get("type") != "active"
-                            )
-                        ):
                             continue
                         if not include_history and thread_id in closed:
                             continue
@@ -838,24 +899,61 @@ class HostWorkspaces:
                                 )[:256],
                                 "archived": archived,
                                 "updatedAt": updated if isinstance(updated, int) else 0,
-                                "status": item.get("status", {}).get("type", "unknown")
-                                if isinstance(item.get("status"), dict)
-                                else "unknown",
+                                "status": status.get("type", "unknown"),
                                 "needsInput": any(
                                     flag in ("waitingOnApproval", "waitingOnUserInput")
-                                    for flag in item.get("status", {}).get(
-                                        "activeFlags", []
-                                    )
-                                )
-                                if isinstance(item.get("status"), dict)
-                                else False,
+                                    for flag in status.get("activeFlags", [])
+                                ),
                             }
                         )
                     cursor = page.get("nextCursor")
-                    if not cursor or len(sessions) >= 500:
+                    if not cursor or len(sessions) >= 500 or window_exhausted:
                         break
+                if not include_history and len(sessions) < 500:
+                    find_loaded_active = window_exhausted or bool(cursor)
                 if len(sessions) >= 500:
                     break
+            if find_loaded_active:
+                loaded = self.active_loaded_sessions()
+                listed = {session["threadId"] for session in sessions}
+                for thread in loaded:
+                    if not isinstance(thread, dict):
+                        continue
+                    thread_id = thread.get("id")
+                    cwd = thread.get("cwd")
+                    status = thread.get("status")
+                    if (
+                        not isinstance(thread_id, str)
+                        or thread_id in listed
+                        or thread_id in closed
+                        or not isinstance(cwd, str)
+                        or not isinstance(status, dict)
+                        or status.get("type") != "active"
+                    ):
+                        continue
+                    try:
+                        if Path(cwd).resolve(strict=True) != project:
+                            continue
+                    except (OSError, ValueError, RuntimeError):
+                        continue
+                    updated = thread.get("updatedAt", 0)
+                    sessions.append(
+                        {
+                            "threadId": thread_id,
+                            "title": str(
+                                thread.get("name") or thread.get("preview") or thread_id
+                            )[:256],
+                            "archived": False,
+                            "updatedAt": updated if isinstance(updated, int) else 0,
+                            "status": "active",
+                            "needsInput": any(
+                                flag in ("waitingOnApproval", "waitingOnUserInput")
+                                for flag in status.get("activeFlags", [])
+                            ),
+                        }
+                    )
+                    if len(sessions) >= 500:
+                        break
             sessions.sort(key=lambda session: session["updatedAt"], reverse=True)
             return sessions[:500]
 

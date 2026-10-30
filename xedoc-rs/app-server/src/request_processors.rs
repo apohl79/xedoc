@@ -155,6 +155,8 @@ use xedoc_app_server_protocol::SkillsListParams;
 use xedoc_app_server_protocol::SkillsListResponse;
 use xedoc_app_server_protocol::SortDirection;
 use xedoc_app_server_protocol::Thread;
+use xedoc_app_server_protocol::ThreadActiveListParams;
+use xedoc_app_server_protocol::ThreadActiveListResponse;
 use xedoc_app_server_protocol::ThreadArchiveParams;
 use xedoc_app_server_protocol::ThreadArchiveResponse;
 use xedoc_app_server_protocol::ThreadArchivedNotification;
