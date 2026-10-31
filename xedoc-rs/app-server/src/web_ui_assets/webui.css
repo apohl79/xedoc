@@ -192,6 +192,8 @@ a { color: #8fc4e7; }
 #send { width: 28px; height: 28px; flex: none; background: #3d5261; color: #d5e4ec; font-size: 18px; }
 .status-row { display: flex; gap: 12px; font-size: 12px; padding: 7px 4px 0; color: #778d9c; min-height: 25px; }
 #status { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+#goal-status { min-width: 0; max-width: 60%; text-align: right; }
+#goal-status:empty { display: none; }
 #connection[data-state="live"] { display: none; }
 #connection { color: #d6ae82; }
 #attachments { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 16px; }

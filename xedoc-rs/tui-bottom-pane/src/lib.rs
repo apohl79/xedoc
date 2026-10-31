@@ -101,7 +101,6 @@ use xedoc_tui_composer::bottom_pane::PendingInputPreview;
 pub use xedoc_tui_composer::bottom_pane::QUIT_SHORTCUT_TIMEOUT;
 pub use xedoc_tui_composer::bottom_pane::chat_composer;
 pub use xedoc_tui_composer::bottom_pane::effort_ignition;
-#[cfg(any(test, feature = "test-support"))]
 pub use xedoc_tui_composer::bottom_pane::goal_status_indicator_line;
 pub use xedoc_tui_hooks::browser::HooksBrowserView;
 pub use xedoc_tui_input::LocalImageAttachment;

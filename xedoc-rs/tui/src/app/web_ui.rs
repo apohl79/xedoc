@@ -529,6 +529,7 @@ impl App {
             router,
             timer,
             status,
+            goal_status,
             display_model,
             display_effort,
         ) = self.chat_widget.browser_composer_context(width);
@@ -537,15 +538,17 @@ impl App {
             .is_none()
             .then(|| self.chat_widget.browser_question())
             .flatten();
-        let status = status.map(|line| {
-            let status_width = u16::try_from(line.width())
-                .unwrap_or(u16::MAX)
-                .min(width)
-                .max(1);
-            let area = Rect::new(0, 0, status_width, 1);
-            let mut buffer = Buffer::empty(area);
-            Paragraph::new(line).render(area, &mut buffer);
-            buffer_html(&buffer, None)
+        let [status, goal_status] = [status, goal_status].map(|line| {
+            line.map(|line| {
+                let status_width = u16::try_from(line.width())
+                    .unwrap_or(u16::MAX)
+                    .min(width)
+                    .max(1);
+                let area = Rect::new(0, 0, status_width, 1);
+                let mut buffer = Buffer::empty(area);
+                Paragraph::new(line).render(area, &mut buffer);
+                buffer_html(&buffer, None)
+            })
         });
         let stream_update = match stream_content.as_ref() {
             Some(BrowserStreamContent::Assistant(source)) => {
@@ -681,6 +684,7 @@ impl App {
             "active": active_html, "stream": stream_update, "toolSummary": tool_summary, "activity": if question.is_none() { buffer_html(&activity_buffer, None) } else { String::new() },
             "popup": if popup_height > 0 { buffer_html(&popup_buffer, None) } else { String::new() },
             "status": status,
+            "goalStatus": goal_status,
             "composer": {
                 "text": draft.text, "revision": session.draft_revision, "ackRevision": session.draft_ack,
                 "attachments": attachments, "model": self.chat_widget.current_model(),

@@ -77,6 +77,7 @@ impl ChatWidget {
         Option<String>,
         Option<u64>,
         Option<ratatui::text::Line<'static>>,
+        Option<ratatui::text::Line<'static>>,
         String,
         Option<String>,
     ) {
@@ -88,6 +89,9 @@ impl ChatWidget {
             router.map(str::to_owned),
             elapsed,
             self.bottom_pane.browser_status_line_styled(),
+            crate::bottom_pane::goal_status_indicator_line(
+                self.current_goal_status_indicator.as_ref(),
+            ),
             model.unwrap_or_else(|| self.current_model()).to_owned(),
             if model.is_some() {
                 effort.map(str::to_owned)

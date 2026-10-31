@@ -937,6 +937,7 @@
     popupActive = !!frame.popup;
     if (popupActive) activity.scrollTop = activity.scrollHeight;
     document.getElementById("status").innerHTML = frame.status || "";
+    document.getElementById("goal-status").innerHTML = frame.goalStatus || "";
     question.render(frame.question || null);
     if (frame.composer) renderComposer(frame.composer);
     if (wasLiveOverlay !== liveOverlay) fitLiveFrame();
