@@ -229,7 +229,7 @@ window.XedocPromptMarkdown = (() => {
           tableColumns = 0;
         }
         const rule = /^ {0,3}(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/.test(line.text);
-        const setext = next && !next.code && /^ {0,3}(?:=+|-+)\s*$/.test(next.text)
+        const setext = next && !next.code && !next.item && /^ {0,3}(?:=+|-+)\s*$/.test(next.text)
           && line.text.trim() && !/^ {0,3}#{1,6}(?:[ \t]|$)/.test(line.text)
           && !line.item && !line.quote && !line.definition && !line.headingSeparator && !rule && !tableColumns;
         if (setext) next.headingSeparator = true;

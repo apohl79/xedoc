@@ -19,6 +19,20 @@ module.exports = async function verifyPromptMarkdown(page) {
     assert.equal(await source(), text);
   }
   await page.waitForFunction(() => document.querySelector("#input")?.isContentEditable);
+  for (const marker of ["-", "- "]) {
+    await replace("Existing row");
+    await page.keyboard.press("Shift+Enter");
+    await page.keyboard.type(marker);
+    assert.equal(await source(), `Existing row\n${marker}`);
+    assert.equal(await input.locator(".editor-heading").count(), 0);
+    assert.equal(await input.locator(".editor-list").count(), 1);
+    assert.equal(await input.locator(".editor-list").evaluate(node =>
+      getComputedStyle(node, "::before").content), '"•"');
+    await page.keyboard.type(marker.endsWith(" ") ? "item" : " item");
+    assert.equal(await source(), "Existing row\n- item");
+    assert.equal(await input.locator(".editor-heading").count(), 0);
+    assert.equal(await input.locator(".editor-list").count(), 1);
+  }
   await replace("-");
   assert.equal(await input.locator(".editor-list").count(), 1);
   await page.keyboard.type(" parent");
@@ -39,12 +53,16 @@ module.exports = async function verifyPromptMarkdown(page) {
   const text = [
     "- parent", "  - child", "1. parent", "  1.1. child", "",
     "# Heading", "---", "", "---", "---", "",
+    "Existing row", "-", "", "Another row", "- ", "", "Continued row", "- item", "",
+    "Setext heading", "--", "", "Top heading", "===", "", "First line", "Second line", "---", "",
     "| Name | Value |", "| --- | --- |", "| cell | `value` |", "",
     "    - code, not a list", "", "\\*literal\\*", "",
     "[link](https://example.com/Topic_(detail))", "",
     "```text", "[Image #1]", "```",
   ].join("\n");
   await replace(text);
+  assert.deepEqual(await input.locator(".editor-heading").evaluateAll(nodes =>
+    nodes.map(node => node.dataset.level)), ["1", "2", "1", "2", "2"]);
   assert.equal(await input.locator('[role="table"]').count(), 1);
   assert.equal(await input.locator('[role="separator"]').count(), 3);
   assert.equal(await input.locator(".editor-code.editor-list").count(), 0);
