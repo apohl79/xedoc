@@ -1042,7 +1042,7 @@
   });
 
   function browserTerminalWidth() {
-    const availableWidth = history.hidden ? session.clientWidth - 16 : history.clientWidth;
+    const availableWidth = history.hidden ? session.clientWidth : history.clientWidth;
     return Math.max(40, Math.min(400, Math.floor(availableWidth / 8)));
   }
 
