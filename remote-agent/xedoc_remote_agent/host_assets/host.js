@@ -68,7 +68,10 @@
     if (tab) {
       tab.title = normalizedTitle;
       const label = tab.querySelector(".session-title");
-      if (label) label.textContent = normalizedTitle;
+      if (label) {
+        if (label.textContent !== normalizedTitle) byId("session-menu").hidePopover();
+        label.textContent = normalizedTitle;
+      }
       const close = tab.querySelector(".close-tab");
       if (close) close.setAttribute("aria-label", `Close ${normalizedTitle}`);
     }
@@ -264,6 +267,7 @@
   }
 
   function showLogin() {
+    byId("session-menu").hidePopover();
     accountGeneration++;
     projectViewRequest++;
     state = null;
@@ -532,6 +536,7 @@
   }
 
   async function renderWorkspace() {
+    byId("session-menu").hidePopover();
     projectViewRequest++;
     sessionFrames.forEach((frame) => { frame.hidden = true; });
     const entry = state.workspaces.find((workspace) => workspace.workspaceId === selectedWorkspace);
@@ -659,6 +664,7 @@
   }
 
   async function renderProject(project) {
+    byId("session-menu").hidePopover();
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
     const request = ++sessionRequest;
@@ -739,6 +745,7 @@
   }
 
   function applyProjectSessions(items) {
+    byId("session-menu").hidePopover();
     const sessions = projectSessions(items);
     byId("sessions").replaceChildren(...sessions.map((session) => sessionTab(session)));
     byId("session-empty").classList.remove("loading");
@@ -878,7 +885,7 @@
   }
 
   async function startNewSession() {
-    byId("session-menu").close();
+    byId("session-menu").hidePopover();
     byId("session-view").hidden = false;
     byId("session-loading").hidden = false;
     sessionFrames.forEach((frame) => { frame.hidden = true; });
@@ -902,7 +909,7 @@
   }
 
   async function showResumePicker() {
-    byId("session-menu").close();
+    byId("session-menu").hidePopover();
     byId("resume-project").textContent = selectedProject;
     byId("resume-sessions").replaceChildren(text("p", "Loading sessions…", "loading"));
     byId("resume-dialog").showModal();
@@ -1104,11 +1111,41 @@
   byId("picker").addEventListener("close", () => {
     chooseDirectory = null;
   });
-  byId("session-menu-button").addEventListener("click", () => {
-    if (!selectedProject) return;
-    byId("session-menu-project").textContent = selectedProject;
-    byId("session-menu").showModal();
+  byId("session-menu").addEventListener("beforetoggle", (event) => {
+    if (event.newState !== "open") return;
+    if (!selectedProject) event.preventDefault();
+    event.currentTarget.style.visibility = "hidden";
   });
+  byId("session-menu").addEventListener("toggle", (event) => {
+    const menu = event.currentTarget;
+    const open = event.newState === "open";
+    byId("session-menu-button").setAttribute("aria-expanded", String(open));
+    if (!open) {
+      menu.style.visibility = "hidden";
+      return;
+    }
+    const anchor = byId("session-menu-button").getBoundingClientRect();
+    const bounds = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - bounds.width - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(anchor.bottom + 4, innerHeight - bounds.height - 8))}px`;
+    menu.style.visibility = "visible";
+    byId("new-session").focus();
+  });
+  byId("session-menu").addEventListener("keydown", (event) => {
+    if (event.key === "Tab") {
+      event.currentTarget.hidePopover();
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const items = [...event.currentTarget.querySelectorAll("button")];
+    const index = items.indexOf(document.activeElement);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+      : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+    items[next].focus();
+  });
+  window.addEventListener("resize", () => byId("session-menu").hidePopover());
+  window.addEventListener("blur", () => byId("session-menu").hidePopover());
   byId("new-session").addEventListener("click", () => run(startNewSession));
   byId("resume-session").addEventListener("click", () => run(showResumePicker));
   byId("host-name-button").addEventListener("click", () => showDiscoveredHosts());
