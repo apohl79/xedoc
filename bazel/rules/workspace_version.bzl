@@ -1,4 +1,4 @@
-"""Exposes the Cargo workspace version to Bazel-built Xedoc binaries."""
+"""Exposes the Cargo workspace version to version-sensitive Bazel targets."""
 
 def _workspace_package_version(manifest):
     in_workspace_package = False
@@ -28,5 +28,5 @@ xedoc_workspace_version = repository_rule(
             doc = "Cargo workspace manifest whose [workspace.package] version is exported.",
         ),
     },
-    doc = "Generates a rustc env file carrying the Cargo workspace version, so only binaries that consume it are rebuilt on a version bump.",
+    doc = "Generates a rustc env file carrying the Cargo workspace version for binaries and version-sensitive HTTP clients.",
 )

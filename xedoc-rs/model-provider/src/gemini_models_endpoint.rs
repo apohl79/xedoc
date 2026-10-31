@@ -107,6 +107,18 @@ impl GeminiModelsEndpoint {
 }
 
 impl ModelsEndpointClient for GeminiModelsEndpoint {
+    fn cache_scope(&self) -> ModelsEndpointFuture<'_, CoreResult<Option<String>>> {
+        Box::pin(async {
+            let endpoint = crate::models_endpoint::OpenAiModelsEndpoint::new_with_api_key_source(
+                self.provider_info.clone(),
+                self.auth_manager.clone(),
+                self.api_key_source.clone(),
+                /*api_auth_override*/ None,
+            );
+            endpoint.cache_scope().await
+        })
+    }
+
     fn has_command_auth(&self) -> bool {
         self.provider_info.has_command_auth()
     }

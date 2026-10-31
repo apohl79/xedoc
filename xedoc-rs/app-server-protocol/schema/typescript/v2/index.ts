@@ -235,6 +235,7 @@ export type { MergeStrategy } from "./MergeStrategy";
 export type { MockExperimentalMethodParams } from "./MockExperimentalMethodParams";
 export type { MockExperimentalMethodResponse } from "./MockExperimentalMethodResponse";
 export type { Model } from "./Model";
+export type { ModelAvailability } from "./ModelAvailability";
 export type { ModelAvailabilityNux } from "./ModelAvailabilityNux";
 export type { ModelListParams } from "./ModelListParams";
 export type { ModelListResponse } from "./ModelListResponse";

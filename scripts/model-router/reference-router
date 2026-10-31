@@ -183,16 +183,38 @@ DEFAULT_RANKING_CURVES = [
 ]
 
 
-def bundled_routing_tables():
+def bundled_routing_tables(model_roles=None):
     tables = {}
     efforts = ("low", "medium", "high", "xhigh", "max")
-    for provider, models in (
-        ("openai", ("gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra")),
-        ("anthropic", (
-            "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1",
-        )),
+    catalogs = []
+    for path in (
+        Path(__file__).with_name("model-catalog.json"),
+        Path(__file__).resolve().parents[2] / "xedoc-rs" / "models-manager" / "catalog.json",
     ):
-        luna, terra, sol, astra = models
+        try:
+            if path.stat().st_size > 131072:
+                continue
+            catalog = json.loads(path.read_text())
+            if catalog.get("schemaVersion") == 1 and type(catalog.get("revision")) is int:
+                for provider in ("openai", "anthropic"):
+                    preferences = catalog["providers"][provider]
+                    if set(preferences["roles"]) != {"fast", "balanced", "strong", "flagship"}:
+                        raise ValueError("Invalid routing roles")
+                    if any(model not in preferences["models"] for model in preferences["roles"].values()):
+                        raise ValueError("Routing role references an unknown model")
+                catalogs.append(catalog)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue
+    if not catalogs:
+        raise ValueError("Managed model catalog is unavailable")
+    catalog = max(catalogs, key=lambda catalog: catalog["revision"])
+    for provider in ("openai", "anthropic"):
+        roles = model_roles[provider] if model_roles else catalog["providers"][provider]["roles"]
+        if not isinstance(roles, dict) or set(roles) != {"fast", "balanced", "strong", "flagship"}:
+            raise ValueError("Invalid managed routing roles")
+        if any(not isinstance(model, str) or not model or len(model) > 128 for model in roles.values()):
+            raise ValueError("Invalid managed routing model")
+        luna, terra, sol, astra = (roles[role] for role in ("fast", "balanced", "strong", "flagship"))
         for name, curve, slots in (
             ("balanced", "balanced", [
                 (model, effort) for model in (luna, terra, sol) for effort in efforts
@@ -6448,6 +6470,7 @@ def approval_response(request, policy):
 
 
 def main():
+    global BUILTIN_TABLES
     try:
         request = json.load(sys.stdin)
         if (
@@ -6456,6 +6479,11 @@ def main():
         ):
             raise ValueError("unsupported protocol or extension")
         method = request.get("method")
+        model_roles = (request.get("context") or {}).get("modelRoles")
+        if model_roles:
+            if len(json.dumps(model_roles, separators=(",", ":")).encode()) > 900:
+                raise ValueError("Managed routing roles exceed context limit")
+            BUILTIN_TABLES = bundled_routing_tables(model_roles=model_roles)
         if method == "report.render":
             result = report_render(request)
         else:

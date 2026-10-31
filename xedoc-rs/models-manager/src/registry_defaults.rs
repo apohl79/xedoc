@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::io;
+use std::path::Path;
 
 use xedoc_protocol::config_types::ReasoningSummary;
 use xedoc_protocol::openai_models::ApplyPatchToolType;
@@ -21,7 +22,31 @@ pub(crate) const DEFAULT_CONTEXT_WINDOW: i64 = 400_000;
 pub(crate) const DEFAULT_COMPACT_LIMIT: i64 = 360_000;
 const DEFAULT_MAX_CONTEXT_WINDOW: i64 = 1_000_000;
 
-pub(crate) fn default_registry() -> io::Result<ModelRegistry> {
+pub(crate) struct ManagedDefaults {
+    pub(crate) revision: String,
+    pub(crate) registry: ModelRegistry,
+    pub(crate) routing_roles: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+pub(crate) fn managed_registry(home: &Path) -> io::Result<ManagedDefaults> {
+    let cache = home.join(crate::catalog::CACHE_FILE);
+    if !cache.exists() {
+        std::fs::create_dir_all(home)?;
+        xedoc_utils_path::write_atomically(&cache, include_str!("../catalog.json"))?;
+    }
+    let catalog = crate::catalog::Catalog::load(home)?;
+    Ok(ManagedDefaults {
+        revision: catalog.revision.to_string(),
+        routing_roles: catalog.routing_roles(),
+        registry: catalog.apply(legacy_defaults()?)?,
+    })
+}
+
+pub(crate) fn install_catalog(home: &Path, contents: &str) -> io::Result<()> {
+    crate::catalog::install(home, contents)
+}
+
+pub(crate) fn legacy_defaults() -> io::Result<ModelRegistry> {
     let mut providers = BTreeMap::new();
     providers.insert("openai".to_string(), openai_defaults()?);
     providers.insert(

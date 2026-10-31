@@ -125,10 +125,6 @@ impl ModelManagerRequestProcessor {
                 .models
                 .into_iter()
                 .map(|(model_id, model)| {
-                    let info = model.info;
-                    let context_window = info.resolved_context_window().unwrap_or_default();
-                    let auto_compact_token_limit =
-                        info.auto_compact_token_limit().unwrap_or_default();
                     let catalog_model = (provider_id == self.config.model_provider_id)
                         .then(|| {
                             remote_models.as_ref().and_then(|models| {
@@ -136,6 +132,16 @@ impl ModelManagerRequestProcessor {
                             })
                         })
                         .flatten();
+                    let info = catalog_model
+                        .and_then(|discovered| {
+                            self.registry
+                                .configured_discovered_model(&provider_id, discovered)
+                                .ok()
+                        })
+                        .unwrap_or(model.info);
+                    let context_window = info.resolved_context_window().unwrap_or_default();
+                    let auto_compact_token_limit =
+                        info.auto_compact_token_limit().unwrap_or_default();
                     let resolved = resolve_instructions(
                         info.clone(),
                         catalog_model,
@@ -187,15 +193,14 @@ impl ModelManagerRequestProcessor {
                 fast_model,
                 default_reasoning_effort,
             } => {
+                let mut registry = self.registry.snapshot();
+                ensure_provider_config(&mut registry, &self.config, &provider_id);
+                let provider = provider_mut(&mut registry, &provider_id).map_err(registry_error)?;
+                provider.default_model = default_model;
+                provider.fast_model = fast_model;
+                provider.default_reasoning_effort = default_reasoning_effort;
                 self.registry
-                    .update(|registry| {
-                        ensure_provider_config(registry, &self.config, &provider_id);
-                        let provider = provider_mut(registry, &provider_id)?;
-                        provider.default_model = default_model;
-                        provider.fast_model = fast_model;
-                        provider.default_reasoning_effort = default_reasoning_effort;
-                        Ok(())
-                    })
+                    .pin_provider_defaults(&provider_id, provider.clone())
                     .map_err(registry_error)?;
             }
             ModelManagerUpdateParams::ModelSettings {
@@ -208,21 +213,20 @@ impl ModelManagerRequestProcessor {
             } => {
                 let default_instructions =
                     self.instructions_without_prompt_override(&provider_id, &model_id);
+                let mut registry = self.registry.snapshot();
+                ensure_provider_config(&mut registry, &self.config, &provider_id);
+                let provider = provider_mut(&mut registry, &provider_id).map_err(registry_error)?;
+                let model = provider.models.get_mut(&model_id).ok_or_else(|| {
+                    registry_error(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!("provider `{provider_id}` has no model `{model_id}`"),
+                    ))
+                })?;
+                model.info.context_window = Some(context_window);
+                model.info.max_context_window = Some(max_context_window);
+                model.info.auto_compact_token_limit = Some(auto_compact_token_limit);
                 self.registry
-                    .update(|registry| {
-                        ensure_provider_config(registry, &self.config, &provider_id);
-                        let provider = provider_mut(registry, &provider_id)?;
-                        let model = provider.models.get_mut(&model_id).ok_or_else(|| {
-                            io::Error::new(
-                                io::ErrorKind::NotFound,
-                                format!("provider `{provider_id}` has no model `{model_id}`"),
-                            )
-                        })?;
-                        model.info.context_window = Some(context_window);
-                        model.info.max_context_window = Some(max_context_window);
-                        model.info.auto_compact_token_limit = Some(auto_compact_token_limit);
-                        Ok(())
-                    })
+                    .pin_model_context(&provider_id, &model_id, provider.clone())
                     .map_err(registry_error)?;
                 self.update_prompt_override(
                     &provider_id,

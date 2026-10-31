@@ -41,12 +41,17 @@ impl DeepSeekModelsEndpoint {
                 provider_info,
                 auth_manager,
                 api_key_source,
+                /*api_auth_override*/ None,
             ),
         }
     }
 }
 
 impl ModelsEndpointClient for DeepSeekModelsEndpoint {
+    fn cache_scope(&self) -> ModelsEndpointFuture<'_, CoreResult<Option<String>>> {
+        self.inner.cache_scope()
+    }
+
     fn has_command_auth(&self) -> bool {
         self.inner.has_command_auth()
     }

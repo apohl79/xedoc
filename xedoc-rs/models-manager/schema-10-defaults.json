@@ -1,0 +1,1268 @@
+{
+  "schema_version": 10,
+  "providers": {
+    "anthropic": {
+      "display_name": "Anthropic",
+      "default_model": "claude-fable-5-1",
+      "fast_model": "claude-haiku-5-5",
+      "default_reasoning_effort": "medium",
+      "template": {
+        "info": {
+          "slug": "*",
+          "display_name": "*",
+          "description": null,
+          "default_reasoning_level": "medium",
+          "supported_reasoning_levels": [
+            {
+              "effort": "low",
+              "description": "Fast responses with lighter reasoning"
+            },
+            {
+              "effort": "medium",
+              "description": "Balanced reasoning for most tasks"
+            },
+            {
+              "effort": "high",
+              "description": "Deeper reasoning for complex tasks"
+            },
+            {
+              "effort": "xhigh",
+              "description": "Maximum fixed reasoning budget"
+            },
+            {
+              "effort": "max",
+              "description": "Provider-managed maximum reasoning"
+            }
+          ],
+          "shell_type": "default",
+          "visibility": "list",
+          "supported_in_api": true,
+          "priority": 99,
+          "additional_speed_tiers": [],
+          "service_tiers": [],
+          "availability_nux": null,
+          "upgrade": null,
+          "base_instructions": "",
+          "include_skills_usage_instructions": true,
+          "default_reasoning_summary": "auto",
+          "support_verbosity": false,
+          "default_verbosity": null,
+          "apply_patch_tool_type": "freeform",
+          "web_search_tool_type": "text",
+          "truncation_policy": {
+            "mode": "bytes",
+            "limit": 10000
+          },
+          "supports_parallel_tool_calls": false,
+          "supports_image_detail_original": false,
+          "context_window": 400000,
+          "max_context_window": 1000000,
+          "auto_compact_token_limit": 360000,
+          "effective_context_window_percent": 100,
+          "experimental_supported_tools": [],
+          "input_modalities": [
+            "text",
+            "image"
+          ],
+          "supports_search_tool": false,
+          "use_responses_lite": false
+        }
+      },
+      "models": {
+        "claude-fable-5-1": {
+          "info": {
+            "slug": "claude-fable-5-1",
+            "display_name": "claude-fable-5-1",
+            "description": "Anthropic model claude-fable-5-1",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balanced reasoning for most tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Deeper reasoning for complex tasks"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Maximum fixed reasoning budget"
+              },
+              {
+                "effort": "max",
+                "description": "Provider-managed maximum reasoning"
+              }
+            ],
+            "shell_type": "default",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 2,
+            "additional_speed_tiers": [],
+            "service_tiers": [],
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "auto",
+            "support_verbosity": false,
+            "default_verbosity": null,
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text",
+            "truncation_policy": {
+              "mode": "bytes",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": false,
+            "supports_image_detail_original": false,
+            "context_window": 400000,
+            "max_context_window": 1000000,
+            "auto_compact_token_limit": 360000,
+            "effective_context_window_percent": 100,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": false,
+            "use_responses_lite": false
+          },
+          "prices": {
+            "input": 10.0,
+            "cached_input": 0.25,
+            "cache_write_input": 12.5,
+            "output": 50.0
+          }
+        },
+        "claude-haiku-5-5": {
+          "info": {
+            "slug": "claude-haiku-5-5",
+            "display_name": "claude-haiku-5-5",
+            "description": "Anthropic model claude-haiku-5-5",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balanced reasoning for most tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Deeper reasoning for complex tasks"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Maximum fixed reasoning budget"
+              },
+              {
+                "effort": "max",
+                "description": "Provider-managed maximum reasoning"
+              }
+            ],
+            "shell_type": "default",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 4,
+            "additional_speed_tiers": [],
+            "service_tiers": [],
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "auto",
+            "support_verbosity": false,
+            "default_verbosity": null,
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text",
+            "truncation_policy": {
+              "mode": "bytes",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": false,
+            "supports_image_detail_original": false,
+            "context_window": 400000,
+            "max_context_window": 1000000,
+            "auto_compact_token_limit": 360000,
+            "effective_context_window_percent": 100,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": false,
+            "use_responses_lite": false
+          },
+          "prices": {
+            "input": 0.1,
+            "cached_input": 0.01,
+            "cache_write_input": 0.125,
+            "output": 0.5
+          }
+        },
+        "claude-opus-5-5": {
+          "info": {
+            "slug": "claude-opus-5-5",
+            "display_name": "claude-opus-5-5",
+            "description": "Anthropic model claude-opus-5-5",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balanced reasoning for most tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Deeper reasoning for complex tasks"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Maximum fixed reasoning budget"
+              },
+              {
+                "effort": "max",
+                "description": "Provider-managed maximum reasoning"
+              }
+            ],
+            "shell_type": "default",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 1,
+            "additional_speed_tiers": [],
+            "service_tiers": [],
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "auto",
+            "support_verbosity": false,
+            "default_verbosity": null,
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text",
+            "truncation_policy": {
+              "mode": "bytes",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": false,
+            "supports_image_detail_original": false,
+            "context_window": 400000,
+            "max_context_window": 1000000,
+            "auto_compact_token_limit": 360000,
+            "effective_context_window_percent": 100,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": false,
+            "use_responses_lite": false
+          },
+          "prices": {
+            "input": 4.0,
+            "cached_input": 0.2,
+            "cache_write_input": 5.0,
+            "output": 20.0
+          }
+        },
+        "claude-sonnet-5-5": {
+          "info": {
+            "slug": "claude-sonnet-5-5",
+            "display_name": "claude-sonnet-5-5",
+            "description": "Anthropic model claude-sonnet-5-5",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balanced reasoning for most tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Deeper reasoning for complex tasks"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Maximum fixed reasoning budget"
+              },
+              {
+                "effort": "max",
+                "description": "Provider-managed maximum reasoning"
+              }
+            ],
+            "shell_type": "default",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 3,
+            "additional_speed_tiers": [],
+            "service_tiers": [],
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "auto",
+            "support_verbosity": false,
+            "default_verbosity": null,
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text",
+            "truncation_policy": {
+              "mode": "bytes",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": false,
+            "supports_image_detail_original": false,
+            "context_window": 400000,
+            "max_context_window": 1000000,
+            "auto_compact_token_limit": 360000,
+            "effective_context_window_percent": 100,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": false,
+            "use_responses_lite": false
+          },
+          "prices": {
+            "input": 2.0,
+            "cached_input": 0.1,
+            "cache_write_input": 2.5,
+            "output": 10.0
+          }
+        }
+      }
+    },
+    "deepseek": {
+      "display_name": "DeepSeek",
+      "default_model": "deepseek-v4-pro",
+      "fast_model": "deepseek-v4-flash",
+      "default_reasoning_effort": "medium",
+      "template": {
+        "info": {
+          "slug": "*",
+          "display_name": "*",
+          "description": null,
+          "default_reasoning_level": "medium",
+          "supported_reasoning_levels": [
+            {
+              "effort": "low",
+              "description": "Fast responses with lighter reasoning"
+            },
+            {
+              "effort": "medium",
+              "description": "Balanced reasoning for most tasks"
+            },
+            {
+              "effort": "high",
+              "description": "Deeper reasoning for complex tasks"
+            },
+            {
+              "effort": "xhigh",
+              "description": "Maximum fixed reasoning budget"
+            }
+          ],
+          "shell_type": "default",
+          "visibility": "list",
+          "supported_in_api": true,
+          "priority": 99,
+          "additional_speed_tiers": [],
+          "service_tiers": [],
+          "availability_nux": null,
+          "upgrade": null,
+          "base_instructions": "",
+          "include_skills_usage_instructions": true,
+          "default_reasoning_summary": "auto",
+          "support_verbosity": false,
+          "default_verbosity": null,
+          "apply_patch_tool_type": "freeform",
+          "web_search_tool_type": "text",
+          "truncation_policy": {
+            "mode": "bytes",
+            "limit": 10000
+          },
+          "supports_parallel_tool_calls": false,
+          "supports_image_detail_original": false,
+          "context_window": 400000,
+          "max_context_window": 1000000,
+          "auto_compact_token_limit": 360000,
+          "effective_context_window_percent": 100,
+          "experimental_supported_tools": [],
+          "input_modalities": [
+            "text",
+            "image"
+          ],
+          "supports_search_tool": false,
+          "use_responses_lite": false
+        }
+      },
+      "models": {
+        "deepseek-v4-flash": {
+          "info": {
+            "slug": "deepseek-v4-flash",
+            "display_name": "deepseek-v4-flash",
+            "description": "DeepSeek model deepseek-v4-flash",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balanced reasoning for most tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Deeper reasoning for complex tasks"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Maximum fixed reasoning budget"
+              }
+            ],
+            "shell_type": "default",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 2,
+            "additional_speed_tiers": [],
+            "service_tiers": [],
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "auto",
+            "support_verbosity": false,
+            "default_verbosity": null,
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text",
+            "truncation_policy": {
+              "mode": "bytes",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": false,
+            "supports_image_detail_original": false,
+            "context_window": 400000,
+            "max_context_window": 1000000,
+            "auto_compact_token_limit": 360000,
+            "effective_context_window_percent": 100,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": false,
+            "use_responses_lite": false
+          },
+          "prices": {
+            "input": 0.15,
+            "cached_input": 0.003,
+            "output": 0.6
+          }
+        },
+        "deepseek-v4-pro": {
+          "info": {
+            "slug": "deepseek-v4-pro",
+            "display_name": "deepseek-v4-pro",
+            "description": "DeepSeek model deepseek-v4-pro",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balanced reasoning for most tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Deeper reasoning for complex tasks"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Maximum fixed reasoning budget"
+              }
+            ],
+            "shell_type": "default",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 1,
+            "additional_speed_tiers": [],
+            "service_tiers": [],
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "auto",
+            "support_verbosity": false,
+            "default_verbosity": null,
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text",
+            "truncation_policy": {
+              "mode": "bytes",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": false,
+            "supports_image_detail_original": false,
+            "context_window": 400000,
+            "max_context_window": 1000000,
+            "auto_compact_token_limit": 360000,
+            "effective_context_window_percent": 100,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": false,
+            "use_responses_lite": false
+          },
+          "prices": {
+            "input": 0.66,
+            "cached_input": 0.022,
+            "output": 1.98
+          }
+        }
+      }
+    },
+    "google": {
+      "display_name": "Google",
+      "default_model": "gemini-3.1-pro-preview",
+      "fast_model": "gemini-3.6-flash",
+      "default_reasoning_effort": "medium",
+      "template": {
+        "info": {
+          "slug": "*",
+          "display_name": "*",
+          "description": null,
+          "default_reasoning_level": "medium",
+          "supported_reasoning_levels": [
+            {
+              "effort": "low",
+              "description": "Fast responses with lighter reasoning"
+            },
+            {
+              "effort": "medium",
+              "description": "Balanced reasoning for most tasks"
+            },
+            {
+              "effort": "high",
+              "description": "Deeper reasoning for complex tasks"
+            },
+            {
+              "effort": "xhigh",
+              "description": "Maximum fixed reasoning budget"
+            }
+          ],
+          "shell_type": "default",
+          "visibility": "list",
+          "supported_in_api": true,
+          "priority": 99,
+          "additional_speed_tiers": [],
+          "service_tiers": [],
+          "availability_nux": null,
+          "upgrade": null,
+          "base_instructions": "",
+          "include_skills_usage_instructions": true,
+          "default_reasoning_summary": "auto",
+          "support_verbosity": false,
+          "default_verbosity": null,
+          "apply_patch_tool_type": "freeform",
+          "web_search_tool_type": "text",
+          "truncation_policy": {
+            "mode": "bytes",
+            "limit": 10000
+          },
+          "supports_parallel_tool_calls": false,
+          "supports_image_detail_original": false,
+          "context_window": 400000,
+          "max_context_window": 1000000,
+          "auto_compact_token_limit": 360000,
+          "effective_context_window_percent": 100,
+          "experimental_supported_tools": [],
+          "input_modalities": [
+            "text",
+            "image"
+          ],
+          "supports_search_tool": false,
+          "use_responses_lite": false
+        }
+      },
+      "models": {
+        "gemini-3-pro-preview": {
+          "info": {
+            "slug": "gemini-3-pro-preview",
+            "display_name": "gemini-3-pro-preview",
+            "description": "Google model gemini-3-pro-preview",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balanced reasoning for most tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Deeper reasoning for complex tasks"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Maximum fixed reasoning budget"
+              }
+            ],
+            "shell_type": "default",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 4,
+            "additional_speed_tiers": [],
+            "service_tiers": [],
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "auto",
+            "support_verbosity": false,
+            "default_verbosity": null,
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text",
+            "truncation_policy": {
+              "mode": "bytes",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": false,
+            "supports_image_detail_original": false,
+            "context_window": 400000,
+            "max_context_window": 1000000,
+            "auto_compact_token_limit": 360000,
+            "effective_context_window_percent": 100,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": false,
+            "use_responses_lite": false
+          },
+          "prices": {
+            "input": 1.25,
+            "cached_input": 0.125,
+            "output": 5.0
+          }
+        },
+        "gemini-3.1-pro-preview": {
+          "info": {
+            "slug": "gemini-3.1-pro-preview",
+            "display_name": "gemini-3.1-pro-preview",
+            "description": "Google model gemini-3.1-pro-preview",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balanced reasoning for most tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Deeper reasoning for complex tasks"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Maximum fixed reasoning budget"
+              }
+            ],
+            "shell_type": "default",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 3,
+            "additional_speed_tiers": [],
+            "service_tiers": [],
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "auto",
+            "support_verbosity": false,
+            "default_verbosity": null,
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text",
+            "truncation_policy": {
+              "mode": "bytes",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": false,
+            "supports_image_detail_original": false,
+            "context_window": 400000,
+            "max_context_window": 1000000,
+            "auto_compact_token_limit": 360000,
+            "effective_context_window_percent": 100,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": false,
+            "use_responses_lite": false
+          },
+          "prices": {
+            "input": 1.25,
+            "cached_input": 0.125,
+            "output": 5.0
+          }
+        },
+        "gemini-3.5-flash": {
+          "info": {
+            "slug": "gemini-3.5-flash",
+            "display_name": "gemini-3.5-flash",
+            "description": "Google model gemini-3.5-flash",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balanced reasoning for most tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Deeper reasoning for complex tasks"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Maximum fixed reasoning budget"
+              }
+            ],
+            "shell_type": "default",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 2,
+            "additional_speed_tiers": [],
+            "service_tiers": [],
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "auto",
+            "support_verbosity": false,
+            "default_verbosity": null,
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text",
+            "truncation_policy": {
+              "mode": "bytes",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": false,
+            "supports_image_detail_original": false,
+            "context_window": 400000,
+            "max_context_window": 1000000,
+            "auto_compact_token_limit": 360000,
+            "effective_context_window_percent": 100,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": false,
+            "use_responses_lite": false
+          },
+          "prices": {
+            "input": 0.15,
+            "cached_input": 0.015,
+            "output": 0.6
+          }
+        },
+        "gemini-3.6-flash": {
+          "info": {
+            "slug": "gemini-3.6-flash",
+            "display_name": "gemini-3.6-flash",
+            "description": "Google model gemini-3.6-flash",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balanced reasoning for most tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Deeper reasoning for complex tasks"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Maximum fixed reasoning budget"
+              }
+            ],
+            "shell_type": "default",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 1,
+            "additional_speed_tiers": [],
+            "service_tiers": [],
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "auto",
+            "support_verbosity": false,
+            "default_verbosity": null,
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text",
+            "truncation_policy": {
+              "mode": "bytes",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": false,
+            "supports_image_detail_original": false,
+            "context_window": 400000,
+            "max_context_window": 1000000,
+            "auto_compact_token_limit": 360000,
+            "effective_context_window_percent": 100,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": false,
+            "use_responses_lite": false
+          },
+          "prices": {
+            "input": 0.15,
+            "cached_input": 0.015,
+            "output": 0.6
+          }
+        }
+      }
+    },
+    "openai": {
+      "display_name": "OpenAI",
+      "default_model": "gpt-6.1-sol",
+      "fast_model": "gpt-6-luna",
+      "default_reasoning_effort": "medium",
+      "template": {
+        "info": {
+          "slug": "*",
+          "display_name": "*",
+          "description": null,
+          "default_reasoning_level": "medium",
+          "supported_reasoning_levels": [
+            {
+              "effort": "low",
+              "description": "Fast responses with lighter reasoning"
+            },
+            {
+              "effort": "medium",
+              "description": "Balanced reasoning for most tasks"
+            },
+            {
+              "effort": "high",
+              "description": "Deeper reasoning for complex tasks"
+            },
+            {
+              "effort": "xhigh",
+              "description": "Maximum fixed reasoning budget"
+            },
+            {
+              "effort": "max",
+              "description": "Provider-managed maximum reasoning"
+            }
+          ],
+          "shell_type": "default",
+          "visibility": "list",
+          "supported_in_api": true,
+          "priority": 99,
+          "additional_speed_tiers": [],
+          "service_tiers": [],
+          "availability_nux": null,
+          "upgrade": null,
+          "base_instructions": "",
+          "include_skills_usage_instructions": true,
+          "default_reasoning_summary": "auto",
+          "support_verbosity": false,
+          "default_verbosity": null,
+          "apply_patch_tool_type": "freeform",
+          "web_search_tool_type": "text",
+          "truncation_policy": {
+            "mode": "bytes",
+            "limit": 10000
+          },
+          "supports_parallel_tool_calls": false,
+          "supports_image_detail_original": false,
+          "context_window": 400000,
+          "max_context_window": 1000000,
+          "auto_compact_token_limit": 360000,
+          "effective_context_window_percent": 100,
+          "experimental_supported_tools": [],
+          "input_modalities": [
+            "text",
+            "image"
+          ],
+          "supports_search_tool": false,
+          "use_responses_lite": false
+        }
+      },
+      "models": {
+        "gpt-6-astra": {
+          "info": {
+            "slug": "gpt-6-astra",
+            "display_name": "GPT-6-Astra",
+            "description": "Quality-first flagship for difficult coding and complex work.",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balances speed and reasoning depth for everyday tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Greater reasoning depth for complex problems"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Extra high reasoning depth for complex problems"
+              },
+              {
+                "effort": "max",
+                "description": "Maximum reasoning depth for the hardest problems"
+              },
+              {
+                "effort": "ultra",
+                "description": "Maximum reasoning with automatic task delegation"
+              }
+            ],
+            "shell_type": "shell_command",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 1,
+            "additional_speed_tiers": [
+              "fast"
+            ],
+            "service_tiers": [
+              {
+                "id": "priority",
+                "name": "Fast",
+                "description": "1.5x speed, increased usage"
+              }
+            ],
+            "default_service_tier": "priority",
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "none",
+            "support_verbosity": true,
+            "default_verbosity": "low",
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text_and_image",
+            "truncation_policy": {
+              "mode": "tokens",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": true,
+            "supports_image_detail_original": true,
+            "context_window": 272000,
+            "max_context_window": 872000,
+            "comp_hash": "3000",
+            "effective_context_window_percent": 95,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": true,
+            "use_responses_lite": true,
+            "tool_mode": "code_mode_only",
+            "multi_agent_version": "v2"
+          },
+          "prices": {
+            "input": 10.0,
+            "cached_input": 1.0,
+            "cache_write_input": 12.5,
+            "long_context_cache_write_input": 25.0,
+            "output": 50.0,
+            "long_context_input": 20.0,
+            "long_context_cached_input": 2.0,
+            "long_context_output": 75.0
+          }
+        },
+        "gpt-6-luna": {
+          "info": {
+            "slug": "gpt-6-luna",
+            "display_name": "GPT-6-Luna",
+            "description": "Fast and affordable model for easier tasks.",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balances speed and reasoning depth for everyday tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Greater reasoning depth for complex problems"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Extra high reasoning depth for complex problems"
+              },
+              {
+                "effort": "max",
+                "description": "Maximum reasoning depth for the hardest problems"
+              }
+            ],
+            "shell_type": "shell_command",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 2,
+            "additional_speed_tiers": [
+              "fast"
+            ],
+            "service_tiers": [
+              {
+                "id": "priority",
+                "name": "Fast",
+                "description": "1.5x speed, increased usage"
+              }
+            ],
+            "default_service_tier": "priority",
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "none",
+            "support_verbosity": true,
+            "default_verbosity": "low",
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text_and_image",
+            "truncation_policy": {
+              "mode": "tokens",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": true,
+            "supports_image_detail_original": true,
+            "context_window": 272000,
+            "max_context_window": 872000,
+            "comp_hash": "3000",
+            "effective_context_window_percent": 95,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": true,
+            "use_responses_lite": true,
+            "tool_mode": "code_mode_only",
+            "multi_agent_version": "v2"
+          },
+          "prices": {
+            "input": 0.1,
+            "cached_input": 0.01,
+            "cache_write_input": 0.125,
+            "long_context_cache_write_input": 0.25,
+            "output": 0.5,
+            "long_context_input": 0.2,
+            "long_context_cached_input": 0.02,
+            "long_context_output": 0.75
+          }
+        },
+        "gpt-6.1-sol": {
+          "info": {
+            "slug": "gpt-6.1-sol",
+            "display_name": "GPT-6.1-Sol",
+            "description": "Near-Astra performance for complex work at a lower cost.",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balances speed and reasoning depth for everyday tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Greater reasoning depth for complex problems"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Extra high reasoning depth for complex problems"
+              },
+              {
+                "effort": "max",
+                "description": "Maximum reasoning depth for the hardest problems"
+              }
+            ],
+            "shell_type": "shell_command",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 1,
+            "additional_speed_tiers": [
+              "fast"
+            ],
+            "service_tiers": [
+              {
+                "id": "priority",
+                "name": "Fast",
+                "description": "1.5x speed, increased usage"
+              }
+            ],
+            "default_service_tier": "priority",
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "none",
+            "support_verbosity": true,
+            "default_verbosity": "low",
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text_and_image",
+            "truncation_policy": {
+              "mode": "tokens",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": true,
+            "supports_image_detail_original": true,
+            "context_window": 1050000,
+            "max_context_window": 1050000,
+            "auto_compact_token_limit": 945000,
+            "comp_hash": "3000",
+            "effective_context_window_percent": 95,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": true,
+            "use_responses_lite": true,
+            "tool_mode": "code_mode_only",
+            "multi_agent_version": "v2"
+          },
+          "prices": {
+            "input": 2.0,
+            "cached_input": 0.1,
+            "cache_write_input": 2.5,
+            "long_context_cache_write_input": 5.0,
+            "output": 10.0,
+            "long_context_input": 4.0,
+            "long_context_cached_input": 0.2,
+            "long_context_output": 15.0
+          }
+        },
+        "gpt-6.1-terra": {
+          "info": {
+            "slug": "gpt-6.1-terra",
+            "display_name": "GPT-6.1-Terra",
+            "description": "Fast, efficient model for visual reasoning and precise computer use.",
+            "default_reasoning_level": "medium",
+            "supported_reasoning_levels": [
+              {
+                "effort": "none",
+                "description": "No reasoning; fastest responses"
+              },
+              {
+                "effort": "low",
+                "description": "Fast responses with lighter reasoning"
+              },
+              {
+                "effort": "medium",
+                "description": "Balances speed and reasoning depth for everyday tasks"
+              },
+              {
+                "effort": "high",
+                "description": "Greater reasoning depth for complex problems"
+              },
+              {
+                "effort": "xhigh",
+                "description": "Extra high reasoning depth for complex problems"
+              },
+              {
+                "effort": "max",
+                "description": "Maximum reasoning depth for the hardest problems"
+              }
+            ],
+            "shell_type": "shell_command",
+            "visibility": "list",
+            "supported_in_api": true,
+            "priority": 4,
+            "additional_speed_tiers": [
+              "fast"
+            ],
+            "service_tiers": [
+              {
+                "id": "priority",
+                "name": "Fast",
+                "description": "1.5x speed, increased usage"
+              }
+            ],
+            "availability_nux": null,
+            "upgrade": null,
+            "base_instructions": "",
+            "include_skills_usage_instructions": true,
+            "default_reasoning_summary": "none",
+            "support_verbosity": true,
+            "default_verbosity": "low",
+            "apply_patch_tool_type": "freeform",
+            "web_search_tool_type": "text_and_image",
+            "truncation_policy": {
+              "mode": "tokens",
+              "limit": 10000
+            },
+            "supports_parallel_tool_calls": true,
+            "supports_image_detail_original": true,
+            "context_window": 1050000,
+            "max_context_window": 1050000,
+            "auto_compact_token_limit": 945000,
+            "comp_hash": "3000",
+            "effective_context_window_percent": 95,
+            "experimental_supported_tools": [],
+            "input_modalities": [
+              "text",
+              "image"
+            ],
+            "supports_search_tool": true,
+            "use_responses_lite": true,
+            "tool_mode": "code_mode_only",
+            "multi_agent_version": "v2"
+          },
+          "prices": {
+            "input": 1.0,
+            "cached_input": 0.05,
+            "cache_write_input": 1.25,
+            "long_context_cache_write_input": 2.5,
+            "output": 5.0,
+            "long_context_input": 2.0,
+            "long_context_cached_input": 0.1,
+            "long_context_output": 7.5
+          }
+        }
+      }
+    }
+  }
+}

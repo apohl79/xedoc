@@ -1564,6 +1564,7 @@ fn model_preset_from_api_model(model: ApiModel) -> ModelPreset {
         model: model.model,
         display_name: model.display_name,
         description: model.description,
+        availability: model.availability.to_core(),
         default_reasoning_effort: model.default_reasoning_effort,
         supported_reasoning_efforts: model
             .supported_reasoning_efforts

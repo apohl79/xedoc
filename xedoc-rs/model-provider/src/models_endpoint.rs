@@ -5,6 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use http::HeaderMap;
+use sha2::Digest;
+use sha2::Sha256;
 use tokio::sync::OnceCell;
 use tokio::time::timeout;
 use xedoc_api::AgentIdentityTelemetry;
@@ -43,11 +45,11 @@ pub(crate) const MODELS_REFRESH_TIMEOUT: Duration = Duration::from_secs(5);
 const MODELS_ENDPOINT: &str = "/models";
 
 /// Provider-owned OpenAI-compatible `/models` endpoint.
-#[derive(Debug)]
 pub(crate) struct OpenAiModelsEndpoint {
     provider_info: ModelProviderInfo,
     auth_manager: Option<Arc<AuthManager>>,
     api_key_source: Option<ProviderApiKeySource>,
+    api_auth_override: Option<xedoc_api::SharedAuthProvider>,
     transport_builder: Arc<dyn ModelsTransportBuilder>,
     reqwest_default_transport: OnceCell<ReqwestTransport>,
     system_proxy_transport: OnceCell<ReqwestTransport>,
@@ -58,11 +60,13 @@ impl OpenAiModelsEndpoint {
         provider_info: ModelProviderInfo,
         auth_manager: Option<Arc<AuthManager>>,
         api_key_source: Option<ProviderApiKeySource>,
+        api_auth_override: Option<xedoc_api::SharedAuthProvider>,
     ) -> Self {
         Self {
             provider_info,
             auth_manager,
             api_key_source,
+            api_auth_override,
             transport_builder: Arc::new(RouteAwareModelsTransportBuilder),
             reqwest_default_transport: OnceCell::new(),
             system_proxy_transport: OnceCell::new(),
@@ -93,16 +97,20 @@ impl OpenAiModelsEndpoint {
         let auth = self.auth().await;
         let auth_mode = auth.as_ref().map(XedocAuth::auth_mode);
         let api_provider = self.provider_info.to_api_provider(auth_mode)?;
-        let api_auth = match &self.api_key_source {
-            Some(source) => match source.resolve(&self.provider_info)? {
-                Some(api_key) => resolve_provider_auth_with_api_key(
-                    auth.as_ref(),
-                    &self.provider_info,
-                    Some(api_key),
-                )?,
+        let api_auth = if let Some(auth) = &self.api_auth_override {
+            auth.clone()
+        } else {
+            match &self.api_key_source {
+                Some(source) => match source.resolve(&self.provider_info)? {
+                    Some(api_key) => resolve_provider_auth_with_api_key(
+                        auth.as_ref(),
+                        &self.provider_info,
+                        Some(api_key),
+                    )?,
+                    None => resolve_provider_auth(auth.as_ref(), &self.provider_info)?,
+                },
                 None => resolve_provider_auth(auth.as_ref(), &self.provider_info)?,
-            },
-            None => resolve_provider_auth(auth.as_ref(), &self.provider_info)?,
+            }
         };
         let request_url =
             ModelsClient::<ReqwestTransport>::request_url(&api_provider, client_version);
@@ -174,6 +182,35 @@ impl OpenAiModelsEndpoint {
 }
 
 impl ModelsEndpointClient for OpenAiModelsEndpoint {
+    fn cache_scope(&self) -> ModelsEndpointFuture<'_, CoreResult<Option<String>>> {
+        Box::pin(async {
+            let auth = self.auth().await;
+            let provider = self
+                .provider_info
+                .to_api_provider(auth.as_ref().map(XedocAuth::auth_mode))?;
+            let api_auth = if let Some(auth) = &self.api_auth_override {
+                auth.clone()
+            } else {
+                match &self.api_key_source {
+                    Some(source) => match source.resolve(&self.provider_info)? {
+                        Some(key) => resolve_provider_auth_with_api_key(
+                            auth.as_ref(),
+                            &self.provider_info,
+                            Some(key),
+                        )?,
+                        None => resolve_provider_auth(auth.as_ref(), &self.provider_info)?,
+                    },
+                    None => resolve_provider_auth(auth.as_ref(), &self.provider_info)?,
+                }
+            };
+            Ok(Some(catalog_cache_scope(
+                &provider.url_for_path("models"),
+                &provider.headers,
+                api_auth.as_ref(),
+            )))
+        })
+    }
+
     fn has_command_auth(&self) -> bool {
         self.provider_info.has_command_auth()
     }
@@ -197,6 +234,47 @@ impl ModelsEndpointClient for OpenAiModelsEndpoint {
             http_client_factory,
         ))
     }
+}
+
+impl fmt::Debug for OpenAiModelsEndpoint {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OpenAiModelsEndpoint")
+            .field("provider", &self.provider_info.name)
+            .field("auth_override", &self.api_auth_override.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+pub(crate) fn catalog_cache_scope(
+    url: &str,
+    headers: &HeaderMap,
+    auth: &dyn xedoc_api::AuthProvider,
+) -> String {
+    let mut headers = headers.clone();
+    auth.add_auth_headers(&mut headers);
+    let mut headers = headers
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_bytes()))
+        .collect::<Vec<_>>();
+    headers.sort();
+    let mut hash = Sha256::new();
+    let (base, query) = url.split_once('?').unwrap_or((url, ""));
+    hash.update(base.as_bytes());
+    let mut query = query.split('&').collect::<Vec<_>>();
+    query.sort();
+    for parameter in query {
+        hash.update([0]);
+        hash.update(parameter.as_bytes());
+    }
+    for (name, value) in headers {
+        hash.update([0]);
+        hash.update(name.as_bytes());
+        hash.update([0]);
+        hash.update(value);
+        hash.update([0]);
+    }
+    format!("{:x}", hash.finalize())
 }
 
 type ModelsTransportFuture<'a> =

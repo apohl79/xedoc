@@ -46,7 +46,16 @@ struct SequentialModelsResponder {
 }
 
 impl Respond for SequentialModelsResponder {
-    fn respond(&self, _: &wiremock::Request) -> ResponseTemplate {
+    fn respond(&self, request: &wiremock::Request) -> ResponseTemplate {
+        assert!(
+            request
+                .url
+                .query_pairs()
+                .any(|(key, value)| key == "client_version"
+                    && !value.is_empty()
+                    && value != "0.0.0"),
+            "model discovery must advertise the built release version"
+        );
         let call = self.calls.fetch_add(1, Ordering::SeqCst);
         let response = self
             .responses
@@ -73,6 +82,7 @@ fn model_from_preset(preset: &ModelPreset) -> Model {
         availability_nux: preset.availability_nux.clone().map(Into::into),
         display_name: preset.display_name.clone(),
         description: preset.description.clone(),
+        availability: preset.availability.into(),
         hidden: !preset.show_in_picker,
         supported_reasoning_efforts: preset
             .supported_reasoning_efforts
@@ -312,11 +322,18 @@ openai_base_url = "{server_uri}/v1"
         data: items,
         next_cursor,
     } = to_response::<ModelListResponse>(response)?;
-    let configured_unregistered_model = registry
-        .configured_model("openai", &unregistered_model)
-        .ok_or_else(|| Error::msg("registry is missing the openai template"))?;
+    let mut expected_models = registry.configured_models("openai");
+    expected_models.retain(|model| model.visibility == ModelVisibility::List);
+    expected_models.sort_by_key(|model| model.priority);
     let mut expected_presets: Vec<ModelPreset> =
-        vec![current_model.into(), configured_unregistered_model.into()];
+        expected_models.into_iter().map(Into::into).collect();
+    for preset in &mut expected_presets {
+        preset.availability = if preset.model == "gpt-6-luna" {
+            xedoc_protocol::openai_models::ModelAvailability::Available
+        } else {
+            xedoc_protocol::openai_models::ModelAvailability::Unavailable
+        };
+    }
     ModelPreset::mark_default_by_picker_visibility(&mut expected_presets);
     for preset in &mut expected_presets {
         preset.provider_id = "openai".to_string();
@@ -331,7 +348,7 @@ openai_base_url = "{server_uri}/v1"
         .collect::<Vec<_>>();
 
     assert_eq!(items, expected_items);
-    assert!(items.iter().all(|model| model.model != "gpt-6.1-terra"));
+    assert!(items.iter().all(|model| model.model != "gpt-5.6-luna"));
     assert!(next_cursor.is_none());
     assert_eq!(calls.load(Ordering::SeqCst), calls_before_list + 1);
 
@@ -347,9 +364,15 @@ openai_base_url = "{server_uri}/v1"
     assert_eq!(started.model, "gpt-6-luna");
 
     for (include_hidden, expected_ids) in [
-        (false, Vec::new()),
-        (true, vec!["gpt-6-luna"]),
-        (true, Vec::new()),
+        (false, vec!["gpt-6-astra", "gpt-6-luna", "gpt-6.1-terra"]),
+        (
+            true,
+            vec!["gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna", "gpt-6.1-terra"],
+        ),
+        (
+            true,
+            vec!["gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna", "gpt-6.1-terra"],
+        ),
     ] {
         let request_id = mcp
             .send_list_models_request(ModelListParams {

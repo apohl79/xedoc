@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
@@ -5,7 +6,9 @@ use tokio::sync::TryLockError;
 use xedoc_http_client::HttpClientFactory;
 use xedoc_login::AuthManager;
 use xedoc_protocol::config_types::CollaborationModeMask;
+use xedoc_protocol::openai_models::ModelAvailability;
 use xedoc_protocol::openai_models::ModelInfo;
+use xedoc_protocol::openai_models::ModelPreset;
 use xedoc_protocol::openai_models::ModelsResponse;
 
 use crate::ModelsManagerConfig;
@@ -42,6 +45,22 @@ impl fmt::Debug for AvailabilityGatedModelsManager {
 }
 
 impl ModelsManager for AvailabilityGatedModelsManager {
+    fn routing_model_roles(&self) -> BTreeMap<String, BTreeMap<String, String>> {
+        self.inner.routing_model_roles()
+    }
+
+    fn build_available_models(&self, models: Vec<ModelInfo>) -> Vec<ModelPreset> {
+        self.inner.build_available_models(models)
+    }
+
+    fn model_availability(&self, model: &str) -> ModelAvailability {
+        if (self.is_available)() {
+            self.inner.model_availability(model)
+        } else {
+            ModelAvailability::Unavailable
+        }
+    }
+
     fn raw_model_catalog(
         &self,
         refresh_strategy: RefreshStrategy,

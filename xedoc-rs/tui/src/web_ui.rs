@@ -35,6 +35,7 @@ pub(crate) enum BrowserInput {
     },
     RecallScheduledPrompt,
     RecallQueuedPrompt,
+    RefreshModels,
     Paste {
         text: String,
     },
@@ -99,6 +100,7 @@ impl BrowserInput {
             Self::Paste { .. }
             | Self::RecallScheduledPrompt
             | Self::RecallQueuedPrompt
+            | Self::RefreshModels
             | Self::Image { .. }
             | Self::File { .. }
             | Self::History { .. }

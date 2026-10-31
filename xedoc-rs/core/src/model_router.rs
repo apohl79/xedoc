@@ -99,6 +99,11 @@ pub(crate) async fn eligible_script_routes(
         .await;
     let mut routes = BTreeMap::<(String, String), BTreeSet<String>>::new();
     for model in models {
+        if !model.show_in_picker
+            || model.availability != xedoc_protocol::openai_models::ModelAvailability::Available
+        {
+            continue;
+        }
         let provider_id = if !model.provider_id.is_empty() {
             model.provider_id
         } else {
@@ -126,30 +131,6 @@ pub(crate) async fn eligible_script_routes(
             .collect::<BTreeSet<_>>();
         if !efforts.is_empty() {
             routes.insert((provider_id, model.model), efforts);
-        }
-    }
-    if let Some(current_route) = current_script_route(config) {
-        let provider_id = current_route.provider_id.as_str();
-        let model = current_route.model.as_str();
-        let route_key = (provider_id.to_string(), model.to_string());
-        if !routes.contains_key(&route_key) && config.model_providers.contains_key(provider_id) {
-            let model_info = models_manager
-                .get_model_info_for_provider(model, provider_id, &config.to_models_manager_config())
-                .await;
-            let efforts = model_info
-                .supported_reasoning_levels
-                .iter()
-                .map(|preset| preset.effort.as_str().to_string())
-                .collect::<BTreeSet<_>>();
-            if !model_info.used_fallback_model_metadata
-                && efforts.contains(current_route.reasoning_effort.as_str())
-                && config.service_tier.as_deref().is_none_or(|tier| {
-                    tier == SERVICE_TIER_DEFAULT_REQUEST_VALUE
-                        || model_info.supports_service_tier(tier)
-                })
-            {
-                routes.insert(route_key, efforts);
-            }
         }
     }
     routes

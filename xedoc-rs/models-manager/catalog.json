@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "revision": 2026103101,
+  "providers": {
+    "openai": {
+      "defaultModel": "gpt-6.1-sol",
+      "fastModel": "gpt-6-luna",
+      "models": ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna", "gpt-6.1-terra"],
+      "roles": {
+        "fast": "gpt-6-luna",
+        "balanced": "gpt-6.1-terra",
+        "strong": "gpt-6.1-sol",
+        "flagship": "gpt-6-astra"
+      }
+    },
+    "anthropic": {
+      "defaultModel": "claude-fable-5-1",
+      "fastModel": "claude-haiku-5-5",
+      "models": ["claude-opus-5-5", "claude-fable-5-1", "claude-sonnet-5-5", "claude-haiku-5-5"],
+      "roles": {
+        "fast": "claude-haiku-5-5",
+        "balanced": "claude-sonnet-5-5",
+        "strong": "claude-opus-5-5",
+        "flagship": "claude-fable-5-1"
+      }
+    },
+    "google": {
+      "defaultModel": "gemini-3.1-pro-preview",
+      "fastModel": "gemini-3.6-flash",
+      "models": ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3-pro-preview"],
+      "roles": {"fast": "gemini-3.6-flash", "strong": "gemini-3.1-pro-preview"}
+    },
+    "deepseek": {
+      "defaultModel": "deepseek-v4-pro",
+      "fastModel": "deepseek-v4-flash",
+      "models": ["deepseek-v4-pro", "deepseek-v4-flash"],
+      "roles": {"fast": "deepseek-v4-flash", "strong": "deepseek-v4-pro"}
+    }
+  }
+}

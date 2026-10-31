@@ -440,6 +440,7 @@ impl ConfiguredModelProvider {
                     self.info.clone(),
                     self.auth_manager.clone(),
                     Some(self.api_key_source.clone()),
+                    /*api_auth_override*/ None,
                 ))
             }
         }

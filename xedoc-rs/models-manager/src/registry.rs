@@ -7,13 +7,20 @@ use std::sync::RwLock;
 
 use serde::Deserialize;
 use serde::Serialize;
-use xedoc_protocol::openai_models::ApplyPatchToolType;
 use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ReasoningEffort;
-use xedoc_utils_path::write_atomically;
 
-pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 10;
+#[path = "registry_storage.rs"]
+mod storage;
+
+pub const MODEL_REGISTRY_SCHEMA_VERSION: u32 = 11;
 pub const MODEL_REGISTRY_FILE: &str = "models.json";
+
+/// Exact user pins do not participate in rolling managed-default selection.
+pub(crate) enum DefaultModelSelection {
+    Pinned(String),
+    Preferred(Vec<String>),
+}
 
 /// User-managed model settings stored under `$XEDOC_HOME`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -64,7 +71,7 @@ pub struct ModelTokenPrices {
 #[derive(Clone, Debug)]
 pub struct SharedModelRegistry {
     xedoc_home: PathBuf,
-    registry: Arc<RwLock<ModelRegistry>>,
+    registry: Arc<RwLock<storage::RegistryState>>,
 }
 
 impl PartialEq for SharedModelRegistry {
@@ -74,8 +81,23 @@ impl PartialEq for SharedModelRegistry {
 }
 
 impl SharedModelRegistry {
+    pub(crate) fn routing_model_roles(&self) -> BTreeMap<String, BTreeMap<String, String>> {
+        self.registry
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .routing_roles
+            .clone()
+    }
+
+    pub(crate) fn default_model_selection(&self, provider_id: &str) -> DefaultModelSelection {
+        self.registry
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .default_model_selection(provider_id)
+    }
+
     pub fn load_or_create(xedoc_home: &Path) -> io::Result<Self> {
-        let registry = ModelRegistry::load_or_create(xedoc_home)?;
+        let registry = storage::RegistryState::load_or_create(xedoc_home)?;
         Ok(Self {
             xedoc_home: xedoc_home.to_path_buf(),
             registry: Arc::new(RwLock::new(registry)),
@@ -86,7 +108,20 @@ impl SharedModelRegistry {
         self.registry
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .resolved
             .clone()
+    }
+
+    /// Overlays explicit user metadata on backend capabilities, not managed defaults.
+    pub fn configured_discovered_model(
+        &self,
+        provider_id: &str,
+        discovered: &ModelInfo,
+    ) -> io::Result<ModelInfo> {
+        self.registry
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .configured_discovered_model(provider_id, discovered)
     }
 
     pub fn update<T>(
@@ -97,19 +132,80 @@ impl SharedModelRegistry {
             .registry
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let previous = registry.clone();
-        let result = match edit(&mut registry) {
-            Ok(result) => result,
-            Err(error) => {
-                *registry = previous;
-                return Err(error);
-            }
-        };
-        if let Err(error) = registry.save(&self.xedoc_home) {
-            *registry = previous;
-            return Err(error);
-        }
+        let mut edited = registry.resolved.clone();
+        let result = edit(&mut edited)?;
+        registry.save_edit(&self.xedoc_home, edited)?;
         Ok(result)
+    }
+
+    /// Pins explicit provider choices, including values equal to today's defaults.
+    pub fn pin_provider_defaults(
+        &self,
+        provider_id: &str,
+        provider: ProviderModelConfig,
+    ) -> io::Result<()> {
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .pin_provider_defaults(&self.xedoc_home, provider_id, provider)
+    }
+
+    /// Pins explicitly saved context limits, including unchanged managed defaults.
+    pub fn pin_model_context(
+        &self,
+        provider_id: &str,
+        model_id: &str,
+        provider: ProviderModelConfig,
+    ) -> io::Result<()> {
+        self.registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .pin_model_context(&self.xedoc_home, provider_id, model_id, provider)
+    }
+
+    /// Resolves the current managed catalog while retaining persisted user overrides.
+    pub fn reload_catalog(&self) -> io::Result<()> {
+        let mut registry = self
+            .registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *registry = storage::RegistryState::load_or_create(&self.xedoc_home)?;
+        Ok(())
+    }
+
+    /// Installs validated managed data without losing concurrent user edits.
+    pub fn install_managed_catalog(&self, contents: &str) -> io::Result<()> {
+        let mut registry = self
+            .registry
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let path = self.xedoc_home.join("model-catalog.json");
+        let previous = match std::fs::read(&path) {
+            Ok(bytes) => Some(bytes),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error),
+        };
+        crate::registry_defaults::install_catalog(&self.xedoc_home, contents)?;
+        match storage::RegistryState::load(&self.xedoc_home) {
+            Ok(next) => {
+                *registry = next;
+                Ok(())
+            }
+            Err(error) => {
+                let rollback = match previous {
+                    Some(bytes) => String::from_utf8(bytes)
+                        .map_err(io::Error::other)
+                        .and_then(|contents| xedoc_utils_path::write_atomically(&path, &contents)),
+                    None => std::fs::remove_file(&path),
+                };
+                if let Err(rollback_error) = rollback {
+                    return Err(io::Error::other(format!(
+                        "failed to resolve managed catalog: {error}; failed to restore previous catalog: {rollback_error}"
+                    )));
+                }
+                Err(error)
+            }
+        }
     }
 
     pub fn xedoc_home(&self) -> &Path {
@@ -122,42 +218,17 @@ impl ModelRegistry {
         xedoc_home.join(MODEL_REGISTRY_FILE)
     }
 
-    /// Loads the registry, writing a complete starter file when it is absent.
+    /// Resolves the managed catalog, creating an empty user override file if absent.
     pub fn load_or_create(xedoc_home: &Path) -> io::Result<Self> {
-        let path = Self::path(xedoc_home);
-        if !path.exists() {
-            let registry = Self::default_registry()?;
-            registry.save(xedoc_home)?;
-            return Ok(registry);
-        }
-        Self::load(xedoc_home)
+        Ok(storage::RegistryState::load_or_create(xedoc_home)?.resolved)
     }
 
     pub fn load(xedoc_home: &Path) -> io::Result<Self> {
-        let path = Self::path(xedoc_home);
-        let bytes = std::fs::read(&path)?;
-        let mut registry: Self = serde_json::from_slice(&bytes).map_err(|error| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("failed to parse {}: {error}", path.display()),
-            )
-        })?;
-        if registry.schema_version < MODEL_REGISTRY_SCHEMA_VERSION {
-            registry.migrate_from_older_schema()?;
-            registry.save(xedoc_home)?;
-        }
-        registry.validate()?;
-        Ok(registry)
+        Ok(storage::RegistryState::load(xedoc_home)?.resolved)
     }
 
     pub fn save(&self, xedoc_home: &Path) -> io::Result<()> {
-        self.validate()?;
-        let path = Self::path(xedoc_home);
-        let contents = format!(
-            "{}\n",
-            serde_json::to_string_pretty(self).map_err(io::Error::other)?
-        );
-        write_atomically(&path, &contents)
+        storage::RegistryState::load_or_create(xedoc_home)?.save_edit(xedoc_home, self.clone())
     }
 
     pub fn provider(&self, provider_id: &str) -> Option<&ProviderModelConfig> {
@@ -260,126 +331,6 @@ impl ModelRegistry {
                 )));
             }
         }
-        Ok(())
-    }
-
-    fn default_registry() -> io::Result<Self> {
-        crate::registry_defaults::default_registry()
-    }
-
-    fn migrate_from_older_schema(&mut self) -> io::Result<()> {
-        let defaults = Self::default_registry()?;
-        for (provider_id, default_provider) in defaults.providers {
-            let is_anthropic = provider_id == "anthropic";
-            let is_openai = provider_id == "openai";
-            let provider = self
-                .providers
-                .entry(provider_id)
-                .or_insert_with(|| default_provider.clone());
-            if is_openai {
-                // Retired model IDs and the former auto-review alias are removed.
-                provider.models.retain(|model_id, _| {
-                    !((model_id.starts_with("gpt-5") && !model_id.starts_with("gpt-5.6"))
-                        || model_id == "gpt-5.6-sol"
-                        || model_id == "gpt-5.6-luna"
-                        || model_id == "gpt-5.6-terra"
-                        || model_id == "gpt-6-sol"
-                        || model_id == "xedoc-auto-review")
-                });
-            }
-            if is_anthropic {
-                // Haiku 4.5, Sonnet 5, Opus 5, and Opus 4.8 are retired.
-                provider.models.retain(|model_id, _| {
-                    !matches!(
-                        model_id.as_str(),
-                        "claude-haiku-4-5-20251001"
-                            | "claude-sonnet-5"
-                            | "claude-opus-5"
-                            | "claude-opus-4-8"
-                    )
-                });
-            }
-            for (model_id, model) in default_provider.models {
-                let configured = provider
-                    .models
-                    .entry(model_id.clone())
-                    .or_insert_with(|| model.clone());
-                let previous_default_openai_prices = match model_id.as_str() {
-                    "gpt-6.1-sol" => Some(ModelTokenPrices {
-                        input: 2.0,
-                        cached_input: Some(0.1),
-                        cache_write_input: Some(2.5),
-                        long_context_cache_write_input: None,
-                        output: 10.0,
-                        long_context_input: Some(4.0),
-                        long_context_cached_input: Some(0.2),
-                        long_context_output: Some(15.0),
-                    }),
-                    "gpt-6-astra" => Some(ModelTokenPrices {
-                        input: 2.0,
-                        cached_input: Some(0.2),
-                        cache_write_input: None,
-                        long_context_cache_write_input: None,
-                        output: 10.0,
-                        long_context_input: Some(4.0),
-                        long_context_cached_input: Some(0.4),
-                        long_context_output: Some(15.0),
-                    }),
-                    "gpt-6-luna" => Some(ModelTokenPrices {
-                        input: 0.1,
-                        cached_input: Some(0.01),
-                        cache_write_input: None,
-                        long_context_cache_write_input: None,
-                        output: 0.5,
-                        long_context_input: Some(0.2),
-                        long_context_cached_input: Some(0.02),
-                        long_context_output: Some(0.75),
-                    }),
-                    _ => None,
-                };
-                if is_openai
-                    && previous_default_openai_prices.as_ref() == configured.prices.as_ref()
-                {
-                    configured.prices = model.prices.clone();
-                }
-                let mut previous_default_prices = model.prices.clone();
-                if is_anthropic && let Some(prices) = &mut previous_default_prices {
-                    prices.cache_write_input = None;
-                    if model_id == "claude-fable-5-1" {
-                        prices.cached_input = Some(1.0);
-                    }
-                }
-                // Sonnet 5.5 cache reads dropped from $0.20 to $0.10; registries that still
-                // hold the old default (with cache-write pricing already set) follow the new one.
-                let mut previous_sonnet_5_5_prices = model.prices.clone();
-                if let Some(prices) = &mut previous_sonnet_5_5_prices {
-                    prices.cached_input = Some(0.2);
-                }
-                if is_anthropic
-                    && (configured.prices == previous_default_prices
-                        || (model_id == "claude-sonnet-5-5"
-                            && configured.prices == previous_sonnet_5_5_prices))
-                {
-                    configured.prices = model.prices;
-                }
-            }
-            if !provider.models.contains_key(&provider.default_model) {
-                provider.default_model = default_provider.default_model;
-                provider.default_reasoning_effort = default_provider.default_reasoning_effort;
-            }
-            if !provider.models.contains_key(&provider.fast_model) {
-                provider.fast_model = default_provider.fast_model;
-            }
-        }
-        for provider in self.providers.values_mut() {
-            for model in std::iter::once(&mut provider.template).chain(provider.models.values_mut())
-            {
-                crate::instructions::clear_persisted_instructions(&mut model.info);
-                model.info.include_skills_usage_instructions = true;
-                model.info.apply_patch_tool_type = Some(ApplyPatchToolType::Freeform);
-            }
-        }
-        self.schema_version = MODEL_REGISTRY_SCHEMA_VERSION;
         Ok(())
     }
 }

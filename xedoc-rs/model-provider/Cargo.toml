@@ -28,5 +28,6 @@ xedoc-protocol = { workspace = true }
 xedoc-response-debug-context = { workspace = true }
 xedoc-utils-home-dir = { workspace = true }
 http = { workspace = true }
+sha2 = { workspace = true }
 tokio = { workspace = true, features = ["sync", "time"] }
 tracing = { workspace = true, features = ["log"] }

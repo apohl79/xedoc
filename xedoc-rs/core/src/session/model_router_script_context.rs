@@ -103,6 +103,7 @@ pub(crate) async fn build(input: RoutingContextInput<'_>) -> Value {
         },
         "currentRoute": input.current_route,
         "eligibleRoutes": input.eligible_routes,
+        "modelRoles": input.session.services.models_manager.routing_model_roles(),
         "availableProviders": crate::model_router::available_script_providers(
             input.turn.config.as_ref(),
             &input.session.services.auth_manager,

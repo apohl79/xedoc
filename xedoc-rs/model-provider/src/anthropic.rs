@@ -9,6 +9,8 @@ use xedoc_api::SharedAuthProvider;
 use xedoc_login::AuthManager;
 use xedoc_login::XedocAuth;
 use xedoc_model_provider_info::ModelProviderInfo;
+use xedoc_models_manager::manager::ModelsEndpointClient;
+use xedoc_models_manager::manager::OpenAiModelsManager;
 use xedoc_models_manager::manager::SharedModelsManager;
 use xedoc_protocol::account::ProviderAccount;
 use xedoc_protocol::error::EnvVarError;
@@ -73,6 +75,20 @@ struct CachedOAuthAccounts {
 }
 
 impl AnthropicModelProvider {
+    fn oauth_models_endpoint(&self) -> Option<Arc<dyn ModelsEndpointClient>> {
+        if !self.uses_oauth() {
+            return None;
+        }
+        let auth = self.oauth_auth().ok()?;
+        let endpoint = crate::models_endpoint::OpenAiModelsEndpoint::new_with_api_key_source(
+            self.info().clone(),
+            /*auth_manager*/ None,
+            /*api_key_source*/ None,
+            Some(auth),
+        );
+        Some(Arc::new(endpoint))
+    }
+
     pub(crate) fn new(
         provider_info: ModelProviderInfo,
         auth_manager: Option<Arc<AuthManager>>,
@@ -245,6 +261,13 @@ impl ModelProvider for AnthropicModelProvider {
         xedoc_home: PathBuf,
         config_model_catalog: Option<ModelsResponse>,
     ) -> SharedModelsManager {
+        if config_model_catalog.is_none()
+            && let Some(endpoint) = self.oauth_models_endpoint()
+        {
+            return Arc::new(OpenAiModelsManager::new(
+                xedoc_home, endpoint, /*auth_manager*/ None,
+            ));
+        }
         self.configured
             .models_manager(xedoc_home, config_model_catalog)
     }
@@ -253,6 +276,13 @@ impl ModelProvider for AnthropicModelProvider {
         &self,
         config_model_catalog: Option<ModelsResponse>,
     ) -> SharedModelsManager {
+        if config_model_catalog.is_none()
+            && let Some(endpoint) = self.oauth_models_endpoint()
+        {
+            return Arc::new(OpenAiModelsManager::new_without_cache(
+                endpoint, /*auth_manager*/ None,
+            ));
+        }
         self.configured
             .models_manager_without_cache(config_model_catalog)
     }

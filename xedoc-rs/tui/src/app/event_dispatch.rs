@@ -559,16 +559,7 @@ impl App {
                     .chat_widget
                     .add_error_message(format!("Failed to load model manager: {error}")),
             },
-            AppEvent::RefreshModelCatalog => match app_server.refresh_models().await {
-                Ok(models) => {
-                    let model_catalog = Arc::new(ModelCatalog::new(models));
-                    self.model_catalog = Arc::clone(&model_catalog);
-                    self.chat_widget.set_model_catalog(model_catalog);
-                }
-                Err(error) => self.chat_widget.add_error_message(format!(
-                    "Failed to refresh models after changing provider credentials: {error}"
-                )),
-            },
+            AppEvent::RefreshModelCatalog => self.refresh_model_catalog(app_server).await,
             AppEvent::ModelManagerUi(action) => {
                 self.chat_widget.handle_model_manager_ui(action);
             }
@@ -1289,7 +1280,10 @@ impl App {
                     }
                 }
             }
-            AppEvent::OpenModelPicker => self.chat_widget.open_model_popup(),
+            AppEvent::OpenModelPicker => {
+                self.refresh_model_catalog(app_server).await;
+                self.chat_widget.open_model_popup();
+            }
             AppEvent::ModelRouterModeCycleRequested { direction } => {
                 self.cycle_model_router_mode(app_server, direction);
             }

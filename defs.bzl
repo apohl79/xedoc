@@ -191,6 +191,7 @@ def xedoc_rust_crate(
         lib_data_extra = [],
         rustc_flags_extra = [],
         rustc_env = {},
+        lib_rustc_env_files = [],
         binary_rustc_env_files = [],
         deps_extra = [],
         integration_compile_data_extra = [],
@@ -229,6 +230,7 @@ def xedoc_rust_crate(
         compile_data: Non-Rust compile-time data for the library target.
         lib_data_extra: Extra runtime data for the library target.
         rustc_env: Extra rustc_env entries to merge with defaults.
+        lib_rustc_env_files: rustc environment files applied to the library.
         binary_rustc_env_files: rustc environment files applied only to the
             crate's binary targets, e.g. the workspace version env file.
         deps_extra: Extra normal deps beyond @crates resolution.
@@ -322,6 +324,7 @@ def xedoc_rust_crate(
             edition = crate_edition,
             rustc_flags = rustc_flags_extra,
             rustc_env = rustc_env,
+            rustc_env_files = lib_rustc_env_files,
             visibility = ["//visibility:public"],
         )
 

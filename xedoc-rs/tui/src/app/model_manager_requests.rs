@@ -23,6 +23,19 @@ use xedoc_app_server_protocol::RequestId;
 const OPENAI_PROVIDER_ID: &str = "openai";
 
 impl App {
+    pub(super) async fn refresh_model_catalog(&mut self, app_server: &mut AppServerSession) {
+        match app_server.refresh_models().await {
+            Ok(models) => {
+                let model_catalog = Arc::new(ModelCatalog::new(models));
+                self.model_catalog = Arc::clone(&model_catalog);
+                self.chat_widget.set_model_catalog(model_catalog);
+            }
+            Err(error) => self
+                .chat_widget
+                .add_error_message(format!("Failed to refresh model catalog: {error}")),
+        }
+    }
+
     pub(super) fn fetch_model_manager(&mut self, app_server: &AppServerSession, generation: u64) {
         let request_handle = app_server.request_handle();
         let app_event_tx = self.app_event_tx.clone();

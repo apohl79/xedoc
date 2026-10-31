@@ -5,6 +5,7 @@ use serde::Serialize;
 use serde_json::Value as JsonValue;
 use ts_rs::TS;
 use xedoc_protocol::openai_models::InputModality;
+use xedoc_protocol::openai_models::ModelAvailability as CoreModelAvailability;
 use xedoc_protocol::openai_models::ModelAvailabilityNux as CoreModelAvailabilityNux;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_protocol::openai_models::default_input_modalities;
@@ -403,6 +404,16 @@ pub enum ExtensionInteractionOutcome {
 }
 
 v2_enum_from_core!(
+    #[derive(Default)]
+    pub enum ModelAvailability from CoreModelAvailability {
+        Available,
+        Unavailable,
+        #[default]
+        Unknown
+    }
+);
+
+v2_enum_from_core!(
     pub enum ModelRerouteReason from CoreModelRerouteReason {
         HighRiskCyberActivity
     }
@@ -701,6 +712,8 @@ pub struct Model {
     pub display_name: String,
     pub description: String,
     pub hidden: bool,
+    #[serde(default)]
+    pub availability: ModelAvailability,
     pub supported_reasoning_efforts: Vec<ReasoningEffortOption>,
     pub default_reasoning_effort: ReasoningEffort,
     #[serde(default = "default_input_modalities")]

@@ -37,6 +37,14 @@
           },
           "type": "array"
         },
+        "availability": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/ModelAvailability"
+            }
+          ],
+          "default": "unknown"
+        },
         "availabilityNux": {
           "anyOf": [
             {
@@ -136,6 +144,14 @@
         "supportedReasoningEfforts"
       ],
       "type": "object"
+    },
+    "ModelAvailability": {
+      "enum": [
+        "available",
+        "unavailable",
+        "unknown"
+      ],
+      "type": "string"
     },
     "ModelAvailabilityNux": {
       "properties": {

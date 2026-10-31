@@ -192,6 +192,9 @@ impl App {
                 self.update_web_ui_routing_tables(tui, app_server, thread_id, table.as_deref())
                     .await;
             }
+            Ok(BrowserInput::RefreshModels) => {
+                self.app_event_tx.send(AppEvent::RefreshModelCatalog);
+            }
             Ok(BrowserInput::Settings {
                 model,
                 effort,
@@ -199,7 +202,11 @@ impl App {
             }) => {
                 let models = self.model_catalog.try_list_models().unwrap_or_default();
                 let selected = model.as_deref().unwrap_or(self.chat_widget.current_model());
-                if let Some(preset) = models.iter().find(|preset| preset.model == selected) {
+                if let Some(preset) = models.iter().find(|preset| {
+                    preset.model == selected
+                        && preset.availability
+                            != xedoc_protocol::openai_models::ModelAvailability::Unavailable
+                }) {
                     let chosen_effort = effort.as_deref().and_then(|effort| {
                         preset
                             .supported_reasoning_efforts
@@ -512,6 +519,7 @@ impl App {
             .filter(|preset| preset.show_in_picker)
             .map(|preset| json!({
                 "id": preset.model, "label": preset.display_name,
+                "availability": preset.availability,
                 "efforts": preset.supported_reasoning_efforts.iter().map(|effort| effort.effort.to_string()).collect::<Vec<_>>(),
             })).collect();
         let (

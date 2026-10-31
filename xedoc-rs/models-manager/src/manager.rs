@@ -2,12 +2,15 @@ use super::cache::ModelsCacheManager;
 use crate::collaboration_mode_presets::builtin_collaboration_mode_presets;
 use crate::config::ModelsManagerConfig;
 use crate::model_info;
+use std::collections::BTreeMap;
 use std::fmt;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::RwLock as StdRwLock;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 use tokio::sync::Mutex;
@@ -21,6 +24,7 @@ use xedoc_login::AuthManager;
 use xedoc_protocol::auth::AuthMode;
 use xedoc_protocol::config_types::CollaborationModeMask;
 use xedoc_protocol::error::Result as CoreResult;
+use xedoc_protocol::openai_models::ModelAvailability;
 use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ModelPreset;
 use xedoc_protocol::openai_models::ModelVisibility;
@@ -43,6 +47,11 @@ pub trait ModelsEndpointClient: fmt::Debug + Send + Sync {
     /// Returns whether this endpoint's remote catalog fully replaces bundled models.
     fn has_authoritative_remote_catalog(&self) -> bool {
         false
+    }
+
+    /// Identifies the endpoint and effective credentials without persisting secrets.
+    fn cache_scope(&self) -> ModelsEndpointFuture<'_, CoreResult<Option<String>>> {
+        Box::pin(async { Ok(None) })
     }
 
     /// Returns whether the currently resolved auth can use Xedoc backend-only models.
@@ -89,6 +98,11 @@ type SharedModelsEndpointClient = Arc<dyn ModelsEndpointClient>;
 
 /// Coordinates model discovery plus cached metadata on disk.
 pub trait ModelsManager: fmt::Debug + Send + Sync {
+    /// Bounded managed role mappings for scripted routing, independent of user pins.
+    fn routing_model_roles(&self) -> BTreeMap<String, BTreeMap<String, String>> {
+        BTreeMap::new()
+    }
+
     /// List all available models, refreshing according to the specified strategy.
     ///
     /// Returns model presets sorted by priority and filtered by auth mode and visibility.
@@ -133,6 +147,11 @@ pub trait ModelsManager: fmt::Debug + Send + Sync {
         self.try_get_remote_models()
     }
 
+    /// Returns discovery evidence without treating bundled preferences as backend access.
+    fn model_availability(&self, _model: &str) -> ModelAvailability {
+        ModelAvailability::Unknown
+    }
+
     /// Return the auth manager used for picker filtering.
     fn auth_manager(&self) -> Option<&AuthManager>;
 
@@ -140,7 +159,15 @@ pub trait ModelsManager: fmt::Debug + Send + Sync {
     fn build_available_models(&self, mut remote_models: Vec<ModelInfo>) -> Vec<ModelPreset> {
         remote_models.sort_by_key(|model| model.priority);
 
-        let mut presets: Vec<ModelPreset> = remote_models.into_iter().map(Into::into).collect();
+        let mut presets: Vec<ModelPreset> = remote_models
+            .into_iter()
+            .map(|model| {
+                let availability = self.model_availability(&model.slug);
+                let mut preset = ModelPreset::from(model);
+                preset.availability = availability;
+                preset
+            })
+            .collect();
         let uses_xedoc_backend = self
             .auth_manager()
             .is_some_and(AuthManager::current_auth_uses_xedoc_backend);
@@ -298,6 +325,30 @@ impl MultiProviderModelsManager {
 }
 
 impl ModelsManager for MultiProviderModelsManager {
+    fn routing_model_roles(&self) -> BTreeMap<String, BTreeMap<String, String>> {
+        self.active_manager().routing_model_roles()
+    }
+
+    fn get_default_model<'a>(
+        &'a self,
+        model: &'a Option<String>,
+        allow_provider_model_fallback: bool,
+        refresh_strategy: RefreshStrategy,
+        http_client_factory: HttpClientFactory,
+    ) -> ModelsManagerFuture<'a, String> {
+        let manager = self.active_manager();
+        Box::pin(async move {
+            manager
+                .get_default_model(
+                    model,
+                    allow_provider_model_fallback,
+                    refresh_strategy,
+                    http_client_factory,
+                )
+                .await
+        })
+    }
+
     fn list_models(
         &self,
         refresh_strategy: RefreshStrategy,
@@ -452,6 +503,7 @@ impl ModelsManager for MultiProviderModelsManager {
 #[derive(Debug)]
 pub struct OpenAiModelsManager {
     remote_models: RwLock<Vec<ModelInfo>>,
+    catalog_known: AtomicBool,
     etag: RwLock<Option<String>>,
     refresh_state: Mutex<ModelRefreshState>,
     cache_manager: Option<ModelsCacheManager>,
@@ -463,6 +515,7 @@ pub struct OpenAiModelsManager {
 struct ModelRefreshState {
     retry_after: Option<Instant>,
     consecutive_failures: u32,
+    scope: Option<String>,
 }
 
 /// Static model manager backed by an authoritative in-process catalog.
@@ -527,6 +580,7 @@ impl OpenAiModelsManager {
         };
         Self {
             remote_models: RwLock::new(remote_models),
+            catalog_known: AtomicBool::new(false),
             etag: RwLock::new(None),
             refresh_state: Mutex::new(ModelRefreshState::default()),
             cache_manager,
@@ -547,6 +601,23 @@ impl StaticModelsManager {
 }
 
 impl ModelsManager for OpenAiModelsManager {
+    fn model_availability(&self, model: &str) -> ModelAvailability {
+        if !self.catalog_known.load(Ordering::Acquire) {
+            return ModelAvailability::Unknown;
+        }
+        match self.remote_models.try_read() {
+            Ok(models)
+                if models
+                    .iter()
+                    .any(|info| info.slug == model && info.visibility == ModelVisibility::List) =>
+            {
+                ModelAvailability::Available
+            }
+            Ok(_) => ModelAvailability::Unavailable,
+            Err(_) => ModelAvailability::Unknown,
+        }
+    }
+
     fn raw_model_catalog(
         &self,
         refresh_strategy: RefreshStrategy,
@@ -630,6 +701,22 @@ impl OpenAiModelsManager {
         http_client_factory: &HttpClientFactory,
     ) -> CoreResult<()> {
         let mut refresh_state = self.refresh_state.lock().await;
+        let scope = match self.endpoint_client.cache_scope().await {
+            Ok(scope) => scope,
+            Err(error) => {
+                self.remote_models.write().await.clear();
+                self.catalog_known.store(false, Ordering::Release);
+                return Err(error);
+            }
+        };
+        if refresh_state.scope != scope {
+            *self.remote_models.write().await = Vec::new();
+            *self.etag.write().await = None;
+            self.catalog_known.store(false, Ordering::Release);
+            refresh_state.retry_after = None;
+            refresh_state.consecutive_failures = 0;
+            refresh_state.scope.clone_from(&scope);
+        }
         if refresh_state
             .retry_after
             .is_some_and(|retry_after| Instant::now() < retry_after)
@@ -638,7 +725,7 @@ impl OpenAiModelsManager {
                 refresh_strategy,
                 RefreshStrategy::Offline | RefreshStrategy::OnlineIfUncached
             ) {
-                self.try_load_cache().await;
+                self.try_load_cache(scope.as_deref()).await;
             }
             return Ok(());
         }
@@ -648,7 +735,7 @@ impl OpenAiModelsManager {
                 refresh_strategy,
                 RefreshStrategy::Offline | RefreshStrategy::OnlineIfUncached
             ) {
-                self.try_load_cache().await;
+                self.try_load_cache(scope.as_deref()).await;
             }
             return Ok(());
         }
@@ -656,27 +743,30 @@ impl OpenAiModelsManager {
         let result = match refresh_strategy {
             RefreshStrategy::Offline => {
                 // Only try to load from cache, never fetch
-                self.try_load_cache().await;
+                self.try_load_cache(scope.as_deref()).await;
                 Ok(())
             }
             RefreshStrategy::OnlineIfUncached => {
                 // Try cache first, fall back to online if unavailable
-                if self.try_load_cache().await {
+                if self.try_load_cache(scope.as_deref()).await {
                     info!("models cache: using cached models for OnlineIfUncached");
                     return Ok(());
                 }
                 info!("models cache: cache miss, fetching remote models");
-                self.fetch_and_update_models(http_client_factory).await
+                self.fetch_and_update_models(http_client_factory, scope.clone())
+                    .await
             }
             RefreshStrategy::Online => {
                 // Always fetch from network
-                self.fetch_and_update_models(http_client_factory).await
+                self.fetch_and_update_models(http_client_factory, scope)
+                    .await
             }
         };
         if result.is_ok() {
             refresh_state.retry_after = None;
             refresh_state.consecutive_failures = 0;
         } else {
+            self.catalog_known.store(false, Ordering::Release);
             refresh_state.consecutive_failures =
                 refresh_state.consecutive_failures.saturating_add(1);
             let exponent = refresh_state.consecutive_failures.saturating_sub(1).min(5);
@@ -691,6 +781,7 @@ impl OpenAiModelsManager {
     async fn fetch_and_update_models(
         &self,
         http_client_factory: &HttpClientFactory,
+        scope: Option<String>,
     ) -> CoreResult<()> {
         let client_version = crate::client_version_to_whole();
         let (models, etag) = self
@@ -698,10 +789,11 @@ impl OpenAiModelsManager {
             .list_models(&client_version, http_client_factory.clone())
             .await?;
         self.apply_remote_models(models.clone()).await;
+        self.catalog_known.store(true, Ordering::Release);
         *self.etag.write().await = etag.clone();
         if let Some(cache_manager) = self.cache_manager.as_ref() {
             cache_manager
-                .persist_cache(&models, etag, client_version)
+                .persist_cache(&models, etag, client_version, scope)
                 .await;
         }
         Ok(())
@@ -711,6 +803,11 @@ impl OpenAiModelsManager {
         self.endpoint_client.has_authoritative_remote_catalog()
             || self.endpoint_client.uses_xedoc_backend().await
             || self.endpoint_client.has_command_auth()
+            || self
+                .auth_manager
+                .as_deref()
+                .and_then(AuthManager::auth_mode)
+                .is_some()
     }
 
     async fn get_etag(&self) -> Option<String> {
@@ -719,45 +816,11 @@ impl OpenAiModelsManager {
 
     /// Replace the cached remote models and rebuild the derived presets list.
     async fn apply_remote_models(&self, models: Vec<ModelInfo>) {
-        if self.endpoint_client.has_authoritative_remote_catalog()
-            || self
-                .auth_manager
-                .as_deref()
-                .and_then(AuthManager::auth_mode)
-                .is_some_and(AuthMode::has_chatgpt_account)
-        {
-            *self.remote_models.write().await = models;
-            return;
-        }
-
-        // Use a visible remote catalog as the source of truth for command-authenticated
-        // providers.
-        let should_use_remote_models_only = !models.is_empty()
-            && models
-                .iter()
-                .any(|model| model.visibility == ModelVisibility::List)
-            && self.endpoint_client.has_command_auth();
-        if should_use_remote_models_only {
-            *self.remote_models.write().await = models;
-            return;
-        }
-
-        let mut existing_models = load_remote_models_from_file().unwrap_or_default();
-        for model in models {
-            if let Some(existing_index) = existing_models
-                .iter()
-                .position(|existing| existing.slug == model.slug)
-            {
-                existing_models[existing_index] = model;
-            } else {
-                existing_models.push(model);
-            }
-        }
-        *self.remote_models.write().await = existing_models;
+        *self.remote_models.write().await = models;
     }
 
     /// Attempt to satisfy the refresh from the cache when it matches the provider and TTL.
-    async fn try_load_cache(&self) -> bool {
+    async fn try_load_cache(&self, scope: Option<&str>) -> bool {
         let Some(cache_manager) = self.cache_manager.as_ref() else {
             return false;
         };
@@ -765,7 +828,7 @@ impl OpenAiModelsManager {
             xedoc_otel::start_global_timer("xedoc.remote_models.load_cache.duration_ms", &[]);
         let client_version = crate::client_version_to_whole();
         info!(client_version, "models cache: evaluating cache eligibility");
-        let cache = match cache_manager.load_fresh(&client_version).await {
+        let cache = match cache_manager.load_fresh(&client_version, scope).await {
             Some(cache) => cache,
             None => {
                 info!("models cache: no usable cache entry");
@@ -775,6 +838,7 @@ impl OpenAiModelsManager {
         let models = cache.models.clone();
         *self.etag.write().await = cache.etag.clone();
         self.apply_remote_models(models.clone()).await;
+        self.catalog_known.store(true, Ordering::Release);
         info!(
             models_count = models.len(),
             etag = ?cache.etag,
@@ -785,6 +849,18 @@ impl OpenAiModelsManager {
 }
 
 impl ModelsManager for StaticModelsManager {
+    fn model_availability(&self, model: &str) -> ModelAvailability {
+        if self
+            .remote_models
+            .iter()
+            .any(|info| info.slug == model && info.visibility == ModelVisibility::List)
+        {
+            ModelAvailability::Available
+        } else {
+            ModelAvailability::Unavailable
+        }
+    }
+
     fn get_default_model<'a>(
         &'a self,
         model: &'a Option<String>,
@@ -862,11 +938,10 @@ fn load_remote_models_from_file() -> Result<Vec<ModelInfo>, std::io::Error> {
     Ok(crate::bundled_models_response()?.models)
 }
 
-fn default_model_from_available(available: Vec<ModelPreset>) -> String {
+pub(crate) fn default_model_from_available(available: Vec<ModelPreset>) -> String {
     available
         .iter()
         .find(|model| model.is_default)
-        .or_else(|| available.first())
         .map(|model| model.model.clone())
         .unwrap_or_default()
 }
@@ -931,7 +1006,6 @@ pub(crate) fn construct_model_info_from_candidates(
     let model_info = if let Some(remote) = remote {
         ModelInfo {
             slug: model.to_string(),
-            used_fallback_model_metadata: false,
             ..remote
         }
     } else {

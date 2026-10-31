@@ -3,6 +3,8 @@ load("//:defs.bzl", "xedoc_rust_crate")
 xedoc_rust_crate(
     name = "models-manager",
     compile_data = [
+        "catalog.json",
+        "schema-10-defaults.json",
         "models.json",
         "prompts/base.md",
         "prompts/family_claude.md",

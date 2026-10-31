@@ -1,13 +1,14 @@
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::fmt;
 
 use tokio::sync::TryLockError;
 use xedoc_http_client::HttpClientFactory;
 use xedoc_login::AuthManager;
-use xedoc_protocol::auth::AuthMode;
 use xedoc_protocol::config_types::CollaborationModeMask;
+use xedoc_protocol::openai_models::ModelAvailability;
 use xedoc_protocol::openai_models::ModelInfo;
-use xedoc_protocol::openai_models::ModelVisibility;
+use xedoc_protocol::openai_models::ModelPreset;
 use xedoc_protocol::openai_models::ModelsResponse;
 
 use crate::config::ModelsManagerConfig;
@@ -42,12 +43,6 @@ impl RegistryModelsManager {
     }
 
     fn configured_models(&self, discovered: Vec<ModelInfo>) -> Vec<ModelInfo> {
-        let uses_chatgpt_catalog = self.provider_id == "openai"
-            && self
-                .inner
-                .auth_manager()
-                .and_then(AuthManager::auth_mode)
-                .is_some_and(AuthMode::has_chatgpt_account);
         let registry = self.registry.snapshot();
         let provider_display_name = registry
             .provider(&self.provider_id)
@@ -62,23 +57,25 @@ impl RegistryModelsManager {
         let mut models = discovered
             .into_iter()
             .filter(|catalog_model| {
-                uses_chatgpt_catalog
-                    || configured_provider
-                        .is_none_or(|provider| provider.models.contains_key(&catalog_model.slug))
+                configured_provider
+                    .is_none_or(|provider| provider.models.contains_key(&catalog_model.slug))
             })
             .map(|catalog_model| {
                 seen.insert(catalog_model.slug.clone());
-                let mut model = registry
-                    .configured_model(&self.provider_id, &catalog_model)
-                    .unwrap_or_else(|| {
-                        model_info_from_provider_catalog_slug(
-                            &catalog_model.slug,
-                            provider_display_name,
-                        )
+                let model = self
+                    .registry
+                    .configured_discovered_model(&self.provider_id, &catalog_model)
+                    .unwrap_or_else(|error| {
+                        tracing::warn!("Could not apply model overrides: {error}");
+                        registry
+                            .configured_model(&self.provider_id, &catalog_model)
+                            .unwrap_or_else(|| {
+                                model_info_from_provider_catalog_slug(
+                                    &catalog_model.slug,
+                                    provider_display_name,
+                                )
+                            })
                     });
-                if uses_chatgpt_catalog && catalog_model.visibility != ModelVisibility::List {
-                    model.visibility = catalog_model.visibility;
-                }
                 let prompt_override = load_prompt_override(
                     self.registry.xedoc_home(),
                     &self.provider_id,
@@ -97,7 +94,6 @@ impl RegistryModelsManager {
             registry
                 .configured_models(&self.provider_id)
                 .into_iter()
-                .filter(|_| !uses_chatgpt_catalog)
                 .filter(|model| seen.insert(model.slug.clone()))
                 .map(|model| {
                     let prompt_override = load_prompt_override(
@@ -134,12 +130,49 @@ impl fmt::Debug for RegistryModelsManager {
 }
 
 impl ModelsManager for RegistryModelsManager {
+    fn routing_model_roles(&self) -> BTreeMap<String, BTreeMap<String, String>> {
+        self.registry.routing_model_roles()
+    }
+
+    fn build_available_models(&self, models: Vec<ModelInfo>) -> Vec<ModelPreset> {
+        let mut presets = self.inner.build_available_models(models);
+        let selected = match self.registry.default_model_selection(&self.provider_id) {
+            crate::registry::DefaultModelSelection::Pinned(model) => Some(model),
+            crate::registry::DefaultModelSelection::Preferred(models) => {
+                models.into_iter().find(|id| {
+                    presets.iter().any(|model| {
+                        model.model == *id
+                            && model.show_in_picker
+                            && model.availability != ModelAvailability::Unavailable
+                    })
+                })
+            }
+        };
+        for model in &mut presets {
+            model.is_default = selected.as_deref() == Some(model.model.as_str());
+        }
+        presets
+    }
+
+    fn model_availability(&self, model: &str) -> ModelAvailability {
+        self.inner.model_availability(model)
+    }
+
     fn raw_model_catalog(
         &self,
         refresh_strategy: RefreshStrategy,
         http_client_factory: HttpClientFactory,
     ) -> ModelsManagerFuture<'_, ModelsResponse> {
         Box::pin(async move {
+            if refresh_strategy != RefreshStrategy::Offline {
+                crate::catalog::schedule_refresh(
+                    self.registry.clone(),
+                    http_client_factory.clone(),
+                );
+            }
+            if let Err(error) = self.registry.reload_catalog() {
+                tracing::warn!("Retaining current model preferences: {error}");
+            }
             let discovered = self
                 .inner
                 .raw_model_catalog(refresh_strategy, http_client_factory)
@@ -191,20 +224,17 @@ impl ModelsManager for RegistryModelsManager {
                 http_client_factory,
             );
         }
-        if let Some(default_model) = self
-            .registry
-            .snapshot()
-            .provider(&self.provider_id)
-            .map(|provider| provider.default_model.clone())
+        if let crate::registry::DefaultModelSelection::Pinned(model) =
+            self.registry.default_model_selection(&self.provider_id)
         {
-            return Box::pin(async move { default_model });
+            return Box::pin(async move { model });
         }
-        self.inner.get_default_model(
-            model,
-            allow_provider_model_fallback,
-            refresh_strategy,
-            http_client_factory,
-        )
+        Box::pin(async move {
+            crate::manager::default_model_from_available(
+                self.list_models(refresh_strategy, http_client_factory)
+                    .await,
+            )
+        })
     }
 
     fn get_model_info<'a>(
@@ -222,9 +252,15 @@ impl ModelsManager for RegistryModelsManager {
                 .provider(&self.provider_id)
                 .map(|provider| provider.display_name.as_str())
                 .unwrap_or(self.provider_id.as_str());
-            let configured = registry
-                .configured_model(&self.provider_id, &catalog_model)
-                .unwrap_or(catalog_model.clone());
+            let configured = self
+                .registry
+                .configured_discovered_model(&self.provider_id, &catalog_model)
+                .unwrap_or_else(|error| {
+                    tracing::warn!("Could not apply model overrides: {error}");
+                    registry
+                        .configured_model(&self.provider_id, &catalog_model)
+                        .unwrap_or(catalog_model.clone())
+                });
             let prompt_override =
                 load_prompt_override(self.registry.xedoc_home(), &self.provider_id, model);
             resolve_instructions(

@@ -1,5 +1,6 @@
 pub mod availability;
 pub(crate) mod cache;
+mod catalog;
 pub mod collaboration_mode_presets;
 pub(crate) mod config;
 pub mod instructions;
@@ -22,10 +23,6 @@ pub fn bundled_models_response()
 
 /// Convert the client version string to a whole version string (e.g. "1.2.3-alpha.4" -> "1.2.3").
 pub fn client_version_to_whole() -> String {
-    format!(
-        "{}.{}.{}",
-        env!("CARGO_PKG_VERSION_MAJOR"),
-        env!("CARGO_PKG_VERSION_MINOR"),
-        env!("CARGO_PKG_VERSION_PATCH")
-    )
+    let version = xedoc_login::default_client::xedoc_version();
+    version.split('-').next().unwrap_or(version).to_string()
 }

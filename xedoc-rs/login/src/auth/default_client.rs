@@ -158,8 +158,13 @@ pub fn is_first_party_chat_originator(originator_value: &str) -> bool {
     originator_value == "codex_atlas" || originator_value == "codex_chatgpt_desktop"
 }
 
+/// Release identity shared by HTTP clients and version-sensitive backend discovery.
+pub fn xedoc_version() -> &'static str {
+    option_env!("XEDOC_RELEASE_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))
+}
+
 pub fn get_xedoc_user_agent() -> String {
-    let build_version = env!("CARGO_PKG_VERSION");
+    let build_version = xedoc_version();
     let os_info = os_info::get();
     let originator = originator();
     let prefix = format!(

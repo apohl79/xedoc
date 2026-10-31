@@ -392,7 +392,7 @@
     flushDraft();
   }
 
-  function openMenu(kind) {
+  function openMenu(kind, { refresh = true } = {}) {
     if (!ready || !composerState) return;
     if (menuKind === kind) { closeMenu(); return; }
     closeMenu();
@@ -414,6 +414,11 @@
         item.type = "button";
         item.role = "menuitemradio";
         item.textContent = option.label || option.id;
+        if (kind === "model" && option.availability === "unavailable") {
+          item.disabled = true;
+          item.textContent += " (unavailable on this backend)";
+          item.title = "This model is not advertised by the active backend and account.";
+        }
         item.setAttribute("aria-checked", String(option.id === composerState[kind]));
         item.addEventListener("click", () => {
           if (option.id !== composerState[kind]) {
@@ -436,6 +441,7 @@
     };
     let search;
     if (kind === "model") {
+      if (refresh) send({ type: "refreshModels" });
       search = document.createElement("input");
       search.type = "search";
       search.placeholder = "Search models…";
@@ -461,7 +467,16 @@
       promptNavigation.awaitingScheduledRecall = false;
     }
     const tablesChanged = composerState && JSON.stringify(composerState.routerTableOptions) !== JSON.stringify(state.routerTableOptions);
+    const modelsChanged = composerState && JSON.stringify(composerState.models) !== JSON.stringify(state.models);
     composerState = { ...state, threadId: activeThread };
+    if (!threadChanged && menuKind === "model" && modelsChanged) {
+      const filter = menu.querySelector("input").value;
+      closeMenu();
+      openMenu("model", { refresh: false });
+      const search = menu.querySelector("input");
+      search.value = filter;
+      search.dispatchEvent(new Event("input"));
+    }
     if (menuKind === "routerTable" && tablesChanged) {
       closeMenu();
       openMenu("routerTable");
@@ -503,9 +518,7 @@
     }
     for (const kind of ["model", "effort", "router", "routerTable"]) {
       const button = document.getElementById(kind);
-      const value = kind === "model" ? state.model
-        : kind === "effort" && Object.hasOwn(state, "displayEffort") ? state.displayEffort
-        : state[kind];
+      const value = state[kind];
       if (kind === "router" || kind === "routerTable") {
         button.querySelector(kind === "router" ? ".router-mode" : ".router-table").textContent =
           value || (kind === "routerTable" ? "table" : kind);

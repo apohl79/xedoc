@@ -49,6 +49,13 @@ MODEL_ROUTER_SEMANTIC_POLICY_PATH = (
     Path("model-router") / "reference-router.semantic-policy.json"
 )
 MODEL_ROUTER_POLICY_PATH = Path("model-router") / "reference-router.policy.json"
+MODEL_CATALOG_SOURCE = (
+    MODEL_ROUTER_RESOURCE_SOURCE.parents[2]
+    / "xedoc-rs"
+    / "models-manager"
+    / "catalog.json"
+)
+MODEL_CATALOG_PATH = Path("model-router") / "model-catalog.json"
 REMOTE_AGENT_LAUNCHER_SOURCE = REMOTE_AGENT_SOURCE / "xedoc-remote-agentd"
 REMOTE_AGENT_LAUNCHER_NAME = "xedoc-remote-agentd"
 REMOTE_AGENT_RUNTIME_INTERPRETER_UNIX = (
@@ -229,6 +236,10 @@ def build_package_dir(
         MODEL_ROUTER_POLICY_SOURCE,
         resources_dir / MODEL_ROUTER_POLICY_PATH,
     )
+    shutil.copyfile(
+        MODEL_CATALOG_SOURCE,
+        resources_dir / MODEL_CATALOG_PATH,
+    )
     metadata = {
         "layoutVersion": (
             SESSION_CONTROL_LAYOUT_VERSION
@@ -339,6 +350,7 @@ def validate_package_dir(
     executable_files = list(required_files)
     executable_files.remove(Path("xedoc-resources") / MODEL_ROUTER_POLICY_PATH)
     executable_files.remove(Path("xedoc-resources") / MODEL_ROUTER_SEMANTIC_POLICY_PATH)
+    required_files.append(Path("xedoc-resources") / MODEL_CATALOG_PATH)
     if not spec.is_windows:
         executable_files.append(Path("xedoc-resources") / MODEL_ROUTER_RESOURCE_PATH)
 

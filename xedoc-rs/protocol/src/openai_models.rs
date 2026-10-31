@@ -192,6 +192,17 @@ pub struct ModelAvailabilityNux {
     pub message: String,
 }
 
+/// Availability advertised by the active backend and credential scope.
+#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, TS, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[ts(rename_all = "camelCase")]
+pub enum ModelAvailability {
+    Available,
+    Unavailable,
+    #[default]
+    Unknown,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema, PartialEq, Eq)]
 pub struct ModelServiceTier {
     pub id: String,
@@ -210,6 +221,8 @@ pub struct ModelPreset {
     pub display_name: String,
     /// Short human description shown in UIs.
     pub description: String,
+    #[serde(default)]
+    pub availability: ModelAvailability,
     /// Reasoning effort applied when none is explicitly chosen.
     pub default_reasoning_effort: ReasoningEffort,
     /// Supported reasoning effort options.
@@ -609,6 +622,7 @@ impl From<ModelInfo> for ModelPreset {
             model: info.slug.clone(),
             display_name: info.display_name,
             description: info.description.unwrap_or_default(),
+            availability: ModelAvailability::Unknown,
             default_reasoning_effort: info
                 .default_reasoning_level
                 .unwrap_or(ReasoningEffort::None),
@@ -676,14 +690,19 @@ impl ModelPreset {
 
     /// Recompute the single default preset using picker visibility.
     ///
-    /// The first picker-visible model wins; if none are picker-visible, the first model wins.
+    /// Prefer picker-visible selectable models; never default to an unavailable backend route.
     pub fn mark_default_by_picker_visibility(models: &mut [ModelPreset]) {
         for preset in models.iter_mut() {
             preset.is_default = false;
         }
-        if let Some(default) = models.iter_mut().find(|preset| preset.show_in_picker) {
+        if let Some(default) = models.iter_mut().find(|preset| {
+            preset.show_in_picker && preset.availability != ModelAvailability::Unavailable
+        }) {
             default.is_default = true;
-        } else if let Some(default) = models.first_mut() {
+        } else if let Some(default) = models
+            .iter_mut()
+            .find(|preset| preset.availability != ModelAvailability::Unavailable)
+        {
             default.is_default = true;
         }
     }

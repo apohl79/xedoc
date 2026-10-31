@@ -246,6 +246,9 @@ impl ChatWidget {
             };
             items.push(SelectionItem {
                 name: preset.model.clone(),
+                disabled_reason: (preset.availability
+                    == xedoc_protocol::openai_models::ModelAvailability::Unavailable)
+                    .then(|| "Not advertised by this backend and account".to_string()),
                 description,
                 category_tag: (!preset.provider_id.is_empty())
                     .then(|| format!("[{}]", preset.provider_id)),

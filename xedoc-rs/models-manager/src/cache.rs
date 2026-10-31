@@ -2,6 +2,7 @@ use chrono::DateTime;
 use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
+use std::collections::BTreeSet;
 use std::io;
 use std::io::ErrorKind;
 use std::path::PathBuf;
@@ -28,13 +29,17 @@ impl ModelsCacheManager {
     }
 
     /// Attempt to load a fresh cache entry. Returns `None` if the cache doesn't exist or is stale.
-    pub(crate) async fn load_fresh(&self, expected_version: &str) -> Option<ModelsCache> {
+    pub(crate) async fn load_fresh(
+        &self,
+        expected_version: &str,
+        expected_scope: Option<&str>,
+    ) -> Option<ModelsCache> {
         info!(
             cache_path = %self.cache_path.display(),
             expected_version,
             "models cache: attempting load_fresh"
         );
-        let cache = match self.load().await {
+        let mut cache = match self.load().await {
             Ok(cache) => cache?,
             Err(err) => {
                 error!("failed to load models cache: {err}");
@@ -47,7 +52,10 @@ impl ModelsCacheManager {
             fetched_at = %cache.fetched_at,
             "models cache: loaded cache file"
         );
-        if cache.client_version.as_deref() != Some(expected_version) {
+        if cache.metadata_fallbacks.is_none()
+            || cache.client_version.as_deref() != Some(expected_version)
+            || cache.scope.as_deref() != expected_scope
+        {
             info!(
                 cache_path = %self.cache_path.display(),
                 expected_version,
@@ -70,6 +78,10 @@ impl ModelsCacheManager {
             cache_ttl_secs = self.cache_ttl.as_secs(),
             "models cache: cache hit"
         );
+        let fallbacks = cache.metadata_fallbacks.as_ref()?;
+        for model in &mut cache.models {
+            model.used_fallback_model_metadata = fallbacks.contains(&model.slug);
+        }
         Some(cache)
     }
 
@@ -79,11 +91,20 @@ impl ModelsCacheManager {
         models: &[ModelInfo],
         etag: Option<String>,
         client_version: String,
+        scope: Option<String>,
     ) {
         let cache = ModelsCache {
             fetched_at: Utc::now(),
             etag,
             client_version: Some(client_version),
+            scope,
+            metadata_fallbacks: Some(
+                models
+                    .iter()
+                    .filter(|model| model.used_fallback_model_metadata)
+                    .map(|model| model.slug.clone())
+                    .collect(),
+            ),
             models: models.to_vec(),
         };
         if let Err(err) = self.save_internal(&cache).await {
@@ -131,6 +152,10 @@ pub(crate) struct ModelsCache {
     pub(crate) etag: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) client_version: Option<String>,
+    #[serde(default)]
+    pub(crate) scope: Option<String>,
+    #[serde(default)]
+    metadata_fallbacks: Option<BTreeSet<String>>,
     pub(crate) models: Vec<ModelInfo>,
 }
 
