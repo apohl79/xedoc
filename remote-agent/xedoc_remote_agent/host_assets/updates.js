@@ -16,6 +16,8 @@ window.XedocHostUpdates = class {
       if (this.terminal) this.terminal.focus();
     });
     this.byId("check").addEventListener("click", () => this.refresh(true));
+    this.resizeObserver = new ResizeObserver(() => this.fitTerminal());
+    this.resizeObserver.observe(this.byId("terminal"));
     this.byId("install").addEventListener("click", async () => {
       if (!this.latest) return;
       this.byId("install").disabled = true;
@@ -72,6 +74,21 @@ window.XedocHostUpdates = class {
     });
   }
 
+  fitTerminal() {
+    const container = this.byId("terminal");
+    if (!this.terminal || !container.clientWidth) return;
+    const screen = this.terminal.element.querySelector(".xterm-screen");
+    const cellWidth = screen.getBoundingClientRect().width / this.terminal.cols;
+    if (!cellWidth) return;
+    const style = getComputedStyle(container);
+    const viewport = this.terminal.element.querySelector(".xterm-viewport");
+    const scrollbarWidth = viewport.offsetWidth - viewport.clientWidth;
+    const width = container.clientWidth - parseFloat(style.paddingLeft)
+      - parseFloat(style.paddingRight) - scrollbarWidth;
+    const cols = Math.max(2, Math.floor(width / cellWidth));
+    if (cols !== this.terminal.cols) this.terminal.resize(cols, this.terminal.rows);
+  }
+
   async refresh(check = false) {
     if (!this.account || this.busy) return;
     this.busy = true;
@@ -115,6 +132,7 @@ window.XedocHostUpdates = class {
           this.terminal.open(this.byId("terminal"));
           this.terminal.onData((data) => this.send(data));
         }
+        this.fitTerminal();
         if (result.reset) this.terminal.reset();
         const bytes = Uint8Array.from(atob(result.output), (character) => character.charCodeAt(0));
         if (bytes.length) this.terminal.write(bytes);

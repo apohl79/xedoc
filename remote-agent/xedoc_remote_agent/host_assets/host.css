@@ -121,12 +121,11 @@ aside {
 .login-hostname { margin: -3px 0 8px; font-size: 12px; }
 #navigation button { display: grid; flex: none; width: 28px; height: 28px; padding: 0; place-items: center; }
 #navigation svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
-#update-dialog { width: min(1040px, calc(100vw - 24px)); max-width: none; }
+#update-dialog { width: calc(100vw - 24px); max-width: none; }
 .update-toolbar { display: flex; align-items: center; gap: 6px; margin: 8px 0; }
 #update-version { flex: 1; }
 #update-status { min-height: 20px; color: var(--muted); }
 #update-terminal { padding: 6px; background: var(--sidebar); overflow: auto; }
-#update-terminal .xterm { min-width: 730px; }
 #update-keys { justify-content: flex-start; gap: 4px; }
 .sidebar-brand button { padding: 1px 5px; background: transparent; }
 #identity {
