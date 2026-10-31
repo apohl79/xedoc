@@ -533,7 +533,9 @@
       }
     }
     document.getElementById("session-name").textContent = state.sessionName || "";
-    document.getElementById("turn-timer").textContent = state.timer ? `${Math.floor(state.timer / 60)}m ${state.timer % 60}s` : "";
+    const hours = state.timer >= 3600 ? `${Math.floor(state.timer / 3600)}h ` : "";
+    document.getElementById("turn-timer").textContent = state.timer
+      ? `${hours}${Math.floor(state.timer / 60) % 60}m ${state.timer % 60}s` : "";
     const signature = JSON.stringify(state.attachments);
     if (attachments.dataset.signature !== signature) {
       attachments.dataset.signature = signature;
