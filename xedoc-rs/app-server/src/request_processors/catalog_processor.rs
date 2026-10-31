@@ -1,6 +1,8 @@
 use super::*;
 use futures::StreamExt;
 use xedoc_core::config::permission_profile_catalog;
+use xedoc_models_manager::AuthMode;
+use xedoc_models_manager::manager::RefreshStrategy;
 
 #[derive(Clone)]
 pub(crate) struct CatalogRequestProcessor {
@@ -232,6 +234,18 @@ impl CatalogRequestProcessor {
             cursor,
             include_hidden,
         } = params;
+        let models_manager = thread_manager.get_models_manager();
+        if cursor.is_none()
+            && models_manager.auth_manager().is_some_and(|auth_manager| {
+                auth_manager
+                    .auth_mode()
+                    .is_some_and(AuthMode::has_chatgpt_account)
+            })
+        {
+            models_manager
+                .list_models(RefreshStrategy::Online, http_client_factory.clone())
+                .await;
+        }
         let models = supported_models(
             thread_manager,
             include_hidden.unwrap_or(false),

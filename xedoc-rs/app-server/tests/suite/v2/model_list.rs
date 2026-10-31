@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Error;
@@ -7,12 +10,15 @@ use app_test_support::TestAppServer;
 use app_test_support::to_response;
 use app_test_support::write_chatgpt_auth;
 use app_test_support::write_models_cache;
-use core_test_support::responses::mount_models_once;
 use pretty_assertions::assert_eq;
-use serde_json::json;
 use tempfile::TempDir;
 use tokio::time::timeout;
+use wiremock::Mock;
 use wiremock::MockServer;
+use wiremock::Respond;
+use wiremock::ResponseTemplate;
+use wiremock::matchers::method;
+use wiremock::matchers::path_regex;
 use xedoc_app_server_protocol::JSONRPCError;
 use xedoc_app_server_protocol::JSONRPCResponse;
 use xedoc_app_server_protocol::Model;
@@ -23,12 +29,30 @@ use xedoc_app_server_protocol::ModelUpgradeInfo;
 use xedoc_app_server_protocol::ReasoningEffortOption;
 use xedoc_app_server_protocol::RequestId;
 use xedoc_config::types::AuthCredentialsStoreMode;
-use xedoc_protocol::openai_models::ModelInfo;
 use xedoc_protocol::openai_models::ModelPreset;
 use xedoc_protocol::openai_models::ModelsResponse;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const INVALID_REQUEST_ERROR_CODE: i64 = -32600;
+
+#[derive(Debug)]
+struct SequentialModelsResponder {
+    calls: Arc<AtomicUsize>,
+    responses: Vec<ModelsResponse>,
+}
+
+impl Respond for SequentialModelsResponder {
+    fn respond(&self, _: &wiremock::Request) -> ResponseTemplate {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        let response = self
+            .responses
+            .get(call)
+            .unwrap_or_else(|| self.responses.last().expect("responses are non-empty"));
+        ResponseTemplate::new(200)
+            .insert_header("content-type", "application/json")
+            .set_body_json(response)
+    }
+}
 
 fn model_from_preset(preset: &ModelPreset) -> Model {
     Model {
@@ -171,42 +195,35 @@ async fn list_models_includes_hidden_models() -> Result<()> {
 }
 
 #[tokio::test]
-async fn list_models_uses_chatgpt_remote_catalog_as_source_of_truth() -> Result<()> {
+async fn list_models_refreshes_chatgpt_catalog_before_returning_picker_options() -> Result<()> {
     let server = MockServer::start().await;
-    let remote_model: ModelInfo = serde_json::from_value(json!({
-        "slug": "chatgpt-remote-only",
-        "display_name": "ChatGPT Remote Only",
-        "description": "Remote-only model for app-server model/list coverage",
-        "default_reasoning_level": "max",
-        "supported_reasoning_levels": [
-            {"effort": "max", "description": "Maximum"},
-            {"effort": "low", "description": "Low"},
-            {"effort": "focused", "description": "Focused"}
-        ],
-        "shell_type": "shell_command",
-        "visibility": "list",
-        "minimal_client_version": [0, 1, 0],
-        "supported_in_api": true,
-        "priority": 0,
-        "upgrade": null,
-        "base_instructions": "base instructions",
-        "support_verbosity": false,
-        "default_verbosity": null,
-        "apply_patch_tool_type": null,
-        "truncation_policy": {"mode": "bytes", "limit": 10_000},
-        "supports_parallel_tool_calls": false,
-        "supports_image_detail_original": false,
-        "context_window": 272_000,
-        "max_context_window": 272_000,
-        "experimental_supported_tools": [],
-    }))?;
-    let models_mock = mount_models_once(
-        &server,
-        ModelsResponse {
-            models: vec![remote_model.clone()],
-        },
-    )
-    .await;
+    let bundled_models = xedoc_models_manager::bundled_models_response()?.models;
+    let stale_model = bundled_models
+        .iter()
+        .find(|model| model.slug == "gpt-6.1-terra")
+        .cloned()
+        .ok_or_else(|| Error::msg("bundled catalog is missing gpt-6.1-terra"))?;
+    let current_model = bundled_models
+        .iter()
+        .find(|model| model.slug == "gpt-6.1-sol")
+        .cloned()
+        .ok_or_else(|| Error::msg("bundled catalog is missing gpt-6.1-sol"))?;
+    let calls = Arc::new(AtomicUsize::new(0));
+    Mock::given(method("GET"))
+        .and(path_regex(".*/models$"))
+        .respond_with(SequentialModelsResponder {
+            calls: Arc::clone(&calls),
+            responses: vec![
+                ModelsResponse {
+                    models: vec![stale_model],
+                },
+                ModelsResponse {
+                    models: vec![current_model.clone()],
+                },
+            ],
+        })
+        .mount(&server)
+        .await;
 
     let xedoc_home = TempDir::new()?;
     let server_uri = server.uri();
@@ -235,6 +252,14 @@ openai_base_url = "{server_uri}/v1"
         .await?;
     timeout(DEFAULT_TIMEOUT, mcp.initialize()).await??;
 
+    timeout(DEFAULT_TIMEOUT, async {
+        while calls.load(Ordering::SeqCst) == 0 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await?;
+    let calls_before_list = calls.load(Ordering::SeqCst);
+
     let request_id = mcp
         .send_list_models_request(ModelListParams {
             limit: Some(100),
@@ -253,35 +278,18 @@ openai_base_url = "{server_uri}/v1"
         data: items,
         next_cursor,
     } = to_response::<ModelListResponse>(response)?;
-    let mut expected_presets: Vec<ModelPreset> = vec![remote_model.into()];
+    let mut expected_presets: Vec<ModelPreset> = vec![current_model.into()];
     ModelPreset::mark_default_by_picker_visibility(&mut expected_presets);
     expected_presets[0].provider_id = "openai".to_string();
-    let mut expected_items = expected_presets
+    let expected_items = expected_presets
         .iter()
         .map(model_from_preset)
         .collect::<Vec<_>>();
-    expected_items[0].supported_reasoning_efforts = vec![
-        ReasoningEffortOption {
-            reasoning_effort: "max".parse().map_err(Error::msg)?,
-            description: "Maximum".to_string(),
-        },
-        ReasoningEffortOption {
-            reasoning_effort: "low".parse().map_err(Error::msg)?,
-            description: "Low".to_string(),
-        },
-        ReasoningEffortOption {
-            reasoning_effort: "focused".parse().map_err(Error::msg)?,
-            description: "Focused".to_string(),
-        },
-    ];
 
     assert_eq!(items, expected_items);
+    assert!(items.iter().all(|model| model.model != "gpt-6.1-terra"));
     assert!(next_cursor.is_none());
-    assert_eq!(
-        models_mock.requests().len(),
-        1,
-        "expected a single /models request"
-    );
+    assert_eq!(calls.load(Ordering::SeqCst), calls_before_list + 1);
     Ok(())
 }
 
