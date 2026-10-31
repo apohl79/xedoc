@@ -827,7 +827,9 @@
       if (existingTab) {
         updateSessionTitle(threadId, openedSession.title);
       } else {
-        byId("sessions").prepend(sessionTab({ ...openedSession, threadId }));
+        const tab = sessionTab({ ...openedSession, threadId });
+        byId("sessions").append(tab);
+        tab.scrollIntoView({ block: "nearest", inline: "end" });
       }
       byId("session-empty").hidden = true;
       document.querySelectorAll(".session-tab").forEach((tab) => {
