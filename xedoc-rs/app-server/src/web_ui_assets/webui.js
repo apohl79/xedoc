@@ -12,7 +12,7 @@
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const live = document.getElementById("live");
   const liveFrame = document.getElementById("live-frame");
-  const session = document.getElementById("session");
+  const terminalMeasure = document.createElement("canvas").getContext("2d");
   const composer = document.getElementById("composer");
   const input = document.getElementById("input");
   const connection = document.getElementById("connection");
@@ -617,6 +617,7 @@
       htmlById.clear();
       activeThread = frame.activeThreadId;
       activeWidth = frame.width;
+      liveFrame.style.width = `${frame.width}ch`;
       historyBefore = null;
     }
     const ordinal = (id) => Number(id.slice(id.lastIndexOf("-") + 1));
@@ -969,8 +970,9 @@
   });
 
   function browserTerminalWidth() {
-    const availableWidth = history.hidden ? session.clientWidth : history.clientWidth;
-    return Math.max(40, Math.min(400, Math.floor(availableWidth / 8)));
+    terminalMeasure.font = getComputedStyle(live).font;
+    const cellWidth = terminalMeasure.measureText("0").width;
+    return Math.max(20, Math.min(400, Math.floor(composer.clientWidth / cellWidth)));
   }
 
   function syncBrowserTerminalWidth() {
@@ -983,7 +985,7 @@
     if (!liveOverlay || !liveFrame.firstElementChild) return;
     const { width, height } = liveFrame.getBoundingClientRect();
     if (!width || !height) return;
-    const maxWidth = Math.max(1, window.innerWidth - 32);
+    const maxWidth = Math.max(1, live.clientWidth);
     const maxHeight = Math.max(1, Math.min(window.innerHeight * 0.82, 720));
     liveFrame.style.zoom = String(Math.min(1, maxWidth / width, maxHeight / height));
   }

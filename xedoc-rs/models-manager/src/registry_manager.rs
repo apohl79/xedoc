@@ -62,8 +62,9 @@ impl RegistryModelsManager {
         let mut models = discovered
             .into_iter()
             .filter(|catalog_model| {
-                configured_provider
-                    .is_none_or(|provider| provider.models.contains_key(&catalog_model.slug))
+                uses_chatgpt_catalog
+                    || configured_provider
+                        .is_none_or(|provider| provider.models.contains_key(&catalog_model.slug))
             })
             .map(|catalog_model| {
                 seen.insert(catalog_model.slug.clone());

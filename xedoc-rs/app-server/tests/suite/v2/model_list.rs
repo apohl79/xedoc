@@ -212,6 +212,10 @@ async fn list_models_refreshes_chatgpt_catalog_before_returning_picker_options()
         .find(|model| model.slug == "gpt-6-luna")
         .cloned()
         .ok_or_else(|| Error::msg("bundled catalog is missing gpt-6-luna"))?;
+    let mut unregistered_model = current_model.clone();
+    unregistered_model.slug = "gpt-5.6-luna".to_string();
+    unregistered_model.display_name = "GPT-5.6-Luna".to_string();
+    unregistered_model.priority = 100;
     let mut hidden_model = current_model.clone();
     hidden_model.visibility = ModelVisibility::Hide;
     let locally_hidden_model = bundled_models
@@ -229,7 +233,11 @@ async fn list_models_refreshes_chatgpt_catalog_before_returning_picker_options()
                     models: vec![stale_model],
                 },
                 ModelsResponse {
-                    models: vec![current_model.clone(), locally_hidden_model],
+                    models: vec![
+                        current_model.clone(),
+                        unregistered_model.clone(),
+                        locally_hidden_model,
+                    ],
                 },
                 ModelsResponse {
                     models: vec![hidden_model.clone()],
@@ -304,9 +312,15 @@ openai_base_url = "{server_uri}/v1"
         data: items,
         next_cursor,
     } = to_response::<ModelListResponse>(response)?;
-    let mut expected_presets: Vec<ModelPreset> = vec![current_model.into()];
+    let configured_unregistered_model = registry
+        .configured_model("openai", &unregistered_model)
+        .ok_or_else(|| Error::msg("registry is missing the openai template"))?;
+    let mut expected_presets: Vec<ModelPreset> =
+        vec![current_model.into(), configured_unregistered_model.into()];
     ModelPreset::mark_default_by_picker_visibility(&mut expected_presets);
-    expected_presets[0].provider_id = "openai".to_string();
+    for preset in &mut expected_presets {
+        preset.provider_id = "openai".to_string();
+    }
     let expected_items = expected_presets
         .iter()
         .map(|preset| {
