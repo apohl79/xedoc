@@ -65,6 +65,9 @@ pub(crate) enum BrowserInput {
         effort: Option<String>,
         router: Option<String>,
     },
+    RoutingTable {
+        table: Option<String>,
+    },
     Question {
         #[serde(rename = "requestId")]
         request_id: String,
@@ -102,6 +105,7 @@ impl BrowserInput {
             | Self::Draft { .. }
             | Self::RemoveImage { .. }
             | Self::Settings { .. }
+            | Self::RoutingTable { .. }
             | Self::Question { .. }
             | Self::Resize { .. } => None,
         }
@@ -130,6 +134,7 @@ pub(crate) struct WebUiSession {
     pub(crate) draft_revision: u64,
     pub(crate) draft_ack: u64,
     pub(crate) image_previews: HashMap<std::path::PathBuf, String>,
+    pub(crate) routing_tables: crate::app::RoutingTables,
 }
 
 pub(crate) struct CachedHistoryCell {
@@ -190,6 +195,7 @@ impl WebUiSession {
             draft_revision: 0,
             draft_ack: 0,
             image_previews: HashMap::new(),
+            routing_tables: crate::app::RoutingTables::default(),
         }
     }
 

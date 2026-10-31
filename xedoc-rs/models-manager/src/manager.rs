@@ -513,10 +513,14 @@ impl OpenAiModelsManager {
         endpoint_client: Arc<dyn ModelsEndpointClient>,
         auth_manager: Option<Arc<AuthManager>>,
     ) -> Self {
-        // Providers with an authoritative remote catalog must never advertise the bundled
-        // OpenAI models: a failed or pending fetch would otherwise make them claim OpenAI
-        // slugs in the aggregated multi-provider catalog.
-        let remote_models = if endpoint_client.has_authoritative_remote_catalog() {
+        // Account-scoped and authoritative catalogs must not advertise bundled models
+        // while discovery is pending or unavailable.
+        let remote_models = if endpoint_client.has_authoritative_remote_catalog()
+            || auth_manager
+                .as_deref()
+                .and_then(AuthManager::auth_mode)
+                .is_some_and(AuthMode::has_chatgpt_account)
+        {
             Vec::new()
         } else {
             load_remote_models_from_file().unwrap_or_default()
@@ -715,23 +719,24 @@ impl OpenAiModelsManager {
 
     /// Replace the cached remote models and rebuild the derived presets list.
     async fn apply_remote_models(&self, models: Vec<ModelInfo>) {
-        if self.endpoint_client.has_authoritative_remote_catalog() {
+        if self.endpoint_client.has_authoritative_remote_catalog()
+            || self
+                .auth_manager
+                .as_deref()
+                .and_then(AuthManager::auth_mode)
+                .is_some_and(AuthMode::has_chatgpt_account)
+        {
             *self.remote_models.write().await = models;
             return;
         }
 
-        // Use a visible remote catalog as the source of truth for ChatGPT and
-        // command-authenticated providers.
+        // Use a visible remote catalog as the source of truth for command-authenticated
+        // providers.
         let should_use_remote_models_only = !models.is_empty()
             && models
                 .iter()
                 .any(|model| model.visibility == ModelVisibility::List)
-            && (self.endpoint_client.has_command_auth()
-                || self.auth_manager.as_ref().is_some_and(|auth_manager| {
-                    auth_manager
-                        .auth_mode()
-                        .is_some_and(AuthMode::has_chatgpt_account)
-                }));
+            && self.endpoint_client.has_command_auth();
         if should_use_remote_models_only {
             *self.remote_models.write().await = models;
             return;

@@ -307,7 +307,7 @@ async fn browser_socket(mut socket: WebSocket, state: Arc<SessionState>) {
                 match input {
                     Some(Ok(Message::Text(text))) => {
                         let valid = serde_json::from_str::<serde_json::Value>(&text)
-                            .is_ok_and(|input| matches!(input["type"].as_str(), Some("key" | "paste" | "image" | "file" | "history" | "draft" | "removeImage" | "settings" | "question" | "resize" | "recallScheduledPrompt" | "recallQueuedPrompt")));
+                            .is_ok_and(|input| matches!(input["type"].as_str(), Some("key" | "paste" | "image" | "file" | "history" | "draft" | "removeImage" | "settings" | "routingTable" | "question" | "resize" | "recallScheduledPrompt" | "recallQueuedPrompt")));
                         if !valid || !state.producer_connected.load(Ordering::SeqCst) { break; }
                         if !matches!(timeout(SEND_TIMEOUT, state.inputs.send(text.to_string())).await, Ok(Ok(()))) { break; }
                     }
@@ -350,6 +350,8 @@ async fn script() -> Response {
     asset(
         concat!(
             include_str!("web_ui_assets/question.js"),
+            "\n",
+            include_str!("web_ui_assets/prompt-markdown.js"),
             "\n",
             include_str!("web_ui_assets/webui.js")
         ),

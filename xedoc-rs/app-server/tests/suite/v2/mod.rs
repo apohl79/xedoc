@@ -72,6 +72,7 @@ mod thread_start;
 mod thread_status;
 mod thread_unarchive;
 mod thread_unsubscribe;
+mod thread_web_ui;
 mod turn_interrupt;
 mod turn_start;
 mod turn_start_zsh_fork;

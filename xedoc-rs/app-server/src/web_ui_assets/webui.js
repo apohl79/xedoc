@@ -228,7 +228,9 @@
   reducedMotion.addEventListener("change", syncFaviconAnimation);
 
   function setConnection(text, state) {
+    const connected = !ready && state === "live";
     ready = state === "live";
+    if (connected) send({ type: "routingTable" });
     if (!ready) setFaviconTurnActive(false);
     connection.textContent = text;
     connection.dataset.state = state;
@@ -254,7 +256,8 @@
   }
 
   function editorText(node = input) {
-    const isBlock = (child) => ["DIV", "P", "LI"].includes(child?.nodeName);
+    const isBlock = (child) => child?.classList?.contains("editor-line")
+      || ["DIV", "P", "LI"].includes(child?.nodeName);
     const text = Array.from(node.childNodes).map((child) => {
       if (child.nodeType === Node.TEXT_NODE) return child.textContent;
       if (child.nodeName === "BR") return "\n";
@@ -284,14 +287,15 @@
   function restoreSelection(offsets) {
     if (!offsets) return;
     const locate = (offset) => {
-      for (const line of input.children) {
+      for (const line of input.querySelectorAll(".editor-line")) {
         const length = line.textContent.length;
         if (offset <= length) {
           const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
           let node;
           while ((node = walker.nextNode())) {
-            if (node.parentElement?.classList.contains("syntax-marker") && offset <= node.length) {
-              const marker = node.parentElement;
+            const syntax = node.parentElement?.closest(".syntax-entity, .syntax-marker");
+            if (syntax && offset <= node.length) {
+              const marker = syntax.closest(".syntax-entity") || syntax;
               const index = Array.prototype.indexOf.call(marker.parentNode.childNodes, marker);
               return [marker.parentNode, index + (offset > 0 || index === 0 ? 1 : 0)];
             }
@@ -307,87 +311,8 @@
     window.getSelection()?.setBaseAndExtent(...locate(offsets[0]), ...locate(offsets[1]));
   }
 
-  function editorPrefix(line) {
-    return line.match(/^(\s*(?:[-*+]|\d+[.)]) +(?:\[[ xX]\] +)?|> +|#{1,6} +)(?=\S)/)?.[0];
-  }
-
-  function markdownMarker(text) {
-    const marker = document.createElement("span");
-    marker.className = "syntax-marker";
-    marker.contentEditable = "false";
-    marker.textContent = text;
-    return marker;
-  }
-
-  function renderInlineMarkdown(parent, text) {
-    const pattern = /(`+)([^\n]*?)\1|\[([^\]\n]+)\]\(([^)\n]+)\)|(\*\*|__|~~)(?=\S)(.+?)\5|(\*|_)(?=\S)(.+?)\7|(?:\$[\w][\w./:-]*|\[(?:Image|Doc) #\d+\])/g;
-    let offset = 0;
-    for (const match of text.matchAll(pattern)) {
-      parent.append(document.createTextNode(text.slice(offset, match.index)));
-      let element;
-      if (match[1]) {
-        element = document.createElement("code");
-        element.append(markdownMarker(match[1]), document.createTextNode(match[2]), markdownMarker(match[1]));
-      } else if (match[3]) {
-        element = document.createElement("span");
-        element.className = "editor-link";
-        element.title = match[4];
-        element.append(markdownMarker("["), document.createTextNode(match[3]), markdownMarker(`](${match[4]})`));
-      } else if (match[5] || match[7]) {
-        const delimiter = match[5] || match[7];
-        element = document.createElement(delimiter === "~~" ? "s" : match[5] ? "strong" : "em");
-        element.append(markdownMarker(delimiter));
-        renderInlineMarkdown(element, match[6] || match[8]);
-        element.append(markdownMarker(delimiter));
-      } else {
-        element = document.createElement("span");
-        element.className = "editor-reference";
-        element.textContent = match[0];
-      }
-      parent.append(element);
-      offset = match.index + match[0].length;
-    }
-    parent.append(document.createTextNode(text.slice(offset)));
-  }
-
   function renderEditor(text, selection = null) {
-    const content = document.createElement("div");
-    let fence = null;
-    for (const line of text.split("\n")) {
-      const element = document.createElement("div");
-      element.className = "editor-line";
-      const fenceMatch = line.match(/^\s*(`{3,}|~{3,})(.*)$/);
-      if (fenceMatch && (!fence || fenceMatch[1][0] === fence[0]
-          && fenceMatch[1].length >= fence.length && !fenceMatch[2].trim())) {
-        element.classList.add("editor-code", "editor-fence");
-        element.textContent = line;
-        fence = fence ? null : fenceMatch[1];
-        content.append(element);
-        continue;
-      }
-      if (fence) {
-        element.classList.add("editor-code");
-        element.textContent = line;
-        if (!line) element.append(document.createElement("br"));
-        content.append(element);
-        continue;
-      }
-      const prefix = editorPrefix(line);
-      if (prefix) {
-        const heading = prefix.match(/^#+/);
-        element.classList.add(heading ? "editor-heading" : prefix.trim().startsWith(">") ? "editor-quote" : "editor-list");
-        if (element.classList.contains("editor-list")) {
-          element.style.marginLeft = `${prefix.match(/^\s*/)[0].replace(/\t/g, "  ").length / 2 * 1.2}em`;
-        }
-        if (heading) element.dataset.level = heading[0].length;
-        if (/^\s*\d/.test(prefix)) element.dataset.bullet = prefix.trim();
-        if (/\[[ xX]\]/.test(prefix)) element.dataset.bullet = /\[[xX]\]/.test(prefix) ? "☑" : "☐";
-        element.append(markdownMarker(prefix));
-      }
-      renderInlineMarkdown(element, line.slice(prefix?.length || 0));
-      if (!line) element.append(document.createElement("br"));
-      content.append(element);
-    }
+    const content = window.XedocPromptMarkdown.render(text);
     if (input.innerHTML !== content.innerHTML) input.replaceChildren(...content.childNodes);
     restoreSelection(selection);
   }
@@ -412,41 +337,25 @@
     const lineStart = start === 0 ? 0 : source.lastIndexOf("\n", start - 1) + 1;
     const lineEnd = source.indexOf("\n", start);
     const line = source.slice(lineStart, lineEnd < 0 ? source.length : lineEnd);
-    const item = line.match(/^([ \t]*)([-*+]|\d+[.)]) (?:\[[ xX]\] )?/);
-    if (!item || input.children[source.slice(0, start).split("\n").length - 1]?.classList.contains("editor-code")) return false;
+    const lineIndex = source.slice(0, start).split("\n").length - 1;
+    const item = window.XedocPromptMarkdown.lines(source)[lineIndex]?.item;
+    if (!item) return false;
     if (key === "Enter") {
-      if (!line.slice(item[0].length).trim()) {
-        renderEditor(source.slice(0, lineStart) + source.slice(lineStart + item[0].length),
+      if (!line.slice(item.prefix.length).trim()) {
+        renderEditor(source.slice(0, lineStart) + source.slice(lineStart + item.prefix.length),
           [lineStart, lineStart]);
         dirty = true;
         flushDraft();
         return true;
       }
-      const marker = /^\d/.test(item[2])
-        ? `${Number.parseInt(item[2], 10) + 1}${item[2].slice(-1)}` : item[2];
-      insertText(`\n${item[1]}${marker} ${/\[[ xX]\] /.test(item[0]) ? "[ ] " : ""}`);
+      const path = item.path?.slice();
+      if (path) path[path.length - 1] += 1;
+      const marker = path ? `${path.join(".")}${item.marker.slice(-1)}` : item.marker;
+      insertText(`\n${item.indent}${marker} ${item.task ? "[ ] " : ""}`);
       return true;
     }
-    const lastLineStart = source.lastIndexOf("\n", Math.max(start, end - 1)) + 1;
-    const edits = [];
-    let position = lineStart;
-    while (position <= lastLineStart) {
-      const next = source.indexOf("\n", position);
-      const text = source.slice(position, next < 0 ? source.length : next);
-      if (/^[ \t]*(?:[-*+]|\d+[.)]) /.test(text)) {
-        const removed = unindent ? (text.match(/^(?: {1,2}|\t)/)?.[0].length || 0) : 0;
-        edits.push({ position, removed, added: unindent ? "" : "  " });
-      }
-      if (next < 0) break;
-      position = next + 1;
-    }
-    let result = source;
-    for (const edit of edits.slice().reverse()) {
-      result = result.slice(0, edit.position) + edit.added + result.slice(edit.position + edit.removed);
-    }
-    const adjust = (offset) => offset + edits.reduce((delta, edit) =>
-      delta + (edit.position <= offset ? edit.added.length - Math.min(edit.removed, offset - edit.position) : 0), 0);
-    renderEditor(result, selection.map(adjust));
+    const result = window.XedocPromptMarkdown.indent(source, selection, unindent);
+    renderEditor(result.text, result.selection);
     dirty = true;
     flushDraft();
     return true;
@@ -493,6 +402,7 @@
     menu.replaceChildren();
     const options = kind === "model" ? composerState.models
       : kind === "router" ? composerState.routerOptions
+      : kind === "routerTable" ? composerState.routerTableOptions
       : (composerState.models.find((item) => item.id === composerState.model)?.efforts || [])
         .map((id) => ({ id, label: id }));
     const list = document.createElement("div");
@@ -507,7 +417,9 @@
         item.setAttribute("aria-checked", String(option.id === composerState[kind]));
         item.addEventListener("click", () => {
           if (option.id !== composerState[kind]) {
-            pendingActions.push({ type: "settings", [kind]: option.id });
+            pendingActions.push(kind === "routerTable"
+              ? { type: "routingTable", table: option.id }
+              : { type: "settings", [kind]: option.id });
           }
           closeMenu();
           flushDraft();
@@ -548,7 +460,12 @@
       promptNavigation.index = recalledIndex >= 0 ? recalledIndex : promptNavigation.prompts.length;
       promptNavigation.awaitingScheduledRecall = false;
     }
+    const tablesChanged = composerState && JSON.stringify(composerState.routerTableOptions) !== JSON.stringify(state.routerTableOptions);
     composerState = { ...state, threadId: activeThread };
+    if (menuKind === "routerTable" && tablesChanged) {
+      closeMenu();
+      openMenu("routerTable");
+    }
     revision = Math.max(revision, state.ackRevision || 0);
     if (threadChanged) {
       promptNavigation = null;
@@ -584,17 +501,23 @@
       }
       renderEditor(state.text, selection);
     }
-    for (const kind of ["model", "effort", "router"]) {
+    for (const kind of ["model", "effort", "router", "routerTable"]) {
       const button = document.getElementById(kind);
       const value = kind === "model" ? state.model
         : kind === "effort" && Object.hasOwn(state, "displayEffort") ? state.displayEffort
         : state[kind];
-      if (kind === "router") {
-        button.querySelector(".router-mode").textContent = value || kind;
+      if (kind === "router" || kind === "routerTable") {
+        button.querySelector(kind === "router" ? ".router-mode" : ".router-table").textContent =
+          value || (kind === "routerTable" ? "table" : kind);
       } else {
         button.textContent = value || kind;
       }
       button.disabled = !ready;
+      if (kind === "routerTable") {
+        button.hidden = !state.routerTableOptions?.length;
+        button.title = value ? `Routing table: ${value}` : "Change routing table";
+        button.setAttribute("aria-label", value ? `Change routing table, current: ${value}` : "Change routing table");
+      }
     }
     document.getElementById("session-name").textContent = state.sessionName || "";
     document.getElementById("turn-timer").textContent = state.timer ? `${Math.floor(state.timer / 60)}m ${state.timer % 60}s` : "";
@@ -722,12 +645,16 @@
         }
         const fragment = document.createElement("div");
         fragment.innerHTML = cell.html;
+        for (const prompt of fragment.querySelectorAll(".prompt-markdown")) {
+          const content = window.XedocPromptMarkdown.render(prompt.textContent);
+          prompt.replaceChildren(...content.childNodes);
+        }
         const textWalker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT);
         const referencePattern = /\[(?:Image|Doc) #\d+\]/g;
         const referenceNodes = [];
         while (textWalker.nextNode()) {
           const node = textWalker.currentNode;
-          if (!node.parentElement.closest("code, a") && referencePattern.test(node.data)) {
+          if (!node.parentElement.closest("code, pre, a, .editor-reference") && referencePattern.test(node.data)) {
             referenceNodes.push(node);
           }
           referencePattern.lastIndex = 0;
@@ -1086,9 +1013,31 @@
     socket.addEventListener("error", () => socket.close());
   }
 
+  input.addEventListener("click", (event) => {
+    if (event.target.closest("a")) event.preventDefault();
+  });
+  for (const action of ["copy", "cut"]) {
+    input.addEventListener(action, (event) => {
+      if (!event.clipboardData || !input.contains(window.getSelection()?.focusNode)) return;
+      const selection = editorSelection();
+      if (!selection || selection[0] === selection[1]) return;
+      event.preventDefault();
+      event.clipboardData.setData("text/plain",
+        editorText().slice(Math.min(...selection), Math.max(...selection)));
+      if (action === "cut" && ready) insertText("");
+    });
+  }
   input.addEventListener("keydown", (event) => {
     if (composing || event.isComposing || event.key === "Process" || event.key === "Dead") return;
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
+        && event.key.toLowerCase() === "a") {
+      event.preventDefault();
+      const range = document.createRange();
+      range.selectNodeContents(input);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    } else if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
         && ["b", "i"].includes(event.key.toLowerCase())) {
       event.preventDefault();
       const text = editorText();
@@ -1101,7 +1050,8 @@
       dirty = true;
       flushDraft();
     } else if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
-        && event.key.toLowerCase() === "c") {
+        && event.key.toLowerCase() === "c"
+        && (!window.getSelection()?.rangeCount || window.getSelection().isCollapsed)) {
       event.preventDefault();
       if (editorText()) {
         renderEditor("", [0, 0]);
@@ -1168,8 +1118,11 @@
     event.preventDefault();
     send({ type: "paste", text });
   });
-  for (const kind of ["router", "model", "effort"]) {
-    document.getElementById(kind).addEventListener("click", () => openMenu(kind));
+  for (const kind of ["router", "routerTable", "model", "effort"]) {
+    document.getElementById(kind).addEventListener("click", () => {
+      openMenu(kind);
+      if (kind === "routerTable") send({ type: "routingTable" });
+    });
   }
   document.getElementById("send").addEventListener("click", submit);
   function updateQuoteSelection() {

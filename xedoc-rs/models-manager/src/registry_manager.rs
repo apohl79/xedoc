@@ -4,8 +4,10 @@ use std::fmt;
 use tokio::sync::TryLockError;
 use xedoc_http_client::HttpClientFactory;
 use xedoc_login::AuthManager;
+use xedoc_protocol::auth::AuthMode;
 use xedoc_protocol::config_types::CollaborationModeMask;
 use xedoc_protocol::openai_models::ModelInfo;
+use xedoc_protocol::openai_models::ModelVisibility;
 use xedoc_protocol::openai_models::ModelsResponse;
 
 use crate::config::ModelsManagerConfig;
@@ -40,6 +42,12 @@ impl RegistryModelsManager {
     }
 
     fn configured_models(&self, discovered: Vec<ModelInfo>) -> Vec<ModelInfo> {
+        let uses_chatgpt_catalog = self.provider_id == "openai"
+            && self
+                .inner
+                .auth_manager()
+                .and_then(AuthManager::auth_mode)
+                .is_some_and(AuthMode::has_chatgpt_account);
         let registry = self.registry.snapshot();
         let provider_display_name = registry
             .provider(&self.provider_id)
@@ -59,7 +67,7 @@ impl RegistryModelsManager {
             })
             .map(|catalog_model| {
                 seen.insert(catalog_model.slug.clone());
-                let model = registry
+                let mut model = registry
                     .configured_model(&self.provider_id, &catalog_model)
                     .unwrap_or_else(|| {
                         model_info_from_provider_catalog_slug(
@@ -67,6 +75,9 @@ impl RegistryModelsManager {
                             provider_display_name,
                         )
                     });
+                if uses_chatgpt_catalog && catalog_model.visibility != ModelVisibility::List {
+                    model.visibility = catalog_model.visibility;
+                }
                 let prompt_override = load_prompt_override(
                     self.registry.xedoc_home(),
                     &self.provider_id,
@@ -85,6 +96,7 @@ impl RegistryModelsManager {
             registry
                 .configured_models(&self.provider_id)
                 .into_iter()
+                .filter(|_| !uses_chatgpt_catalog)
                 .filter(|model| seen.insert(model.slug.clone()))
                 .map(|model| {
                     let prompt_override = load_prompt_override(

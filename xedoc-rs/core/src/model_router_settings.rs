@@ -1,13 +1,16 @@
 //! Contextless scripted model-router settings operations.
 
 use serde_json::Value;
+use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
+use xedoc_login::AuthManager;
 use xedoc_models_manager::manager::SharedModelsManager;
 use xedoc_protocol::protocol::ScriptedInteractionOutcome;
 use xedoc_protocol::protocol::ScriptedInteractionResponse;
 use xedoc_rollout::state_db::StateDbHandle;
 
 use crate::config::Config;
+use crate::model_router::available_script_providers;
 use crate::model_router::current_script_route;
 use crate::model_router::eligible_script_routes;
 use crate::model_router_credentials::store_jev_api_key;
@@ -73,6 +76,7 @@ pub async fn open(
     config: &Config,
     state_db: Option<&StateDbHandle>,
     models_manager: &SharedModelsManager,
+    auth_manager: &Arc<AuthManager>,
     session_mode: Option<&str>,
     supports_session_mode: bool,
     thread_id: Option<&str>,
@@ -88,6 +92,7 @@ pub async fn open(
             "surfaces": ["menu", "form", "confirmation"],
         },
         "eligibleRoutes": eligible_routes,
+        "availableProviders": available_script_providers(config, auth_manager),
         "eligibleClassifierRoutes": eligible_routes,
         "providerBudgets": provider_budgets,
         "currentRoute": current_script_route(config),
@@ -121,6 +126,7 @@ pub async fn respond(
     config: &Config,
     state_db: Option<&StateDbHandle>,
     models_manager: &SharedModelsManager,
+    auth_manager: &Arc<AuthManager>,
     response: Value,
     jev_api_key: Option<String>,
     session_mode: Option<&str>,
@@ -141,6 +147,7 @@ pub async fn respond(
             "surfaces": ["menu", "form", "confirmation"],
         },
         "eligibleRoutes": eligible_routes,
+        "availableProviders": available_script_providers(config, auth_manager),
         "eligibleClassifierRoutes": eligible_routes,
         "providerBudgets": provider_budgets,
         "currentRoute": current_script_route(config),

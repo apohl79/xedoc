@@ -85,7 +85,9 @@ pub(crate) fn history_cell_html(cell: &dyn HistoryCell, page_start: u16, page_en
                     );
                 }
             }
-            html.push_str(&markdown_html(page));
+            html.push_str("<div class=\"prompt-markdown\">");
+            escape_html(&mut html, page);
+            html.push_str("</div>");
             html.push_str("</div></div>");
         }
         return html;
@@ -484,7 +486,7 @@ fn normalize_blockquote_continuations(source: &str) -> String {
         }
 
         let (is_blockquote_line, fence_content) = match fence {
-            Some((_, _, fence_quote_depth)) if fence_quote_depth == 0 => (false, source_line),
+            Some((_, _, 0)) => (false, source_line),
             Some((_, _, fence_quote_depth)) => (
                 quote_depth >= fence_quote_depth,
                 if quote_depth >= fence_quote_depth {

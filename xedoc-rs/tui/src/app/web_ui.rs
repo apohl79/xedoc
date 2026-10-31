@@ -188,6 +188,10 @@ impl App {
                         .apply_browser_draft(draft.text.replace(&anchor, ""));
                 }
             }
+            Ok(BrowserInput::RoutingTable { table }) => {
+                self.update_web_ui_routing_tables(tui, app_server, thread_id, table.as_deref())
+                    .await;
+            }
             Ok(BrowserInput::Settings {
                 model,
                 effort,
@@ -675,6 +679,8 @@ impl App {
                 "effort": self.chat_widget.current_reasoning_effort(),
                 "displayModel": display_model, "displayEffort": display_effort,
                 "router": router, "models": models,
+                "routerTable": session.routing_tables.current,
+                "routerTableOptions": session.routing_tables.options,
                 "routerOptions": (["off", "shadow-full", "subagents", "full"].iter().map(|id| json!({"id":id,"label":id})).collect::<Vec<_>>()),
                 "sessionName": self.chat_widget.thread_name(), "timer": timer, "dialog": dialog || self.overlay.is_some(),
             },

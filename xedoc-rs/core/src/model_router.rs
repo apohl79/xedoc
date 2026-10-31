@@ -2,10 +2,14 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use xedoc_core_config::config::Config;
+use xedoc_login::AuthManager;
+use xedoc_model_provider::configured_provider_has_credentials;
 use xedoc_models_manager::manager::RefreshStrategy;
 use xedoc_models_manager::manager::SharedModelsManager;
+use xedoc_protocol::auth::AuthMode;
 use xedoc_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_script_protocol::EligibleRoute as ScriptEligibleRoute;
@@ -13,6 +17,35 @@ use xedoc_script_protocol::ModelId as ScriptModelId;
 use xedoc_script_protocol::ProviderId as ScriptProviderId;
 use xedoc_script_protocol::ReasoningEffort as ScriptReasoningEffort;
 use xedoc_script_protocol::Route as ScriptRoute;
+
+/// Distinguishes authenticated backends from catalogs that remain browsable while signed out.
+pub(crate) fn available_script_providers(
+    config: &Config,
+    auth_manager: &Arc<AuthManager>,
+) -> Vec<String> {
+    config
+        .model_providers
+        .iter()
+        .filter(|(provider_id, provider)| {
+            (provider.requires_openai_auth
+                && auth_manager
+                    .auth_mode()
+                    .is_some_and(|mode| mode == AuthMode::ApiKey || mode.uses_xedoc_backend()))
+                || provider.has_command_auth()
+                || provider.uses_openai_actor_authorization()
+                || provider
+                    .experimental_bearer_token
+                    .as_ref()
+                    .is_some_and(|token| !token.trim().is_empty())
+                || configured_provider_has_credentials(provider_id, provider, auth_manager)
+                    .unwrap_or_else(|error| {
+                        tracing::warn!(provider_id = %provider_id, %error, "could not inspect router backend availability");
+                        false
+                    })
+        })
+        .map(|(provider_id, _)| provider_id.clone())
+        .collect()
+}
 
 /// Applies a script-selected route after validating it against current models.
 pub(crate) async fn apply_script_route_to_config(

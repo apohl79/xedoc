@@ -28,8 +28,12 @@ use xedoc_app_server_protocol::ModelServiceTier;
 use xedoc_app_server_protocol::ModelUpgradeInfo;
 use xedoc_app_server_protocol::ReasoningEffortOption;
 use xedoc_app_server_protocol::RequestId;
+use xedoc_app_server_protocol::ThreadStartParams;
+use xedoc_app_server_protocol::ThreadStartResponse;
 use xedoc_config::types::AuthCredentialsStoreMode;
+use xedoc_models_manager::registry::ModelRegistry;
 use xedoc_protocol::openai_models::ModelPreset;
+use xedoc_protocol::openai_models::ModelVisibility;
 use xedoc_protocol::openai_models::ModelsResponse;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -205,6 +209,13 @@ async fn list_models_refreshes_chatgpt_catalog_before_returning_picker_options()
         .ok_or_else(|| Error::msg("bundled catalog is missing gpt-6.1-terra"))?;
     let current_model = bundled_models
         .iter()
+        .find(|model| model.slug == "gpt-6-luna")
+        .cloned()
+        .ok_or_else(|| Error::msg("bundled catalog is missing gpt-6-luna"))?;
+    let mut hidden_model = current_model.clone();
+    hidden_model.visibility = ModelVisibility::Hide;
+    let locally_hidden_model = bundled_models
+        .iter()
         .find(|model| model.slug == "gpt-6.1-sol")
         .cloned()
         .ok_or_else(|| Error::msg("bundled catalog is missing gpt-6.1-sol"))?;
@@ -218,20 +229,36 @@ async fn list_models_refreshes_chatgpt_catalog_before_returning_picker_options()
                     models: vec![stale_model],
                 },
                 ModelsResponse {
-                    models: vec![current_model.clone()],
+                    models: vec![current_model.clone(), locally_hidden_model],
                 },
+                ModelsResponse {
+                    models: vec![hidden_model.clone()],
+                },
+                ModelsResponse {
+                    models: vec![hidden_model],
+                },
+                ModelsResponse { models: Vec::new() },
             ],
         })
         .mount(&server)
         .await;
 
     let xedoc_home = TempDir::new()?;
+    let mut registry = ModelRegistry::load_or_create(xedoc_home.path())?;
+    registry
+        .provider_mut("openai")
+        .ok_or_else(|| Error::msg("registry is missing openai"))?
+        .models
+        .get_mut("gpt-6.1-sol")
+        .ok_or_else(|| Error::msg("registry is missing gpt-6.1-sol"))?
+        .info
+        .visibility = ModelVisibility::Hide;
+    registry.save(xedoc_home.path())?;
     let server_uri = server.uri();
     std::fs::write(
         xedoc_home.path().join("config.toml"),
         format!(
             r#"
-model = "mock-model"
 approval_policy = "never"
 sandbox_mode = "read-only"
 openai_base_url = "{server_uri}/v1"
@@ -246,7 +273,6 @@ openai_base_url = "{server_uri}/v1"
 
     let mut mcp = TestAppServer::builder()
         .with_xedoc_home(xedoc_home.path())
-        .without_auto_env()
         .with_env_overrides(&[("OPENAI_API_KEY", None)])
         .build()
         .await?;
@@ -283,13 +309,57 @@ openai_base_url = "{server_uri}/v1"
     expected_presets[0].provider_id = "openai".to_string();
     let expected_items = expected_presets
         .iter()
-        .map(model_from_preset)
+        .map(|preset| {
+            let mut model = model_from_preset(preset);
+            model.supports_personality = true;
+            model
+        })
         .collect::<Vec<_>>();
 
     assert_eq!(items, expected_items);
     assert!(items.iter().all(|model| model.model != "gpt-6.1-terra"));
     assert!(next_cursor.is_none());
     assert_eq!(calls.load(Ordering::SeqCst), calls_before_list + 1);
+
+    let request_id = mcp
+        .send_thread_start_request_with_auto_env(ThreadStartParams::default())
+        .await?;
+    let response: JSONRPCResponse = timeout(
+        DEFAULT_TIMEOUT,
+        mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
+    )
+    .await??;
+    let started: ThreadStartResponse = to_response(response)?;
+    assert_eq!(started.model, "gpt-6-luna");
+
+    for (include_hidden, expected_ids) in [
+        (false, Vec::new()),
+        (true, vec!["gpt-6-luna"]),
+        (true, Vec::new()),
+    ] {
+        let request_id = mcp
+            .send_list_models_request(ModelListParams {
+                limit: Some(100),
+                cursor: None,
+                include_hidden: Some(include_hidden),
+            })
+            .await?;
+        let response: JSONRPCResponse = timeout(
+            DEFAULT_TIMEOUT,
+            mcp.read_stream_until_response_message(RequestId::Integer(request_id)),
+        )
+        .await??;
+        let response: ModelListResponse = to_response(response)?;
+        assert_eq!(
+            response
+                .data
+                .iter()
+                .map(|model| model.model.as_str())
+                .collect::<Vec<_>>(),
+            expected_ids
+        );
+        assert!(response.next_cursor.is_none());
+    }
     Ok(())
 }
 

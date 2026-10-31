@@ -50,9 +50,13 @@ impl App {
         retry_config.model = Some(model.clone());
         retry_config.model_reasoning_effort = Some(ReasoningEffortConfig::Low);
         let input_state = self.chat_widget.capture_thread_input_state();
-        let mut retry_input_state = input_state
-            .clone()
-            .expect("thread input state should always be captured");
+        let Some(mut retry_input_state) = input_state.clone() else {
+            self.chat_widget.add_error_message(
+                "Failed to retry with a faster model: thread input state is unavailable."
+                    .to_string(),
+            );
+            return;
+        };
         let copied_steer_count = self.chat_widget.apply_safety_buffered_retry_input(
             &turn_id,
             &mut turn,

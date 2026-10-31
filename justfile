@@ -73,7 +73,7 @@ install:
 
 # Run one explicitly selected behavioral target, optionally filtered to a scenario.
 test target *args:
-    bazel test --test_output=errors "{{ target }}" {args}
+    {{ python }} ../scripts/run_bazel_test.py "{{ target }}" {args}
 
 # Run from the repository root so scripts that resolve paths from `cwd` see
 

@@ -199,6 +199,8 @@ mod thread_routing;
 mod thread_session_state;
 mod thread_settings;
 mod web_ui;
+mod web_ui_router;
+pub(crate) use web_ui_router::RoutingTables;
 
 use self::agent_navigation::AgentNavigationDirection;
 use self::agent_navigation::AgentNavigationState;
@@ -220,7 +222,7 @@ const THREAD_EVENT_CHANNEL_CAPACITY: usize = 32768;
 enum ThreadInteractiveRequest {
     Approval(ApprovalRequest),
     McpServerElicitation(McpServerElicitationFormRequest),
-    ExtensionInteraction(xedoc_app_server_protocol::ExtensionInteractionRequestParams),
+    ExtensionInteraction(Box<xedoc_app_server_protocol::ExtensionInteractionRequestParams>),
 }
 
 /// Extracts `receiver_thread_ids` from collab agent tool-call notifications.

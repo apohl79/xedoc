@@ -181,6 +181,46 @@ DEFAULT_RANKING_CURVES = [
         ],
     },
 ]
+
+
+def bundled_routing_tables():
+    tables = {}
+    efforts = ("low", "medium", "high", "xhigh", "max")
+    for provider, models in (
+        ("openai", ("gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra")),
+        ("anthropic", (
+            "claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1",
+        )),
+    ):
+        luna, terra, sol, astra = models
+        for name, curve, slots in (
+            ("balanced", "balanced", [
+                (model, effort) for model in (luna, terra, sol) for effort in efforts
+            ]),
+            ("smart", "aggressive", [
+                (model, effort) for model in (luna, sol, astra) for effort in efforts
+            ]),
+            ("cheap", "conservative",
+             [(luna, effort) for effort in (
+                 "low", "low", "medium", "medium", "high", "high", "xhigh", "max",
+             )] + [(terra, effort) for effort in (
+                 "low", "low", "medium", "high", "xhigh", "max",
+             )] + [(sol, "low")]),
+        ):
+            tables[f"{provider}-{name}"] = {
+                "curve": curve,
+                "ladder": [
+                    {
+                        "rank": index + 1, "class": MODEL_CLASSES[index // 5],
+                        "providerId": provider, "model": model, "reasoningEffort": effort,
+                    }
+                    for index, (model, effort) in enumerate(slots)
+                ],
+            }
+    return tables
+
+
+BUILTIN_TABLES = bundled_routing_tables()
 LLM_CONFIDENCE_WEIGHT = 0.85
 EMBEDDER_CONFIDENCE_WEIGHT = 0.15
 
@@ -457,6 +497,20 @@ def load_policy():
     with POLICY_PATH.open(encoding="utf-8") as source:
         policy = json.load(source)
     changed = upgrade_policy(policy)
+    ranking = policy["ranking"]
+    for name in set(ranking["tables"]) & BUILTIN_TABLES.keys():
+        copied_name = f"{name}-copy"
+        suffix = 2
+        while copied_name in ranking["tables"]:
+            copied_name = f"{name}-copy-{suffix}"
+            suffix += 1
+        ranking["tables"][copied_name] = ranking["tables"].pop(name)
+        ranking["tableSelection"] = {
+            key: copied_name if selected == name else selected
+            for key, selected in ranking["tableSelection"].items()
+        }
+        changed = True
+    ranking["tables"].update(copy.deepcopy(BUILTIN_TABLES))
     validate_policy(policy)
     if changed:
         save_policy(policy)
@@ -706,7 +760,8 @@ def validate_policy(policy):
     selection = ranking.get("tableSelection")
     if (
         not isinstance(tables, dict)
-        or not 1 <= len(tables) <= 12
+        or not 1 <= len(tables) <= 12 + len(BUILTIN_TABLES)
+        or len(tables.keys() - BUILTIN_TABLES.keys()) > 12
         or not isinstance(selection, dict)
         or set(selection) != {"shared", "root", "subagent", "primary", "secondary"}
         or any(
@@ -722,13 +777,13 @@ def validate_policy(policy):
             or not isinstance(table, dict)
             or set(table) != {"curve", "ladder"}
             or not isinstance(table["curve"], str)
-            or table["curve"] not in curve_ids
+            or (name not in BUILTIN_TABLES and table["curve"] not in curve_ids)
             or not isinstance(table["ladder"], list)
             or len(table["ladder"]) != MODEL_LADDER_SLOT_COUNT
             or [
                 entry.get("rank") if isinstance(entry, dict) else None
                 for entry in table["ladder"]
-            ] != ranks
+            ] != (list(range(1, MODEL_LADDER_SLOT_COUNT + 1)) if name in BUILTIN_TABLES else ranks)
             or any(
                 not isinstance(entry, dict)
                 or entry.get("class") not in CLASS_ORDER
@@ -802,6 +857,9 @@ def validate_ranking_curves(ranking, ranks, curves_key, curve_key):
 
 
 def save_policy(policy):
+    policy = copy.deepcopy(policy)
+    for name in BUILTIN_TABLES:
+        policy["ranking"]["tables"].pop(name, None)
     destination = POLICY_PATH.parent
     fd, temporary = tempfile.mkstemp(
         prefix=f".{POLICY_PATH.name}.", dir=destination, text=True
@@ -1566,6 +1624,9 @@ def root_menu(policy, context=None, conflict=None, session_update=None):
             "open-mode",
         )
     ]
+    items.append(item(
+        "routing-table", "Routing table", "Switch the table for all decisions.", "open-table-picker"
+    ))
     if supports_session_mode(context):
         current_session_mode = session_mode(context)
         label = (
@@ -1969,7 +2030,8 @@ def ladder(policy, table=None):
 def ranking_curve(policy, table):
     ranking = policy["ranking"]
     selected = ranking["tables"][table]["curve"]
-    return next(curve for curve in ranking["curves"] if curve["id"] == selected)
+    curves = DEFAULT_RANKING_CURVES if table in BUILTIN_TABLES else ranking["curves"]
+    return next(curve for curve in curves if curve["id"] == selected)
 
 
 def ranking_curve_options(policy):
@@ -1982,8 +2044,12 @@ def ranking_curve_options(policy):
 
 def score_range(policy, score, table):
     ranking = policy["ranking"]
-    bounded_score = max(ranking["minimumScore"], min(ranking["maximumScore"], score))
     curve = ranking_curve(policy, table)
+    minimum, maximum = ranking["minimumScore"], ranking["maximumScore"]
+    if table in BUILTIN_TABLES:
+        minimum = curve["ranges"][0]["minimumScore"]
+        maximum = curve["ranges"][-1]["maximumScore"]
+    bounded_score = max(minimum, min(maximum, score))
     return (
         bounded_score,
         curve,
@@ -2122,14 +2188,45 @@ def policy_menu(policy, context):
     )
 
 
+def available_tables(policy, context):
+    providers = {route.get("providerId") for route in eligible(context)}
+    if isinstance(context.get("availableProviders"), list):
+        providers.intersection_update(context["availableProviders"])
+    return {
+        name: table
+        for name, table in policy["ranking"]["tables"].items()
+        if name not in BUILTIN_TABLES or table["ladder"][0]["providerId"] in providers
+    }
+
+
+def table_picker_menu(policy, context):
+    ranking = policy["ranking"]
+    return menu(
+        policy,
+        "Routing table",
+        [
+            item(
+                name, name, f"Curve: {table['curve']}", f"select-table-{name}",
+                current=ranking["tableMode"] == "shared"
+                and ranking["tableSelection"]["shared"] == name,
+            )
+            for name, table in sorted(available_tables(policy, context).items())
+        ] + [item("back", "Back", None, "back")],
+        "Choose a table for all decisions.",
+        continuation="settings:table-picker",
+    )
+
+
 def routing_tables_menu(policy, context):
     ranking = policy["ranking"]
     budget = ranking["budget"]
     mode = ranking["tableMode"]
     selection = ranking["tableSelection"]
+    available = available_tables(policy, context)
     table_options = [
-        {"id": name, "label": name}
+        {"id": name, "label": name, **({"disabled": True} if name not in available else {})}
         for name in sorted(ranking["tables"])
+        if name in available or name in selection.values()
     ]
     fields = [
         policy_select_field(
@@ -2264,7 +2361,7 @@ def table_manager_menu(policy, context):
             "open-create-table",
         )
     ]
-    for name, table in sorted(policy["ranking"]["tables"].items()):
+    for name, table in sorted(available_tables(policy, context).items()):
         items.append(
             item(
                 f"table-{name}",
@@ -2284,6 +2381,23 @@ def table_manager_menu(policy, context):
 
 def named_table_form(policy, context, name):
     table = policy["ranking"]["tables"][name]
+    if name in BUILTIN_TABLES:
+        return interaction(
+            f"table-{name}", f"settings:policy:table:{name}", policy,
+            {
+                "type": "confirmation", "title": f"Built-in table: {name}",
+                "body": "Read-only preset. Copy this table to customize it.",
+                "details": [{"label": "Curve", "value": table["curve"]}],
+                "sections": [{"title": "Model slots", "rows": [
+                    {"text": f"{entry['rank']} · {entry['class']} · {route_label(entry)}"}
+                    for entry in table["ladder"]
+                ]}],
+                "actions": [
+                    action(f"copy-table-{name}", "Copy table", bindings=["enter"]),
+                    action("back-table-manager", "Back", bindings=["escape"]),
+                ],
+            },
+        )
     routes, available = policy_route_options(policy, context)
     route_options = [
         {
@@ -2370,11 +2484,23 @@ def settings_surface(policy, context, continuation):
         )
     if continuation == "settings:policy":
         return policy_menu(policy, context)
+    if continuation == "settings:table-picker":
+        return table_picker_menu(policy, context)
     if continuation == "settings:policy:routing-tables":
         return routing_tables_menu(policy, context)
     if continuation == "settings:policy:table-manager":
         return table_manager_menu(policy, context)
-    if continuation == "settings:policy:create-table":
+    if continuation == "settings:policy:create-table" or continuation.startswith(
+        "settings:policy:create-table:"
+    ):
+        available = available_tables(policy, context)
+        if not available:
+            return error_notice(policy, "Connect a backend before copying a routing table.")
+        source = continuation.removeprefix("settings:policy:create-table:")
+        if source not in available:
+            source = policy["ranking"]["tableSelection"]["shared"]
+        if source not in available:
+            source = next(iter(sorted(available)))
         return form(
             policy,
             "Create named table",
@@ -2389,10 +2515,10 @@ def settings_surface(policy, context, continuation):
                 policy_select_field(
                     "copy-table",
                     "Copy from",
-                    policy["ranking"]["tableSelection"]["shared"],
+                    source,
                     [
                         {"id": name, "label": name}
-                        for name in sorted(policy["ranking"]["tables"])
+                        for name in sorted(available_tables(policy, context))
                     ],
                 ),
             ],
@@ -2799,12 +2925,28 @@ def settings_response(request, policy):
         return root_menu(policy, context)
     if action_id == "open-policy":
         return policy_menu(policy, context)
+    if action_id == "open-table-picker":
+        return table_picker_menu(policy, context)
+    if action_id.startswith("select-table-"):
+        name = action_id.removeprefix("select-table-")
+        if name not in available_tables(policy, context):
+            return error_notice(policy, "Choose an available routing table.")
+        ranking = copy.deepcopy(policy["ranking"])
+        ranking["tableMode"] = "shared"
+        ranking["sharedMappingTable"] = True
+        ranking["tableSelection"]["shared"] = name
+        update(policy, ranking=ranking)
+        return table_picker_menu(policy, context)
     if action_id == "open-routing-tables":
         return routing_tables_menu(policy, context)
     if action_id == "open-table-manager" or action_id == "back-table-manager":
         return table_manager_menu(policy, context)
     if action_id == "open-create-table":
         return settings_surface(policy, context, "settings:policy:create-table")
+    if action_id.startswith("copy-table-"):
+        name = action_id.removeprefix("copy-table-")
+        if name in available_tables(policy, context):
+            return settings_surface(policy, context, f"settings:policy:create-table:{name}")
     if action_id.startswith("open-table-"):
         name = action_id.removeprefix("open-table-")
         if name in policy["ranking"]["tables"]:
@@ -2817,17 +2959,43 @@ def settings_response(request, policy):
             not isinstance(name, str)
             or re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,31}", name) is None
             or name in ranking["tables"]
-            or len(ranking["tables"]) >= 12
-            or source not in ranking["tables"]
+            or len(ranking["tables"].keys() - BUILTIN_TABLES.keys()) >= 12
+            or source not in available_tables(policy, context)
         ):
             return error_notice(policy, "Choose a unique table name and an existing source table.")
-        ranking["tables"][name] = copy.deepcopy(ranking["tables"][source])
+        copied_table = copy.deepcopy(ranking["tables"][source])
+        curve = ranking_curve(policy, source)
+        if (
+            curve["ranges"][0]["minimumScore"] != ranking["minimumScore"]
+            or curve["ranges"][-1]["maximumScore"] != ranking["maximumScore"]
+            or [entry["rank"] for entry in copied_table["ladder"]]
+            != [entry["rank"] for entry in ranking["ladder"]]
+        ):
+            return error_notice(policy, "This preset cannot be copied into the customized score or rank domain.")
+        matching_curve = next(
+            (candidate for candidate in ranking["curves"]
+             if candidate["label"] == curve["label"] and candidate["ranges"] == curve["ranges"]),
+            None,
+        )
+        if matching_curve is None:
+            if len(ranking["curves"]) >= 12:
+                return error_notice(policy, "The score curve limit is reached. Free a curve before copying this preset.")
+            curve_id = f"copy-{curve['id']}"
+            existing_ids = {candidate["id"] for candidate in ranking["curves"]}
+            suffix = 2
+            while curve_id in existing_ids:
+                curve_id = f"copy-{curve['id']}-{suffix}"
+                suffix += 1
+            matching_curve = {**copy.deepcopy(curve), "id": curve_id}
+            ranking["curves"].append(matching_curve)
+        copied_table["curve"] = matching_curve["id"]
+        ranking["tables"][name] = copied_table
         update(policy, ranking=ranking)
         return named_table_form(policy, context, name)
     if action_id.startswith("delete-table-"):
         name = action_id.removeprefix("delete-table-")
         ranking = copy.deepcopy(policy["ranking"])
-        if name not in ranking["tables"] or name in ranking["tableSelection"].values():
+        if name in BUILTIN_TABLES or name not in ranking["tables"] or name in ranking["tableSelection"].values():
             return error_notice(policy, "Assign another table to every use before deleting this one.")
         del ranking["tables"][name]
         update(policy, ranking=ranking)
@@ -2872,7 +3040,7 @@ def settings_response(request, policy):
         for key in visible_tables:
             field_id = f"budget-{key}-table" if key in ("primary", "secondary") else f"{key}-table"
             name = values.get(field_id)
-            if name not in ranking["tables"]:
+            if name not in available_tables(policy, context):
                 return error_notice(policy, "Choose an existing named routing table.")
             ranking["tableSelection"][key] = name
         if mode == "budget" and policy["ranking"]["tableMode"] == "budget":
@@ -3005,7 +3173,7 @@ def settings_response(request, policy):
         return policy_menu(policy, context)
     if action_id.startswith("save-table-"):
         name = action_id.removeprefix("save-table-")
-        if name not in policy["ranking"]["tables"]:
+        if name in BUILTIN_TABLES or name not in policy["ranking"]["tables"]:
             return error_notice(policy, "This named table no longer exists.")
         curve = values.get("table-curve")
         if curve not in {item["id"] for item in policy["ranking"]["curves"]}:
@@ -3797,6 +3965,8 @@ def choose_route(policy, context, axes, *, advance_budget_latch=False):
     table, table_label = selected_table(
         policy, context, advance_budget_latch=advance_budget_latch
     )
+    if table in BUILTIN_TABLES and table not in available_tables(policy, context):
+        available = set()
     eligible_entries = [
         entry
         for entry in ladder(policy, table)
@@ -5842,6 +6012,10 @@ def approval_response(request, policy):
     current_context = {**rendered_context, **(request.get("context") or {})}
     if not current_context.get("eligibleRoutes"):
         current_context = rendered_context
+    if "availableProviders" in (request.get("context") or {}):
+        current_context = {
+            **current_context, "availableProviders": request["context"]["availableProviders"]
+        }
     mode = effective_mode(policy, request.get("context") or {})
     scope = (current_context.get("turn") or {}).get("scope", "root")
     if mode != "full" and not (scope == "subagent" and mode == "subagents"):
@@ -5911,6 +6085,14 @@ def approval_response(request, policy):
             steering,
         )
     selected = (params.get("action") or {}).get("id")
+    rendered_table, _ = selected_table(policy, rendered_context)
+    if rendered_table in BUILTIN_TABLES and rendered_table not in available_tables(policy, current_context):
+        return decision(
+            policy, request["requestId"], axes, confidence, margin,
+            {**selection, "route": None}, "keepCurrent",
+            "The selected routing backend is unavailable; current route retained.",
+            used_route=current_context.get("currentRoute"),
+        )
     automated = params.get("automated") is True
     if selected == "keep-current" or params.get("outcome") != "accepted":
         if raw_confidence is not None and not steering and not automated:

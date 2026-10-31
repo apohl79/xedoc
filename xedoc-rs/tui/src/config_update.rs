@@ -329,8 +329,7 @@ pub(crate) async fn read_token_usage_optimizer_report(
     ));
     let until_day = chrono::Utc::now()
         .date_naive()
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
+        .and_time(chrono::NaiveTime::MIN)
         .and_utc()
         .timestamp();
     let since_day = until_day - i64::from(days.unwrap_or(90).clamp(1, 366) - 1) * 86400;
