@@ -158,7 +158,7 @@ a { color: #8fc4e7; }
 .prompt-markdown .editor-list[data-bullet]::before { content: attr(data-bullet); }
 .prompt-markdown .editor-list[data-bullet] { padding-left: var(--marker-width); }
 .prompt-markdown .editor-quote { margin: 0; border-left: 3px solid #637788; padding: 0 0 0 12px; color: #94a8b7; }
-.prompt-markdown .syntax-marker { font-size: 0; tab-size: 0; }
+.prompt-markdown .syntax-marker { display: none; }
 .prompt-markdown .syntax-entity::before { content: attr(data-text); }
 .prompt-markdown .editor-metadata { min-height: 0; height: 0; line-height: 0; }
 .prompt-markdown .editor-rule { position: relative; }

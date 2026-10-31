@@ -18,6 +18,44 @@ module.exports = async function verifyPromptMarkdown(page) {
     await page.keyboard.insertText(text);
     assert.equal(await source(), text);
   }
+  async function visibleCaret() {
+    const previous = await input.evaluate(node => {
+      const properties = ["caret-color", "caret-animation"];
+      const previous = properties.map(name =>
+        [name, node.style.getPropertyValue(name), node.style.getPropertyPriority(name)]);
+      node.style.setProperty("caret-color", "rgb(255, 0, 255)", "important");
+      node.style.setProperty("caret-animation", "manual", "important");
+      return previous;
+    });
+    try {
+      let pixels = 0;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const screenshot = await input.screenshot({ caret: "initial" });
+        pixels = await page.evaluate(async bytes => {
+          const image = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: "image/png" }));
+          const canvas = document.createElement("canvas");
+          canvas.width = image.width;
+          canvas.height = image.height;
+          const context = canvas.getContext("2d");
+          context.drawImage(image, 0, 0);
+          image.close();
+          const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+          let pixels = 0;
+          for (let index = 0; index < data.length; index += 4) {
+            if (data[index] === 255 && data[index + 1] === 0 && data[index + 2] === 255) pixels++;
+          }
+          return pixels;
+        }, [...screenshot]);
+        if (pixels >= 10) return;
+        await page.waitForTimeout(100);
+      }
+      assert.ok(pixels >= 10, "The focused prompt must paint a visible caret");
+    } finally {
+      await input.evaluate((node, properties) => {
+        for (const [name, value, priority] of properties) node.style.setProperty(name, value, priority);
+      }, previous);
+    }
+  }
   await page.waitForFunction(() => document.querySelector("#input")?.isContentEditable);
   for (const marker of ["-", "- "]) {
     await replace("Existing row");
@@ -38,17 +76,41 @@ module.exports = async function verifyPromptMarkdown(page) {
   await page.keyboard.type(" parent");
   await page.keyboard.press("Shift+Enter");
   assert.equal(await input.locator(".editor-list").count(), 2);
+  await visibleCaret();
+  await page.keyboard.press("Tab");
+  await visibleCaret();
+  await page.keyboard.press("Shift+Tab");
+  await visibleCaret();
   await page.keyboard.press("Tab");
   await page.keyboard.insertText("child");
   assert.equal(await source(), "- parent\n  - child");
   await replace("1. parent");
   await page.keyboard.press("Shift+Enter");
+  await visibleCaret();
   await page.keyboard.press("Tab");
+  await visibleCaret();
   await page.keyboard.insertText("child");
   assert.equal(await source(), "1. parent\n  1.1. child");
   await page.keyboard.press("Shift+Enter");
+  await visibleCaret();
   await page.keyboard.insertText("sibling");
   assert.equal(await source(), "1. parent\n  1.1. child\n  1.2. sibling");
+  await replace("- [ ] task");
+  await page.keyboard.press("Shift+Enter");
+  await visibleCaret();
+  await page.keyboard.insertText("next");
+  assert.equal(await source(), "- [ ] task\n- [ ] next");
+  await page.keyboard.press("Shift+Enter");
+  await visibleCaret();
+  await page.keyboard.press("Shift+Enter");
+  await visibleCaret();
+  assert.equal(await source(), "- [ ] task\n- [ ] next\n");
+  await replace("- parent");
+  await page.keyboard.press("Shift+Enter");
+  await visibleCaret();
+  await page.keyboard.press("Backspace");
+  assert.equal(await source(), "- parent");
+  await visibleCaret();
 
   const text = [
     "- parent", "  - child", "1. parent", "  1.1. child", "",
