@@ -206,6 +206,17 @@ async fn handle_spawn_agent(
                                 decision_id = %decision.id.as_str(),
                                 "validated script subagent route could not be applied; retaining current route"
                             );
+                            session
+                                .send_event(
+                                    turn.as_ref(),
+                                    xedoc_protocol::protocol::EventMsg::Warning(
+                                        xedoc_protocol::protocol::WarningEvent {
+                                            message: "Model router warning: the selected subagent route could not be applied; retaining the current route."
+                                                .to_string(),
+                                        },
+                                    ),
+                                )
+                                .await;
                         }
                         let event = crate::model_router_script_host::decision_event(
                             decision,
@@ -262,6 +273,8 @@ async fn handle_spawn_agent(
                         };
                         outcome = script_host
                             .respond(
+                                session.as_ref(),
+                                turn.as_ref(),
                                 context.clone(),
                                 crate::model_router_script_host::interaction_response(
                                     response.response,

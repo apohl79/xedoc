@@ -2,6 +2,9 @@
 
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
+use xedoc_protocol::protocol::Event;
+use xedoc_protocol::protocol::EventMsg;
+use xedoc_protocol::protocol::WarningEvent;
 
 use super::Session;
 use crate::model_router::available_script_providers;
@@ -53,9 +56,20 @@ impl Session {
         });
         let cancellation = CancellationToken::new();
         let _cancel_on_drop = cancellation.clone().drop_guard();
-        if let Ok(router) = host.state(context, cancellation).await
-            && let Some(reason) = router.unavailable_reason
-        {
+        let router = match host.state(context, cancellation).await {
+            Ok(router) => router,
+            Err(failure) => {
+                self.send_event_raw(Event {
+                    id: String::new(),
+                    msg: EventMsg::Warning(WarningEvent {
+                        message: failure.warning_message(),
+                    }),
+                })
+                .await;
+                return mode;
+            }
+        };
+        if let Some(reason) = router.unavailable_reason {
             let mut state = self.state.lock().await;
             if state.model_router_mode_revision() != revision {
                 return state.model_router_session_mode().map(str::to_string);
@@ -70,6 +84,16 @@ impl Session {
                 tracing::warn!(%error, "failed to persist unavailable model-router session mode");
             }
             tracing::info!(thread_id = %self.thread_id, %reason, "disabled unavailable routing table for session");
+            drop(state);
+            self.send_event_raw(Event {
+                id: String::new(),
+                msg: EventMsg::Warning(WarningEvent {
+                    message: format!(
+                        "Model router warning: routing is disabled for this session: {reason}"
+                    ),
+                }),
+            })
+            .await;
         }
         mode
     }

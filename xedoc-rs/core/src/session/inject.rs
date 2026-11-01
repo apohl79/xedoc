@@ -153,6 +153,8 @@ impl Session {
             {
                 script_host
                     .respond(
+                        self,
+                        turn_context.as_ref(),
                         context,
                         crate::model_router_script_host::interaction_response(response.response),
                         &eligible_routes,

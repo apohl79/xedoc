@@ -378,6 +378,8 @@ pub(super) async fn user_input_or_turn_inner(
                     Some(response) => {
                         script_host
                             .respond(
+                                sess,
+                                current_context.as_ref(),
                                 context,
                                 crate::model_router_script_host::interaction_response(
                                     response.response,

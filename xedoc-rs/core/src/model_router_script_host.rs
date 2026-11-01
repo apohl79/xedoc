@@ -22,6 +22,8 @@ use xedoc_protocol::models::BaseInstructions;
 use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::ResponseItem;
 use xedoc_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
+use xedoc_protocol::protocol::EventMsg;
+use xedoc_protocol::protocol::WarningEvent;
 use xedoc_script_protocol::ClassifierRequest;
 use xedoc_script_protocol::EligibleRoute;
 use xedoc_script_protocol::Extension;
@@ -117,7 +119,7 @@ pub(crate) struct ModelRouterScriptHost {
 }
 
 impl ModelRouterScriptHost {
-    /// Creates a host only when a direct-exec router script is configured.
+    /// Creates a host when routing is enabled, surfacing missing scripts as invocation failures.
     #[must_use]
     pub(crate) fn from_config(config: &crate::config::Config) -> Option<Self> {
         if std::env::var_os(DISABLE_MODEL_ROUTER_ENV_VAR).as_deref() == Some(OsStr::new("1")) {
@@ -130,7 +132,8 @@ impl ModelRouterScriptHost {
         let argv = router_config
             .script_argv()
             .map(direct_exec_argv)
-            .or_else(bundled_router_argv)?;
+            .or_else(bundled_router_argv)
+            .unwrap_or_default();
         Some(Self {
             argv,
             xedoc_home: config.xedoc_home.to_path_buf(),
@@ -151,6 +154,16 @@ impl ModelRouterScriptHost {
         route_mutable: bool,
         cancellation: CancellationToken,
     ) -> ModelRouterScriptDecisionOutcome {
+        if context
+            .pointer("/session/routerMode")
+            .and_then(Value::as_str)
+            == Some("off")
+        {
+            return ModelRouterScriptDecisionOutcome::KeepCurrent {
+                decision: None,
+                failure: None,
+            };
+        }
         let response = self
             .invoke(
                 Method::RoutingDecide,
@@ -160,11 +173,18 @@ impl ModelRouterScriptHost {
                 cancellation.clone(),
             )
             .await;
-        match response {
+        let outcome = match response {
             Ok(ResponseOutcome::Result {
                 result: ScriptResult::Route { decision },
             }) => {
-                let outcome = validate_decision(decision, eligible_routes, route_mutable);
+                let outcome = validate_decision(
+                    session,
+                    turn_context,
+                    decision,
+                    eligible_routes,
+                    route_mutable,
+                )
+                .await;
                 self.remember_reporting_baseline(&outcome);
                 outcome
             }
@@ -190,6 +210,9 @@ impl ModelRouterScriptHost {
                     .await;
                 let classifier_elapsed_ms =
                     u64::try_from(classifier_started_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+                if let Err(failure) = &output {
+                    failure.emit_warning(session, turn_context).await;
+                }
                 let params = match classifier_continuation_params(
                     classifier.continuation.as_str(),
                     output,
@@ -197,7 +220,10 @@ impl ModelRouterScriptHost {
                     cancellation.is_cancelled(),
                 ) {
                     Ok(params) => params,
-                    Err(failure) => return ModelRouterScriptDecisionOutcome::fallback(failure),
+                    Err(failure) => {
+                        failure.emit_warning(session, turn_context).await;
+                        return ModelRouterScriptDecisionOutcome::fallback(failure);
+                    }
                 };
                 match self
                     .invoke(
@@ -212,7 +238,14 @@ impl ModelRouterScriptHost {
                     Ok(ResponseOutcome::Result {
                         result: ScriptResult::Route { decision },
                     }) => {
-                        let outcome = validate_decision(decision, eligible_routes, route_mutable);
+                        let outcome = validate_decision(
+                            session,
+                            turn_context,
+                            decision,
+                            eligible_routes,
+                            route_mutable,
+                        )
+                        .await;
                         self.remember_reporting_baseline(&outcome);
                         outcome
                     }
@@ -251,7 +284,15 @@ impl ModelRouterScriptHost {
                 ModelRouterScriptDecisionOutcome::fallback(script_error_failure(error))
             }
             Err(failure) => ModelRouterScriptDecisionOutcome::fallback(failure),
+        };
+        if let ModelRouterScriptDecisionOutcome::KeepCurrent {
+            failure: Some(failure),
+            ..
+        } = &outcome
+        {
+            failure.emit_warning(session, turn_context).await;
         }
+        outcome
     }
 
     async fn run_classifier(
@@ -493,6 +534,8 @@ impl ModelRouterScriptHost {
     /// Sends one rendered interaction response back to the script.
     pub(crate) async fn respond(
         &self,
+        session: &Session,
+        turn_context: &TurnContext,
         context: Value,
         response: InteractionResponse,
         eligible_routes: &[EligibleRoute],
@@ -509,6 +552,9 @@ impl ModelRouterScriptHost {
             })
             .map_err(|_| ModelRouterScriptFailure::Encode);
         let Ok(params) = params else {
+            ModelRouterScriptFailure::Encode
+                .emit_warning(session, turn_context)
+                .await;
             return ModelRouterScriptInteractionOutcome::Failure(ModelRouterScriptFailure::Encode);
         };
         let response = self
@@ -520,7 +566,7 @@ impl ModelRouterScriptHost {
                 cancellation,
             )
             .await;
-        match response {
+        let outcome = match response {
             Ok(ResponseOutcome::Result {
                 result: ScriptResult::Interaction { interaction },
             }) => match validate_interaction(&interaction, eligible_routes) {
@@ -530,7 +576,14 @@ impl ModelRouterScriptHost {
             Ok(ResponseOutcome::Result {
                 result: ScriptResult::Route { decision },
             }) => {
-                let outcome = validate_decision(decision, eligible_routes, route_mutable);
+                let outcome = validate_decision(
+                    session,
+                    turn_context,
+                    decision,
+                    eligible_routes,
+                    route_mutable,
+                )
+                .await;
                 self.remember_reporting_baseline(&outcome);
                 match outcome {
                     ModelRouterScriptDecisionOutcome::Apply { decision, route } => {
@@ -564,7 +617,18 @@ impl ModelRouterScriptHost {
                 ModelRouterScriptInteractionOutcome::Failure(script_error_failure(error))
             }
             Err(failure) => ModelRouterScriptInteractionOutcome::Failure(failure),
+        };
+        match &outcome {
+            ModelRouterScriptInteractionOutcome::Failure(failure)
+            | ModelRouterScriptInteractionOutcome::KeepCurrent {
+                failure: Some(failure),
+                ..
+            } => failure.emit_warning(session, turn_context).await,
+            ModelRouterScriptInteractionOutcome::Interaction(_)
+            | ModelRouterScriptInteractionOutcome::Apply { .. }
+            | ModelRouterScriptInteractionOutcome::KeepCurrent { failure: None, .. } => {}
         }
+        outcome
     }
 
     /// Returns a validated snapshot of the script-owned router policy.
@@ -1249,6 +1313,21 @@ pub(crate) enum ModelRouterScriptFailure {
 }
 
 impl ModelRouterScriptFailure {
+    async fn emit_warning(&self, session: &Session, turn_context: &TurnContext) {
+        let message = self.warning_message();
+        session
+            .send_event(turn_context, EventMsg::Warning(WarningEvent { message }))
+            .await;
+    }
+
+    /// Returns a bounded, control-safe warning independent of router feedback.
+    pub(crate) fn warning_message(&self) -> String {
+        format!(
+            "Model router warning: {}.",
+            safe_script_error_message(self.diagnostic())
+        )
+    }
+
     /// Returns a prompt-free causal diagnostic for host logs.
     #[must_use]
     pub(crate) fn diagnostic(&self) -> String {
@@ -1259,7 +1338,8 @@ impl ModelRouterScriptFailure {
             Self::UnexpectedResult => "router script returned an unexpected result".to_string(),
             Self::IneligibleRoute => "router script proposed an ineligible route".to_string(),
             Self::IneligibleReportingBaseline => {
-                "router script proposed an ineligible reporting baseline".to_string()
+                "router script proposed an ineligible reporting baseline; ignoring the baseline and continuing routing"
+                    .to_string()
             }
             Self::ImmutableRoute => {
                 "router script attempted to mutate an immutable route".to_string()
@@ -1314,13 +1394,15 @@ impl ModelRouterScriptFailure {
     }
 }
 
-fn validate_decision(
+async fn validate_decision(
+    session: &Session,
+    turn_context: &TurnContext,
     RouteDecision {
         id,
         disposition,
         route,
         reset_to_baseline,
-        reporting_baseline,
+        mut reporting_baseline,
         summary,
         feedback,
         model_instructions,
@@ -1344,9 +1426,10 @@ fn validate_decision(
         .as_ref()
         .is_some_and(|route| !route_is_eligible(route, eligible_routes))
     {
-        return ModelRouterScriptDecisionOutcome::fallback(
-            ModelRouterScriptFailure::IneligibleReportingBaseline,
-        );
+        reporting_baseline = None;
+        ModelRouterScriptFailure::IneligibleReportingBaseline
+            .emit_warning(session, turn_context)
+            .await;
     }
     match (disposition, route) {
         (RouteDisposition::KeepCurrent, None) => ModelRouterScriptDecisionOutcome::KeepCurrent {

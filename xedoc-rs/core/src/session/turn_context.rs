@@ -485,6 +485,14 @@ impl Session {
         )
         .await
         {
+            self.send_event_raw(Event {
+                id: sub_id,
+                msg: EventMsg::Warning(WarningEvent {
+                    message: "Model router warning: the selected route could not be applied; retaining the current route."
+                        .to_string(),
+                }),
+            })
+            .await;
             return None;
         }
         if let Some(base_instructions) = self
