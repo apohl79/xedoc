@@ -57,10 +57,10 @@ pub(crate) async fn build(input: RoutingContextInput<'_>) -> Value {
         .bounded_max_recent_message_bytes();
     let (recent_messages, truncated) =
         recent_messages(history.raw_items(), message_limit, byte_limit);
-    let (scope, active, route_mutable) = match input.turn_state {
-        RoutingTurnState::PendingRoot => ("root", false, true),
-        RoutingTurnState::ActiveRoot => ("root", true, false),
-        RoutingTurnState::PendingSubagent => ("subagent", false, true),
+    let (scope, active, route_mutable, lifecycle) = match input.turn_state {
+        RoutingTurnState::PendingRoot => ("root", false, true, "turnStart"),
+        RoutingTurnState::ActiveRoot => ("root", true, false, "activeTurnInput"),
+        RoutingTurnState::PendingSubagent => ("subagent", false, true, "agentBootstrap"),
     };
 
     let mut thread = Map::from_iter([
@@ -98,6 +98,7 @@ pub(crate) async fn build(input: RoutingContextInput<'_>) -> Value {
         "turn": {
             "id": input.turn.sub_id,
             "scope": scope,
+            "lifecycle": lifecycle,
             "active": active,
             "routeMutable": route_mutable,
         },

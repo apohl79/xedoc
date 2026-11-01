@@ -3672,8 +3672,6 @@ def classify(
     llm_classification=None,
     embedder_state=None,
 ):
-    # Subagent scope is the pre-spawn decision, not a reply to the parent's history.
-    has_prior_messages = has_prior_messages and scope != "subagent"
     if embedder_state is None:
         inputs = [prompt]
         if has_prior_messages:
@@ -4731,6 +4729,9 @@ def classifier_prompt(context, prompt, embedder_state):
         "rather than a new task. A prior assistant request for a missing input followed "
         "by that input is steering. Set steering false for a new task, even when prior "
         "conversation exists. "
+        "Lifecycle agentBootstrap starts a new agent: recent messages are parent "
+        "context, not an exchange with that agent, so steering must be false. "
+        "turnStart and activeTurnInput do not by themselves establish steering. "
         "For a subagent, choose orchestration none unless the candidate explicitly "
         "asks it to delegate, spawn, coordinate, or split work. For a root group2 "
         "or group3 task that is not very simple and self-contained, choose coordination "
@@ -4740,6 +4741,7 @@ def classifier_prompt(context, prompt, embedder_state):
         "orchestration_reason; for subagents, a non-none value requires an explicit "
         "delegation, spawning, coordination, or work-splitting request in the candidate.\n"
         f"Scope: {scope}\n"
+        f"Lifecycle: {routing_lifecycle(context)}\n"
         f"Embedder work-type candidate: {embedder_work_type}; "
         f"similarity {percentage(embedder_similarity)}; "
         f"margin {percentage(embedder_margin)}\n"
@@ -4842,6 +4844,7 @@ def jev_state(context, prompt, embedder_state):
     state = {
         "task": prompt[:1200],
         "scope": ((context.get("turn") or {}).get("scope") or "root"),
+        "lifecycle": routing_lifecycle(context),
         "recentMessages": messages,
         "embedder": {
             "workType": embedder_state["axes"]["work_type"],
@@ -4918,6 +4921,9 @@ def jev_questions():
                 "decision_rule": (
                     "Judge the relationship between state.task and state.recentMessages. "
                     "The mere presence of recent messages does not make a task steering. "
+                    "If state.lifecycle is agentBootstrap, this is new agent work and "
+                    "recentMessages are parent context, so steering must be false. "
+                    "turnStart and activeTurnInput do not by themselves establish steering. "
                     "A request to perform work is a new task even when it discusses the "
                     "same project or follows prior work."
                     + precedent_instruction
@@ -5580,6 +5586,16 @@ def report_render(request):
     }
 
 
+def routing_lifecycle(context):
+    turn = context.get("turn") or {}
+    if lifecycle := turn.get("lifecycle"):
+        return lifecycle
+    # Older hosts supplied only scope and activity.
+    if turn.get("scope") == "subagent":
+        return "agentBootstrap"
+    return "activeTurnInput" if turn.get("active") else "turnStart"
+
+
 def routing_decide(
     request,
     policy,
@@ -5593,7 +5609,11 @@ def routing_decide(
     turn = context.get("turn", {})
     prompt = (request.get("params") or {}).get("prompt", "")
     recent_messages = (context.get("conversation") or {}).get("recentMessages", [])
-    has_prior_messages = isinstance(recent_messages, list) and bool(recent_messages)
+    has_prior_messages = (
+        isinstance(recent_messages, list)
+        and bool(recent_messages)
+        and routing_lifecycle(context) != "agentBootstrap"
+    )
     scope = turn.get("scope", "root")
     mode = effective_mode(policy, context)
     unavailable = unavailable_table_reason(policy, context)
