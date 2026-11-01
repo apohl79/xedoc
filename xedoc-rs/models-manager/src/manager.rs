@@ -49,6 +49,12 @@ pub trait ModelsEndpointClient: fmt::Debug + Send + Sync {
         false
     }
 
+    /// Classifies IDs absent from the advertised list. Providers with non-exhaustive
+    /// lists must return `Unknown` rather than treating omission as an access denial.
+    fn unlisted_model_availability(&self) -> ModelAvailability {
+        ModelAvailability::Unavailable
+    }
+
     /// Identifies the endpoint and effective credentials without persisting secrets.
     fn cache_scope(&self) -> ModelsEndpointFuture<'_, CoreResult<Option<String>>> {
         Box::pin(async { Ok(None) })
@@ -613,7 +619,7 @@ impl ModelsManager for OpenAiModelsManager {
             {
                 ModelAvailability::Available
             }
-            Ok(_) => ModelAvailability::Unavailable,
+            Ok(_) => self.endpoint_client.unlisted_model_availability(),
             Err(_) => ModelAvailability::Unknown,
         }
     }

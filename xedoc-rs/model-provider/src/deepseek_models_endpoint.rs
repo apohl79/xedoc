@@ -6,6 +6,7 @@ use xedoc_model_provider_info::ModelProviderInfo;
 use xedoc_models_manager::manager::ModelsEndpointClient;
 use xedoc_models_manager::manager::ModelsEndpointFuture;
 use xedoc_protocol::error::Result as CoreResult;
+use xedoc_protocol::openai_models::ModelAvailability;
 use xedoc_protocol::openai_models::ModelInfo;
 
 use crate::models_endpoint::OpenAiModelsEndpoint;
@@ -58,6 +59,11 @@ impl ModelsEndpointClient for DeepSeekModelsEndpoint {
 
     fn has_authoritative_remote_catalog(&self) -> bool {
         true
+    }
+
+    fn unlisted_model_availability(&self) -> ModelAvailability {
+        // DeepSeek accepts versioned IDs that its alias-only model list omits.
+        ModelAvailability::Unknown
     }
 
     fn uses_xedoc_backend(&self) -> ModelsEndpointFuture<'_, bool> {
