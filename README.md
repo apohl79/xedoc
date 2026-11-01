@@ -1,8 +1,8 @@
 # Xedoc
 
-Xedoc is a personal, experimental coding-agent harness built on OpenAI Codex.
-Use it in the terminal or browser, choose models across providers, and coordinate
-agents on your machine or remote Xedoc hosts.
+Xedoc is a personal, experimental coding-agent harness. Work in the terminal or
+browser, choose models across providers, and coordinate agents locally or across
+remote Xedoc hosts.
 
 ![Xedoc GUI with live agents, task progress, and model-routing decisions](assets/xedoc-gui.png)
 
