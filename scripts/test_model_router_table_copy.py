@@ -26,6 +26,7 @@ def main():
         work_type = catalog["axes"][0]["classes"][0]["id"]
         context = {
             "turn": {"scope": "root"},
+            "availableProviders": ["openai"],
             "eligibleRoutes": [
                 {
                     "providerId": "openai",
@@ -96,6 +97,30 @@ def main():
 
         call("settings.open")
         path = home / "model-router" / "reference-router.policy.json"
+        before = path.read_bytes()
+        for providers in ([], ["openai"], ["anthropic"], ["openai", "anthropic"], []):
+            context["availableProviders"] = providers
+            root = call("settings.open")["interaction"]
+            picker = act(root, "open-table-picker")
+            tables = act(act(root, "open-policy"), "open-routing-tables")
+            manager = act(tables, "open-table-manager")
+            picker_ids = {item["id"] for item in picker["surface"]["items"]}
+            options = next(
+                field["options"]
+                for field in tables["surface"]["fields"]
+                if field["id"] == "shared-table"
+            )
+            option_ids = {option["id"] for option in options}
+            manager_ids = {item["id"] for item in manager["surface"]["items"]}
+            assert "default" in picker_ids & option_ids
+            for provider in ("openai", "anthropic"):
+                for variant in ("balanced", "smart", "cheap"):
+                    name = f"{provider}-{variant}"
+                    assert (name in picker_ids) == (provider in providers)
+                    assert (name in option_ids) == (provider in providers)
+                    assert (f"table-{name}" in manager_ids) == (provider in providers)
+            assert path.read_bytes() == before
+        context["availableProviders"] = ["openai"]
         policy = json.loads(path.read_text())
         balanced = next(
             curve for curve in policy["ranking"]["curves"] if curve["id"] == "balanced"

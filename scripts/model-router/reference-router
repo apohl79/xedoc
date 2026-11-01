@@ -2277,8 +2277,16 @@ def available_tables(policy, context):
     }
 
 
+def visible_tables(policy, context):
+    providers = context.get("availableProviders") or []
+    return {
+        name: table for name, table in policy["ranking"]["tables"].items()
+        if name not in BUILTIN_TABLES
+        or all(entry["providerId"] in providers for entry in table["ladder"])
+    }
+
+
 def table_picker_menu(policy, context):
-    ranking = policy["ranking"]
     current = next(
         (name for name in configured_tables(policy)
          if table_status(policy, context, name)[0] == "unavailable"),
@@ -2293,7 +2301,7 @@ def table_picker_menu(policy, context):
                 current=current == name,
                 disabled=name not in available_tables(policy, context),
             )
-            for name, table in sorted(ranking["tables"].items())
+            for name, table in sorted(visible_tables(policy, context).items())
         ] + [item("back", "Back", None, "back")],
         "Choose a table for all decisions.",
         continuation="settings:table-picker",
@@ -2308,7 +2316,7 @@ def routing_tables_menu(policy, context):
     available = available_tables(policy, context)
     table_options = [
         {"id": name, "label": name if name in available else f"{name} — {table_status(policy, context, name)[1]}", **({"disabled": True} if name not in available else {})}
-        for name in sorted(ranking["tables"])
+        for name in sorted(visible_tables(policy, context))
     ]
     fields = [
         policy_select_field(
@@ -2443,7 +2451,7 @@ def table_manager_menu(policy, context):
             "open-create-table",
         )
     ]
-    for name, table in sorted(policy["ranking"]["tables"].items()):
+    for name, table in sorted(visible_tables(policy, context).items()):
         items.append(
             item(
                 f"table-{name}",
@@ -2576,7 +2584,7 @@ def settings_surface(policy, context, continuation):
     if continuation == "settings:policy:create-table" or continuation.startswith(
         "settings:policy:create-table:"
     ):
-        available = policy["ranking"]["tables"]
+        available = visible_tables(policy, context)
         source = continuation.removeprefix("settings:policy:create-table:")
         if source not in available:
             source = policy["ranking"]["tableSelection"]["shared"]
@@ -2599,7 +2607,7 @@ def settings_surface(policy, context, continuation):
                     source,
                     [
                         {"id": name, "label": name}
-                        for name in sorted(available_tables(policy, context))
+                        for name in sorted(available_tables(policy, context).keys() & available.keys())
                     ],
                 ),
             ],
