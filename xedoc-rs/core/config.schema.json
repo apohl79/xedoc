@@ -1660,8 +1660,8 @@
           "description": "Bounded conversation context supplied to the script."
         },
         "decision_timeout_ms": {
-          "default": 3000,
-          "description": "Maximum wall-clock duration for one route decision.",
+          "default": 15000,
+          "description": "Maximum wall-clock duration for one script call, including cold runtime startup.",
           "format": "uint64",
           "minimum": 0.0,
           "type": "integer"
@@ -5557,7 +5557,7 @@
           "max_recent_message_bytes": 24576,
           "recent_messages": 8
         },
-        "decision_timeout_ms": 3000,
+        "decision_timeout_ms": 15000,
         "interaction_timeout_ms": 10000,
         "script": null
       },

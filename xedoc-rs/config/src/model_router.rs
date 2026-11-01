@@ -12,7 +12,7 @@ use serde::Serialize;
 pub struct ModelRouterConfigToml {
     /// Direct-exec argv for the sole model-router script.
     pub script: Option<Vec<String>>,
-    /// Maximum wall-clock duration for one route decision.
+    /// Maximum wall-clock duration for one script call, including cold runtime startup.
     #[serde(default = "default_decision_timeout_ms")]
     pub decision_timeout_ms: u64,
     /// Maximum wall-clock duration for one settings interaction.
@@ -85,7 +85,7 @@ const fn default_max_recent_message_bytes() -> usize {
 }
 
 const fn default_decision_timeout_ms() -> u64 {
-    3_000
+    15_000
 }
 
 const fn default_interaction_timeout_ms() -> u64 {

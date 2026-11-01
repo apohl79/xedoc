@@ -3416,6 +3416,7 @@ def semantic_embeddings(texts):
                 raise ValueError("invalid semantic embedder port")
             started_at = time.perf_counter()
             with socket.create_connection(("127.0.0.1", port), timeout=1) as connection:
+                connection.settimeout(10)
                 connection.sendall(
                     (json.dumps({"texts": texts}, separators=(",", ":")) + "\n").encode()
                 )
