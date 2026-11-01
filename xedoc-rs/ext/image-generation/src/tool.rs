@@ -362,7 +362,8 @@ fn recent_images(history: &[ResponseItem], count: usize) -> Vec<ImageUrl> {
         match item {
             ResponseItem::Message { content, .. } => {
                 image_urls.extend(content.iter().rev().filter_map(|item| match item {
-                    ContentItem::InputImage { image_url, .. } => Some(image_url.clone()),
+                    ContentItem::InputImage { image_url, .. }
+                    | ContentItem::OutputImage { image_url, .. } => Some(image_url.clone()),
                     ContentItem::InputText { .. }
                     | ContentItem::InputAudio { .. }
                     | ContentItem::OutputText { .. } => None,

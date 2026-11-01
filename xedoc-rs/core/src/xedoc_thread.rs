@@ -533,6 +533,10 @@ impl XedocThread {
             ));
         }
 
+        for item in &items {
+            crate::context_manager::validate_assistant_image_message(item)
+                .map_err(XedocErr::InvalidRequest)?;
+        }
         let turn_context = self.session.new_default_turn().await;
         if self.session.reference_context_item().await.is_none() {
             // This history-only API runs without run_turn, so it owns its initial step.

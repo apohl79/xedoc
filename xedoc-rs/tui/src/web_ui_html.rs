@@ -12,6 +12,7 @@ use crate::history_cell::AgentMarkdownCell;
 use crate::history_cell::AgentMessageCell;
 use crate::history_cell::FinalMessageSeparator;
 use crate::history_cell::HistoryCell;
+use crate::history_cell::ImageOutputCell;
 use crate::history_cell::ProposedPlanCell;
 use crate::history_cell::ToolCallCountSummaryCell;
 use crate::history_cell::ToolCallSummaryCell;
@@ -28,6 +29,9 @@ pub(crate) enum StreamHtmlKind {
 }
 
 pub(crate) fn history_cell_page_count(cell: &dyn HistoryCell) -> u16 {
+    if let Some(images) = cell.as_any().downcast_ref::<ImageOutputCell>() {
+        return u16::try_from(images.images.len() + 1).unwrap_or(u16::MAX);
+    }
     let markdown_page_count = cell
         .as_any()
         .downcast_ref::<UserHistoryCell>()
@@ -58,6 +62,24 @@ pub(crate) fn history_cell_page_count(cell: &dyn HistoryCell) -> u16 {
 }
 
 pub(crate) fn history_cell_html(cell: &dyn HistoryCell, page_start: u16, page_end: u16) -> String {
+    if let Some(images) = cell.as_any().downcast_ref::<ImageOutputCell>() {
+        let mut html = String::new();
+        if page_start == 0 && page_end > 0 {
+            html.push_str(&styled_lines_html(
+                "history-tool",
+                &images.fallback.display_lines(u16::MAX),
+            ));
+        }
+        for source in images
+            .images
+            .iter()
+            .skip(usize::from(page_start.saturating_sub(1)))
+            .take(usize::from(page_end.saturating_sub(page_start.max(1))))
+        {
+            html.push_str(&crate::web_ui_images::image_html(source));
+        }
+        return html;
+    }
     if let Some(user) = cell.as_any().downcast_ref::<UserHistoryCell>() {
         let pages = markdown_pages(&user.message);
         let start = usize::from(page_start);

@@ -715,6 +715,15 @@ pub enum ContentItem {
     },
     OutputText {
         text: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        provider_metadata: Option<ProviderItemMetadata>,
+    },
+    OutputImage {
+        image_url: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        provider_metadata: Option<ProviderItemMetadata>,
     },
 }
 
@@ -1136,6 +1145,19 @@ impl ResponseItem {
     /// Removes provider-owned metadata before sending an item over the Responses API.
     pub fn clear_provider_metadata(&mut self) {
         match self {
+            Self::Message { content, .. } => {
+                for part in content {
+                    if let ContentItem::OutputText {
+                        provider_metadata, ..
+                    }
+                    | ContentItem::OutputImage {
+                        provider_metadata, ..
+                    } = part
+                    {
+                        *provider_metadata = None;
+                    }
+                }
+            }
             Self::FunctionCall {
                 provider_metadata, ..
             }

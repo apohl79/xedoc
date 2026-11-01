@@ -365,7 +365,21 @@ SELECT turn_id, item_id, rollout_ordinal, created_at_ms, item_json
 FROM thread_items
 WHERE thread_id = ?
   AND turn_id = ?
-  AND (item_id = ? OR item_id = ?)
+  AND (
+    item_id = ? OR item_id = ?
+    OR item_type = 'imageGeneration'
+    OR (item_type = 'agentMessage' AND json_array_length(item_json, '$.images') > 0)
+    OR (item_type = 'mcpToolCall' AND EXISTS (
+      SELECT 1 FROM json_each(item_json, '$.result.content') AS part
+      WHERE CASE WHEN part.type = 'object'
+        THEN json_extract(part.value, '$.type') = 'image' ELSE 0 END
+    ))
+    OR (item_type = 'dynamicToolCall' AND EXISTS (
+      SELECT 1 FROM json_each(item_json, '$.contentItems') AS part
+      WHERE CASE WHEN part.type = 'object'
+        THEN json_extract(part.value, '$.type') = 'inputImage' ELSE 0 END
+    ))
+  )
 ORDER BY rollout_ordinal ASC
         "#,
     )

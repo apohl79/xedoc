@@ -35,10 +35,46 @@ use crate::types::GeminiFunctionCallingConfig;
 
 const CUSTOM_TOOL_NAME: &str = "apply_patch";
 
+#[derive(Clone, Copy)]
+enum GeminiImageModel {
+    Flash25,
+    Pro3,
+    Flash31,
+}
+
 pub fn translate_request(
     request: &ResponsesApiRequest,
     thought_signatures: &GeminiThoughtSignatureStore,
 ) -> Result<GeminiGenerateContentRequest, serde_json::Error> {
+    let model = request.model.trim();
+    // Native image models do not support function calling or structured outputs:
+    // https://ai.google.dev/gemini-api/docs/models/gemini-3-pro-image
+    let image_model = match model.strip_prefix("models/").unwrap_or(model) {
+        "gemini-2.5-flash-image" | "gemini-2.5-flash-image-preview" => {
+            Some(GeminiImageModel::Flash25)
+        }
+        "gemini-3-pro-image" | "gemini-3-pro-image-preview" => Some(GeminiImageModel::Pro3),
+        "gemini-3.1-flash-image" | "gemini-3.1-flash-image-preview" => {
+            Some(GeminiImageModel::Flash31)
+        }
+        _ => None,
+    };
+    if image_model.is_some() {
+        if !matches!(request.tool_choice.as_str(), "" | "auto" | "none") {
+            return Err(serde::de::Error::custom(
+                "Gemini native image models do not support forced function calls.",
+            ));
+        }
+        if request
+            .text
+            .as_ref()
+            .is_some_and(|text| text.format.is_some())
+        {
+            return Err(serde::de::Error::custom(
+                "Gemini native image models do not support structured JSON output.",
+            ));
+        }
+    }
     let mut system_texts = (!request.instructions.is_empty())
         .then(|| request.instructions.clone())
         .into_iter()
@@ -50,9 +86,17 @@ pub fn translate_request(
         stream: request.stream,
         contents,
         system_instruction: system_instruction(system_texts),
-        tools: translate_tools(request.tools.as_deref()),
-        tool_config: translate_tool_choice(&request.tool_choice),
-        generation_config: generation_config(request),
+        tools: if image_model.is_some() {
+            Vec::new()
+        } else {
+            translate_tools(request.tools.as_deref())
+        },
+        tool_config: if image_model.is_some() {
+            None
+        } else {
+            translate_tool_choice(&request.tool_choice)
+        },
+        generation_config: generation_config(request, image_model),
     })
 }
 
@@ -199,6 +243,7 @@ fn append_message(
                 GeminiRole::User,
                 vec![GeminiPart::Text {
                     text: wrap_system_reminder(&text),
+                    thought_signature: None,
                 }],
             );
         }
@@ -216,10 +261,12 @@ fn content_text(content: &[ContentItem]) -> String {
     content
         .iter()
         .filter_map(|part| match part {
-            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+            ContentItem::InputText { text } | ContentItem::OutputText { text, .. } => {
                 Some(text.as_str())
             }
-            ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => None,
+            ContentItem::InputImage { .. }
+            | ContentItem::OutputImage { .. }
+            | ContentItem::InputAudio { .. } => None,
         })
         .collect()
 }
@@ -228,12 +275,33 @@ fn content_parts(content: &[ContentItem]) -> Vec<GeminiPart> {
     content
         .iter()
         .filter_map(|part| match part {
-            ContentItem::InputText { text } | ContentItem::OutputText { text }
-                if !text.is_empty() =>
-            {
-                Some(GeminiPart::Text { text: text.clone() })
+            ContentItem::InputText { text } if !text.is_empty() => Some(GeminiPart::Text {
+                text: text.clone(),
+                thought_signature: None,
+            }),
+            ContentItem::OutputText {
+                text,
+                provider_metadata,
+            } if !text.is_empty() || provider_metadata.is_some() => Some(GeminiPart::Text {
+                text: text.clone(),
+                thought_signature: provider_metadata
+                    .as_ref()
+                    .and_then(ProviderItemMetadata::gemini_thought_signature)
+                    .map(str::to_string),
+            }),
+            ContentItem::InputImage { image_url, .. } => {
+                inline_data(image_url, /*thought_signature*/ None)
             }
-            ContentItem::InputImage { image_url, .. } => inline_data(image_url),
+            ContentItem::OutputImage {
+                image_url,
+                provider_metadata,
+            } => inline_data(
+                image_url,
+                provider_metadata
+                    .as_ref()
+                    .and_then(ProviderItemMetadata::gemini_thought_signature)
+                    .map(str::to_string),
+            ),
             ContentItem::InputText { .. }
             | ContentItem::OutputText { .. }
             | ContentItem::InputAudio { .. } => None,
@@ -246,7 +314,10 @@ fn agent_message_parts(content: &[AgentMessageInputContent]) -> Vec<GeminiPart> 
         .iter()
         .filter_map(|part| match part {
             AgentMessageInputContent::InputText { text } if !text.is_empty() => {
-                Some(GeminiPart::Text { text: text.clone() })
+                Some(GeminiPart::Text {
+                    text: text.clone(),
+                    thought_signature: None,
+                })
             }
             AgentMessageInputContent::InputText { .. }
             | AgentMessageInputContent::EncryptedContent { .. } => None,
@@ -254,7 +325,7 @@ fn agent_message_parts(content: &[AgentMessageInputContent]) -> Vec<GeminiPart> 
         .collect()
 }
 
-fn inline_data(image_url: &str) -> Option<GeminiPart> {
+fn inline_data(image_url: &str, thought_signature: Option<String>) -> Option<GeminiPart> {
     let data = image_url.strip_prefix("data:")?;
     let (mime_type, data) = data.split_once(";base64,")?;
     if mime_type.is_empty() || data.is_empty() {
@@ -265,6 +336,7 @@ fn inline_data(image_url: &str) -> Option<GeminiPart> {
             mime_type: mime_type.to_string(),
             data: data.to_string(),
         },
+        thought_signature,
     })
 }
 
@@ -310,7 +382,10 @@ fn system_instruction(system_texts: Vec<String>) -> Option<GeminiSystemInstructi
         .collect::<Vec<_>>()
         .join("\n\n");
     (!text.is_empty()).then(|| GeminiSystemInstruction {
-        parts: vec![GeminiPart::Text { text }],
+        parts: vec![GeminiPart::Text {
+            text,
+            thought_signature: None,
+        }],
     })
 }
 
@@ -402,17 +477,39 @@ fn translate_tool_choice(tool_choice: &str) -> Option<GeminiToolConfig> {
     })
 }
 
-fn generation_config(request: &ResponsesApiRequest) -> Option<GeminiGenerationConfig> {
+fn generation_config(
+    request: &ResponsesApiRequest,
+    image_model: Option<GeminiImageModel>,
+) -> Option<GeminiGenerationConfig> {
     let output_schema = request
         .text
         .as_ref()
         .and_then(|text| text.format.as_ref())
         .map(|format| format.schema.clone());
-    let thinking_level = request
+    let effort = request
         .reasoning
         .as_ref()
-        .and_then(|reasoning| reasoning.effort.as_ref())
-        .and_then(thinking_level);
+        .and_then(|reasoning| reasoning.effort.as_ref());
+    // 3.1 Flash Image accepts only minimal/high; other native image models use defaults.
+    // https://ai.google.dev/gemini-api/docs/generate-content/image-generation#thinking_process
+    let thinking_level = match image_model {
+        Some(GeminiImageModel::Flash25 | GeminiImageModel::Pro3) => None,
+        Some(GeminiImageModel::Flash31) => match effort {
+            Some(ReasoningEffort::Minimal) => Some(GeminiThinkingLevel::Minimal),
+            Some(ReasoningEffort::High | ReasoningEffort::XHigh | ReasoningEffort::Max) => {
+                Some(GeminiThinkingLevel::High)
+            }
+            Some(
+                ReasoningEffort::None
+                | ReasoningEffort::Low
+                | ReasoningEffort::Medium
+                | ReasoningEffort::Ultra
+                | ReasoningEffort::Custom(_),
+            )
+            | None => None,
+        },
+        None => effort.and_then(thinking_level),
+    };
     if output_schema.is_none() && thinking_level.is_none() {
         return None;
     }

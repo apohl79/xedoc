@@ -64,6 +64,17 @@ native selectable editor, revision-checked draft synchronization, attachment
 previews, and searchable model controls. Conversation Markdown reflows at the
 browser width; terminal dialogs remain available as a compatibility fallback.
 The TUI must remain running.
+Assistant images, image-generation results, and MCP/dynamic-tool image results
+render as raster previews in browser history, including after resume. Previews
+accept PNG, JPEG, GIF, and WebP, with 8 MiB encoded-file, 8192-pixel dimension,
+and 64 MiB decoder-allocation limits. Each preview is at most 1024 pixels per
+side and 256 KiB of PNG data; unsupported or corrupt images show a text fallback.
+The browser does not fetch image URLs supplied by a model or tool. The TUI
+continues to show text only.
+Summary turn views retain image-bearing messages and tool results so resumed
+browser sessions keep their previews without loading unrelated tool history.
+App-server outbound queues and script SDK receive frames are bounded at 128 MiB,
+matching the native client. Script SDK outgoing messages remain limited to 1 MiB.
 Large history cells are paged by row without splitting their browser history
 element. Dropping, pasting, or selecting files accepts up to 8 MiB each, with at
 most 32 uploaded files retained for the lifetime of the browser attachment.
@@ -1390,7 +1401,7 @@ Today both notifications carry an empty `items` array even when item events were
 `ThreadItem` is the tagged union carried in turn responses and `item/*` notifications. Currently we support events for the following items:
 
 - `userMessage` — `{id, clientId, content}` where `clientId` is the optional `clientUserMessageId` supplied to `turn/start` or `turn/steer`, and `content` is a list of user inputs (`text`, `image`, `localImage`, `audio`, or `localAudio`).
-- `agentMessage` — `{id, text}` containing the accumulated agent reply.
+- `agentMessage` — `{id, text, images, phase}` containing the accumulated agent reply and inline image data URLs. `images` defaults to an empty list when reading older persisted items.
 - `plan` — `{id, text}` emitted for plan-mode turns; plan text can stream via `item/plan/delta` (experimental).
 - `reasoning` — `{id, summary, content}` where `summary` holds streamed reasoning summaries (applicable for most OpenAI models) and `content` holds raw reasoning blocks (applicable for e.g. open source models).
 - `commandExecution` — `{id, command, cwd, status, commandActions, aggregatedOutput?, exitCode?, durationMs?}` for sandboxed commands; `status` is `inProgress`, `completed`, `failed`, or `declined`.
@@ -1416,6 +1427,7 @@ There are additional item-specific events:
 #### agentMessage
 
 - `item/agentMessage/delta` — appends streamed text for the agent message; concatenate `delta` values for the same `itemId` in order to reconstruct the full reply.
+- `item/completed` carries the final `agentMessage.images`, including image-only replies. Native Gemini sampling preserves returned text/image parts and their thought signatures in model history. Recognized Gemini 2.5 Flash Image, 3 Pro Image, and 3.1 Flash Image model IDs omit unsupported function tools and reject forced tool or structured-JSON contracts. Assistant image messages exceeding 10,000 estimated tokens are rejected before persistence; the image-data limits are 12 MiB per encoded image and 32 MiB per message. Sampled images must be valid inline PNG, JPEG, GIF, or WebP data, at most 8 MiB before decoding, with 8192-pixel dimension and 64 MiB decoding-allocation limits. Invalid images fail the turn rather than entering subsequent model requests.
 
 #### plan
 

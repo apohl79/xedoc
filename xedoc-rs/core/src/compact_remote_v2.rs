@@ -431,7 +431,12 @@ fn retained_input_image_count(item: &ResponseItem) -> usize {
 
     content
         .iter()
-        .filter(|item| matches!(item, ContentItem::InputImage { .. }))
+        .filter(|item| {
+            matches!(
+                item,
+                ContentItem::InputImage { .. } | ContentItem::OutputImage { .. }
+            )
+        })
         .count()
 }
 
@@ -469,10 +474,12 @@ fn message_text_token_count(item: &ResponseItem) -> usize {
     content
         .iter()
         .map(|item| match item {
-            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+            ContentItem::InputText { text } | ContentItem::OutputText { text, .. } => {
                 approx_token_count(text)
             }
-            ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => 0,
+            ContentItem::InputImage { .. }
+            | ContentItem::OutputImage { .. }
+            | ContentItem::InputAudio { .. } => 0,
         })
         .sum()
 }
@@ -496,7 +503,7 @@ fn truncate_message_text_to_token_budget(
     let mut truncated_content = Vec::with_capacity(content.len());
     for mut content_item in content {
         match &mut content_item {
-            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+            ContentItem::InputText { text } | ContentItem::OutputText { text, .. } => {
                 if remaining == 0 {
                     continue;
                 }
@@ -512,7 +519,9 @@ fn truncate_message_text_to_token_budget(
                     truncated_content.push(content_item);
                 }
             }
-            ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {
+            ContentItem::InputImage { .. }
+            | ContentItem::OutputImage { .. }
+            | ContentItem::InputAudio { .. } => {
                 truncated_content.push(content_item);
             }
         }

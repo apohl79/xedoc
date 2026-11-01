@@ -277,7 +277,10 @@ fn summary_message(summary: String) -> ResponseItem {
     ResponseItem::Message {
         id: None,
         role: "assistant".to_string(),
-        content: vec![ContentItem::OutputText { text: summary }],
+        content: vec![ContentItem::OutputText {
+            text: summary,
+            provider_metadata: None,
+        }],
         phase: None,
         internal_chat_message_metadata_passthrough: None,
     }

@@ -16,7 +16,7 @@ pub fn raw_assistant_output_text_from_item(item: &ResponseItem) -> Option<String
         let combined = content
             .iter()
             .filter_map(|ci| match ci {
-                xedoc_protocol::models::ContentItem::OutputText { text } => Some(text.as_str()),
+                xedoc_protocol::models::ContentItem::OutputText { text, .. } => Some(text.as_str()),
                 _ => None,
             })
             .collect::<String>();
@@ -34,6 +34,7 @@ pub fn sanitize_agent_message(turn_item: &mut TurnItem, plan_mode: bool) {
             .iter()
             .map(|entry| match entry {
                 xedoc_protocol::items::AgentMessageContent::Text { text } => text.as_str(),
+                xedoc_protocol::items::AgentMessageContent::Image { .. } => "",
             })
             .collect::<String>();
         let (without_citations, _) = strip_citations(&combined);
@@ -42,8 +43,16 @@ pub fn sanitize_agent_message(turn_item: &mut TurnItem, plan_mode: bool) {
         } else {
             without_citations
         };
-        agent_message.content =
-            vec![xedoc_protocol::items::AgentMessageContent::Text { text: stripped }];
+        agent_message.content.retain(|part| {
+            matches!(
+                part,
+                xedoc_protocol::items::AgentMessageContent::Image { .. }
+            )
+        });
+        agent_message.content.insert(
+            0,
+            xedoc_protocol::items::AgentMessageContent::Text { text: stripped },
+        );
     }
 }
 
@@ -70,10 +79,22 @@ pub fn completed_item_defers_mailbox_delivery_to_next_turn(
     plan_mode: bool,
 ) -> bool {
     match item {
-        ResponseItem::Message { role, phase, .. } => {
+        ResponseItem::Message {
+            role,
+            phase,
+            content,
+            ..
+        } => {
             role == "assistant"
                 && !matches!(phase, Some(MessagePhase::Commentary))
-                && last_assistant_message_from_item(item, plan_mode).is_some()
+                && (last_assistant_message_from_item(item, plan_mode).is_some()
+                    || content.iter().any(|part| {
+                        matches!(
+                            part,
+                            xedoc_protocol::models::ContentItem::OutputImage { .. }
+                                | xedoc_protocol::models::ContentItem::InputImage { .. }
+                        )
+                    }))
         }
         _ => false,
     }

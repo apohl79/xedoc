@@ -137,6 +137,7 @@ pub(crate) async fn finalize_non_tool_response_item(
                 .iter()
                 .map(|entry| match entry {
                     xedoc_protocol::items::AgentMessageContent::Text { text } => text.as_str(),
+                    xedoc_protocol::items::AgentMessageContent::Image { .. } => "",
                 })
                 .collect::<String>();
             let last_agent_message = if combined.trim().is_empty() {
@@ -146,7 +147,13 @@ pub(crate) async fn finalize_non_tool_response_item(
             };
             let defers_mailbox_delivery_to_next_turn =
                 !matches!(agent_message.phase, Some(MessagePhase::Commentary))
-                    && last_agent_message.is_some();
+                    && (last_agent_message.is_some()
+                        || agent_message.content.iter().any(|part| {
+                            matches!(
+                                part,
+                                xedoc_protocol::items::AgentMessageContent::Image { .. }
+                            )
+                        }));
             (last_agent_message, defers_mailbox_delivery_to_next_turn)
         }
         _ => (None, false),
@@ -166,6 +173,8 @@ pub(crate) async fn handle_output_item_done(
     item: ResponseItem,
     previously_active_item: Option<TurnItem>,
 ) -> Result<OutputItemResult> {
+    crate::context_manager::validate_assistant_image_message(&item)
+        .map_err(XedocErr::InvalidRequest)?;
     let mut output = OutputItemResult::default();
     let plan_mode = ctx.turn_context.mode == ModeKind::Plan;
 
@@ -299,6 +308,7 @@ pub(crate) async fn handle_non_tool_response_item(
     match item {
         ResponseItem::Message { .. }
         | ResponseItem::Reasoning { .. }
+        | ResponseItem::ImageGenerationCall { .. }
         | ResponseItem::WebSearchCall { .. } => {
             let mut turn_item = parse_turn_item(item)?;
             finalize_turn_item(sess, contributor_policy, &mut turn_item, plan_mode).await;

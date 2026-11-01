@@ -308,9 +308,11 @@ impl ThreadHistoryBuilder {
     pub fn handle_event(&mut self, event: &EventMsg) {
         match event {
             EventMsg::UserMessage(payload) => self.handle_user_message(payload),
-            EventMsg::AgentMessage(payload) => {
-                self.handle_agent_message(payload.message.clone(), payload.phase.clone())
-            }
+            EventMsg::AgentMessage(payload) => self.handle_agent_message(
+                payload.message.clone(),
+                payload.images.clone(),
+                payload.phase.clone(),
+            ),
             EventMsg::AgentReasoning(payload) => self.handle_agent_reasoning(payload),
             EventMsg::AgentReasoningRawContent(payload) => {
                 self.handle_agent_reasoning_raw_content(payload)
@@ -466,13 +468,23 @@ impl ThreadHistoryBuilder {
         });
     }
 
-    fn handle_agent_message(&mut self, text: String, phase: Option<MessagePhase>) {
-        if text.is_empty() {
+    fn handle_agent_message(
+        &mut self,
+        text: String,
+        images: Vec<String>,
+        phase: Option<MessagePhase>,
+    ) {
+        if text.is_empty() && images.is_empty() {
             return;
         }
 
         let id = self.next_item_id();
-        self.push_item_in_current_turn(ThreadItem::AgentMessage { id, text, phase });
+        self.push_item_in_current_turn(ThreadItem::AgentMessage {
+            id,
+            text,
+            phase,
+            images,
+        });
     }
 
     fn handle_agent_reasoning(&mut self, payload: &AgentReasoningEvent) {

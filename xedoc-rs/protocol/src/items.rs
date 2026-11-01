@@ -110,6 +110,7 @@ struct HookPromptXml {
 #[ts(tag = "type")]
 pub enum AgentMessageContent {
     Text { text: String },
+    Image { image_url: String },
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, TS, JsonSchema)]

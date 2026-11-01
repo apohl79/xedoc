@@ -98,15 +98,19 @@ impl UserMessageItem {
 
 impl AgentMessageItem {
     pub fn as_legacy_events(&self) -> Vec<EventMsg> {
-        self.content
-            .iter()
-            .map(|c| match c {
-                AgentMessageContent::Text { text } => EventMsg::AgentMessage(AgentMessageEvent {
-                    message: text.clone(),
-                    phase: self.phase.clone(),
-                }),
-            })
-            .collect()
+        let mut message = String::new();
+        let mut images = Vec::new();
+        for part in &self.content {
+            match part {
+                AgentMessageContent::Text { text } => message.push_str(text),
+                AgentMessageContent::Image { image_url } => images.push(image_url.clone()),
+            }
+        }
+        vec![EventMsg::AgentMessage(AgentMessageEvent {
+            message,
+            images,
+            phase: self.phase.clone(),
+        })]
     }
 }
 

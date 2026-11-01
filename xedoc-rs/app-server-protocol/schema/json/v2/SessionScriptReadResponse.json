@@ -991,6 +991,14 @@
             "id": {
               "type": "string"
             },
+            "images": {
+              "default": [],
+              "description": "Inline image data URLs returned directly by the assistant.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "phase": {
               "anyOf": [
                 {

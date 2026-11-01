@@ -147,6 +147,7 @@ mod tui;
 mod web_ui;
 mod web_ui_files;
 mod web_ui_html;
+mod web_ui_images;
 pub use xedoc_tui_transcript::UpdateAction;
 pub(crate) use xedoc_tui_transcript::update_action;
 #[cfg(not(debug_assertions))]

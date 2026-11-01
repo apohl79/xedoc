@@ -1216,6 +1216,7 @@ pub(crate) async fn apply_bespoke_event_handling(
                     .iter()
                     .map(|content| match content {
                         xedoc_protocol::items::AgentMessageContent::Text { text } => text.as_str(),
+                        xedoc_protocol::items::AgentMessageContent::Image { .. } => "",
                     })
                     .collect::<String>();
                 if let Some(request) = thread_state

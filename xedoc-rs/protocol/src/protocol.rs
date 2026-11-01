@@ -575,6 +575,7 @@ impl InterAgentCommunication {
             role: "assistant".to_string(),
             content: vec![ContentItem::OutputText {
                 text: serde_json::to_string(&communication).unwrap_or_default(),
+                provider_metadata: None,
             }],
             phase: Some(MessagePhase::Commentary),
         }
@@ -621,7 +622,7 @@ impl InterAgentCommunication {
 
     pub fn from_message_content(content: &[ContentItem]) -> Option<Self> {
         match content {
-            [ContentItem::InputText { text }] | [ContentItem::OutputText { text }] => {
+            [ContentItem::InputText { text }] | [ContentItem::OutputText { text, .. }] => {
                 serde_json::from_str(text).ok()
             }
             _ => None,
@@ -2241,6 +2242,8 @@ impl fmt::Display for FinalOutput {
 pub struct AgentMessageEvent {
     pub message: String,
     #[serde(default)]
+    pub images: Vec<String>,
+    #[serde(default)]
     pub phase: Option<MessagePhase>,
 }
 
@@ -3187,6 +3190,7 @@ impl From<CompactedItem> for ResponseItem {
             role: "assistant".to_string(),
             content: vec![ContentItem::OutputText {
                 text: value.message,
+                provider_metadata: None,
             }],
             phase: None,
             internal_chat_message_metadata_passthrough: None,

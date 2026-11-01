@@ -1384,12 +1384,13 @@ async fn maybe_emit_pending_agent_message_start(
     }
 }
 
-/// Agent messages are text-only today; concatenate all text entries.
+/// Concatenates visible text without including image data.
 pub(super) fn agent_message_text(item: &xedoc_protocol::items::AgentMessageItem) -> String {
     item.content
         .iter()
         .map(|entry| match entry {
             xedoc_protocol::items::AgentMessageContent::Text { text } => text.as_str(),
+            xedoc_protocol::items::AgentMessageContent::Image { .. } => "",
         })
         .collect()
 }
@@ -1403,9 +1404,9 @@ fn backfill_empty_assistant_message_content(item: &mut ResponseItem, streamed_te
     } = item
         && role == "assistant"
         && (content.is_empty()
-            || content
-                .iter()
-                .all(|entry| matches!(entry, ContentItem::OutputText { text } if text.is_empty())))
+            || content.iter().all(
+                |entry| matches!(entry, ContentItem::OutputText { text, .. } if text.is_empty()),
+            ))
     {
         tracing::info!(
             item_id = id.as_deref().unwrap_or("<missing>"),
@@ -1414,6 +1415,7 @@ fn backfill_empty_assistant_message_content(item: &mut ResponseItem, streamed_te
         );
         *content = vec![ContentItem::OutputText {
             text: streamed_text.to_string(),
+            provider_metadata: None,
         }];
     }
 }
@@ -1561,7 +1563,7 @@ async fn maybe_complete_plan_item_from_message(
     {
         let mut text = String::new();
         for entry in content {
-            if let ContentItem::OutputText { text: chunk } = entry {
+            if let ContentItem::OutputText { text: chunk, .. } = entry {
                 text.push_str(chunk);
             }
         }

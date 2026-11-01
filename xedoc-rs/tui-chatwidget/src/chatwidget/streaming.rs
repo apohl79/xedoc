@@ -267,15 +267,23 @@ impl ChatWidget {
         from_replay: bool,
     ) {
         let mut message = String::new();
+        let mut images = Vec::new();
         for content in &item.content {
             match content {
                 AgentMessageContent::Text { text } => message.push_str(text),
+                AgentMessageContent::Image { image_url } => images.push(image_url.clone()),
             }
         }
         let parsed = parse_assistant_markdown(&message, self.config.cwd.as_path());
         self.finalize_completed_assistant_message(
             (!parsed.visible_markdown.is_empty()).then_some(parsed.visible_markdown.as_str()),
         );
+        if !images.is_empty() {
+            self.add_to_history(history_cell::ImageOutputCell {
+                images,
+                fallback: history_cell::PlainHistoryCell::new(vec!["[Image output]".into()]),
+            });
+        }
         if matches!(item.phase, Some(MessagePhase::FinalAnswer) | None)
             && !parsed.visible_markdown.is_empty()
         {

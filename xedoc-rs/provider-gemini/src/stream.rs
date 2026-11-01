@@ -16,10 +16,13 @@ pub struct GeminiStreamTranslator {
     message_id: ResponseItemId,
     thought_signatures: Arc<GeminiThoughtSignatureStore>,
     started: bool,
-    text_started: bool,
+    message_started: bool,
     completed: bool,
     output_seen: bool,
-    text: String,
+    content: Vec<ContentItem>,
+    image_count: usize,
+    image_bytes: usize,
+    image_error: Option<String>,
     no_output_diagnostic: Option<String>,
     finish_reason: Option<String>,
     usage: TokenUsage,
@@ -32,10 +35,13 @@ impl GeminiStreamTranslator {
             message_id: ResponseItemId::new("msg"),
             thought_signatures,
             started: false,
-            text_started: false,
+            message_started: false,
             completed: false,
             output_seen: false,
-            text: String::new(),
+            content: Vec::new(),
+            image_count: 0,
+            image_bytes: 0,
+            image_error: None,
             no_output_diagnostic: None,
             finish_reason: None,
             usage: TokenUsage::default(),
@@ -52,6 +58,9 @@ impl GeminiStreamTranslator {
             return Ok(Vec::new());
         }
         self.completed = true;
+        if let Some(error) = &self.image_error {
+            return Err(GeminiStreamError::InvalidImageOutput(error.clone()));
+        }
         if !self.output_seen {
             return Err(GeminiStreamError::NoVisibleOutput(
                 self.no_output_diagnostic
@@ -62,12 +71,9 @@ impl GeminiStreamTranslator {
 
         let mut events = Vec::new();
         self.start(&mut events);
-        if self.text_started {
-            events.push(ResponseEvent::OutputItemDone(self.message_item(vec![
-                ContentItem::OutputText {
-                    text: self.text.clone(),
-                },
-            ])));
+        if self.message_started {
+            let content = std::mem::take(&mut self.content);
+            events.push(ResponseEvent::OutputItemDone(self.message_item(content)));
         }
         events.push(ResponseEvent::Completed {
             response_id: self.response_id.clone(),
@@ -78,7 +84,7 @@ impl GeminiStreamTranslator {
     }
 
     fn translate(&mut self, chunk: GeminiStreamChunk) -> Vec<ResponseEvent> {
-        if self.completed {
+        if self.completed || self.image_error.is_some() {
             return Vec::new();
         }
 
@@ -105,22 +111,82 @@ impl GeminiStreamTranslator {
             .content
             .map(|content| content.parts)
             .unwrap_or_default();
-        let text = parts
-            .iter()
-            .filter_map(|part| part.text.as_deref())
-            .collect::<String>();
-        if !text.is_empty() {
-            self.output_seen = true;
-            self.text.push_str(&text);
-            if !self.text_started {
-                self.text_started = true;
-                events.push(ResponseEvent::OutputItemAdded(
-                    self.message_item(Vec::new()),
-                ));
-            }
-            events.push(ResponseEvent::OutputTextDelta(text));
-        }
         for part in parts {
+            if part.thought {
+                continue;
+            }
+            let provider_metadata = part
+                .thought_signature
+                .as_ref()
+                .filter(|signature| !signature.is_empty())
+                .map(|signature| ProviderItemMetadata::Gemini {
+                    provider_id: String::new(),
+                    thought_signature: signature.clone(),
+                });
+            if let Some(text) = part.text
+                && (!text.is_empty() || provider_metadata.is_some())
+            {
+                if !text.is_empty() {
+                    self.output_seen = true;
+                }
+                if !self.message_started {
+                    self.message_started = true;
+                    events.push(ResponseEvent::OutputItemAdded(
+                        self.message_item(Vec::new()),
+                    ));
+                }
+                if !text.is_empty() {
+                    events.push(ResponseEvent::OutputTextDelta(text.clone()));
+                }
+                self.content.push(ContentItem::OutputText {
+                    text,
+                    provider_metadata: provider_metadata.clone(),
+                });
+            }
+            if let Some(image) = part.inline_data {
+                const MAX_IMAGES: usize = 32;
+                const MAX_IMAGE_BYTES: usize = 12 * 1024 * 1024;
+                const MAX_TOTAL_BYTES: usize = 32 * 1024 * 1024;
+                let valid_mime = image
+                    .mime_type
+                    .strip_prefix("image/")
+                    .is_some_and(|subtype| {
+                        !subtype.is_empty()
+                            && subtype
+                                .bytes()
+                                .all(|byte| byte.is_ascii_alphanumeric() || b".+-".contains(&byte))
+                    });
+                if !valid_mime || image.mime_type.len() > 128 || image.data.is_empty() {
+                    self.image_error = Some(
+                        "Gemini returned image output with missing data or an invalid image MIME type."
+                            .to_string(),
+                    );
+                    return events;
+                }
+                if self.image_count == MAX_IMAGES
+                    || image.data.len() > MAX_IMAGE_BYTES
+                    || image.data.len() > MAX_TOTAL_BYTES - self.image_bytes
+                {
+                    self.image_error = Some(
+                        "Gemini image output exceeds the limit of 32 images, 12 MiB per image, or 32 MiB total encoded data."
+                            .to_string(),
+                    );
+                    return events;
+                }
+                self.image_count += 1;
+                self.image_bytes += image.data.len();
+                self.output_seen = true;
+                if !self.message_started {
+                    self.message_started = true;
+                    events.push(ResponseEvent::OutputItemAdded(
+                        self.message_item(Vec::new()),
+                    ));
+                }
+                self.content.push(ContentItem::OutputImage {
+                    image_url: format!("data:{};base64,{}", image.mime_type, image.data),
+                    provider_metadata,
+                });
+            }
             if let Some(call) = part.function_call {
                 self.output_seen = true;
                 events.extend(self.function_call_events(call, part.thought_signature));
@@ -235,12 +301,15 @@ impl GeminiStreamTranslator {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GeminiStreamError {
     NoVisibleOutput(String),
+    InvalidImageOutput(String),
 }
 
 impl fmt::Display for GeminiStreamError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoVisibleOutput(message) => formatter.write_str(message),
+            Self::NoVisibleOutput(message) | Self::InvalidImageOutput(message) => {
+                formatter.write_str(message)
+            }
         }
     }
 }
@@ -274,8 +343,21 @@ struct GeminiStreamContent {
 #[serde(rename_all = "camelCase")]
 struct GeminiStreamPart {
     text: Option<String>,
+    #[serde(alias = "inline_data")]
+    inline_data: Option<GeminiStreamInlineData>,
+    #[serde(default)]
+    thought: bool,
     function_call: Option<GeminiStreamFunctionCall>,
+    #[serde(alias = "thought_signature")]
     thought_signature: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GeminiStreamInlineData {
+    #[serde(alias = "mime_type")]
+    mime_type: String,
+    data: String,
 }
 
 #[derive(Debug, Default, Deserialize)]

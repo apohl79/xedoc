@@ -42,10 +42,14 @@ pub enum GeminiRole {
 pub enum GeminiPart {
     Text {
         text: String,
+        #[serde(rename = "thoughtSignature", skip_serializing_if = "Option::is_none")]
+        thought_signature: Option<String>,
     },
     InlineData {
         #[serde(rename = "inlineData")]
         inline_data: GeminiInlineData,
+        #[serde(rename = "thoughtSignature", skip_serializing_if = "Option::is_none")]
+        thought_signature: Option<String>,
     },
     FunctionCall {
         #[serde(rename = "functionCall")]
@@ -135,6 +139,7 @@ pub struct GeminiThinkingConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum GeminiThinkingLevel {
+    Minimal,
     Low,
     Medium,
     High,

@@ -119,6 +119,16 @@
         },
         {
           "properties": {
+            "provider_metadata": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ProviderItemMetadata"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "text": {
               "type": "string"
             },
@@ -135,6 +145,36 @@
             "type"
           ],
           "title": "OutputTextContentItem",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "image_url": {
+              "type": "string"
+            },
+            "provider_metadata": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ProviderItemMetadata"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": {
+              "enum": [
+                "output_image"
+              ],
+              "title": "OutputImageContentItemType",
+              "type": "string"
+            }
+          },
+          "required": [
+            "image_url",
+            "type"
+          ],
+          "title": "OutputImageContentItem",
           "type": "object"
         }
       ]

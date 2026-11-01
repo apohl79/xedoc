@@ -196,6 +196,9 @@ pub enum ThreadItem {
     AgentMessage {
         id: String,
         text: String,
+        /// Inline image data URLs returned directly by the assistant.
+        #[serde(default)]
+        images: Vec<String>,
         #[serde(default)]
         phase: Option<MessagePhase>,
     },
@@ -475,16 +478,18 @@ impl From<CoreTurnItem> for ThreadItem {
                     .collect(),
             },
             CoreTurnItem::AgentMessage(agent) => {
-                let text = agent
-                    .content
-                    .into_iter()
-                    .map(|entry| match entry {
-                        CoreAgentMessageContent::Text { text } => text,
-                    })
-                    .collect::<String>();
+                let mut text = String::new();
+                let mut images = Vec::new();
+                for entry in agent.content {
+                    match entry {
+                        CoreAgentMessageContent::Text { text: part } => text.push_str(&part),
+                        CoreAgentMessageContent::Image { image_url } => images.push(image_url),
+                    }
+                }
                 ThreadItem::AgentMessage {
                     id: agent.id,
                     text,
+                    images,
                     phase: agent.phase,
                 }
             }

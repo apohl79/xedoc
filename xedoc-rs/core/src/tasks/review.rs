@@ -265,6 +265,7 @@ pub(crate) async fn exit_review_mode(
                 role: "assistant".to_string(),
                 content: vec![ContentItem::OutputText {
                     text: assistant_message,
+                    provider_metadata: None,
                 }],
                 phase: None,
                 internal_chat_message_metadata_passthrough: None,

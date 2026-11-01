@@ -78,9 +78,10 @@ fn response_item_activity(item: &ResponseItem) -> Option<String> {
             let text = content
                 .iter()
                 .filter_map(|content| match content {
-                    ContentItem::OutputText { text } => Some(text.as_str()),
+                    ContentItem::OutputText { text, .. } => Some(text.as_str()),
                     ContentItem::InputText { .. }
                     | ContentItem::InputImage { .. }
+                    | ContentItem::OutputImage { .. }
                     | ContentItem::InputAudio { .. } => None,
                 })
                 .collect::<Vec<_>>()

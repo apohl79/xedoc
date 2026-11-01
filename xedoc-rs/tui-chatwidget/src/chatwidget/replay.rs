@@ -89,11 +89,22 @@ impl ChatWidget {
             ThreadItem::UserMessage { content, .. } => {
                 self.on_committed_user_message(&content, from_replay);
             }
-            ThreadItem::AgentMessage { id, text, phase } => {
+            ThreadItem::AgentMessage {
+                id,
+                text,
+                images,
+                phase,
+            } => {
                 self.on_agent_message_item_completed(
                     AgentMessageItem {
                         id,
-                        content: vec![AgentMessageContent::Text { text }],
+                        content: std::iter::once(AgentMessageContent::Text { text })
+                            .chain(
+                                images
+                                    .into_iter()
+                                    .map(|image_url| AgentMessageContent::Image { image_url }),
+                            )
+                            .collect(),
                         phase,
                     },
                     from_replay,
@@ -157,6 +168,7 @@ impl ChatWidget {
                     item.status,
                     item.revised_prompt,
                     item.saved_path,
+                    item.result,
                 );
             }
             ThreadItem::EnteredReviewMode { review, .. } => {
@@ -241,8 +253,32 @@ impl ChatWidget {
             }),
             item @ ThreadItem::SubAgentActivity { .. } => self.on_sub_agent_activity(item),
             item @ ThreadItem::DynamicToolCall { .. } => {
+                let mut images = Vec::new();
+                let mut bytes = 0usize;
+                if let ThreadItem::DynamicToolCall {
+                    content_items: Some(content),
+                    ..
+                } = &item
+                {
+                    for entry in content {
+                        if let xedoc_app_server_protocol::DynamicToolCallOutputContentItem::InputImage { image_url } = entry
+                            && image_url.len() <= 12 * 1024 * 1024
+                            && images.len() < 32
+                            && bytes + image_url.len() <= 32 * 1024 * 1024
+                        {
+                            bytes += image_url.len();
+                            images.push(image_url.clone());
+                        }
+                    }
+                }
                 if self.optimized_tool_call_rendering() {
                     self.handle_tool_summary_completed_now(item);
+                }
+                if !images.is_empty() {
+                    self.add_to_history(history_cell::ImageOutputCell {
+                        images,
+                        fallback: history_cell::PlainHistoryCell::new(Vec::new()),
+                    });
                 }
             }
             ThreadItem::Sleep(_) => {}

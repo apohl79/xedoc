@@ -4866,24 +4866,55 @@ pub(super) fn apply_thread_turns_items_view(turns: &mut [Turn], items_view: Turn
                 let first_user_message = turn
                     .items
                     .iter()
-                    .find(|item| matches!(item, ThreadItem::UserMessage { .. }))
-                    .cloned();
+                    .position(|item| matches!(item, ThreadItem::UserMessage { .. }));
                 let final_agent_message = turn
                     .items
                     .iter()
-                    .rev()
-                    .find(|item| matches!(item, ThreadItem::AgentMessage { .. }))
-                    .cloned();
-                turn.items = match (first_user_message, final_agent_message) {
-                    (Some(user_message), Some(agent_message))
-                        if user_message.id() != agent_message.id() =>
-                    {
-                        vec![user_message, agent_message]
-                    }
-                    (Some(user_message), _) => vec![user_message],
-                    (None, Some(agent_message)) => vec![agent_message],
-                    (None, None) => Vec::new(),
-                };
+                    .rposition(|item| matches!(item, ThreadItem::AgentMessage { .. }));
+                turn.items = std::mem::take(&mut turn.items)
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(index, item)| {
+                        let has_images = match &item {
+                            ThreadItem::AgentMessage { images, .. } => !images.is_empty(),
+                            ThreadItem::ImageGeneration(_) => true,
+                            ThreadItem::McpToolCall {
+                                result: Some(result),
+                                ..
+                            } => result.content.iter().any(|part| {
+                                part.get("type").and_then(serde_json::Value::as_str)
+                                    == Some("image")
+                            }),
+                            ThreadItem::DynamicToolCall {
+                                content_items: Some(content),
+                                ..
+                            } => content.iter().any(|part| {
+                                matches!(part, xedoc_app_server_protocol::DynamicToolCallOutputContentItem::InputImage { .. })
+                            }),
+                            ThreadItem::UserMessage { .. }
+                            | ThreadItem::HookPrompt { .. }
+                            | ThreadItem::Plan { .. }
+                            | ThreadItem::Reasoning { .. }
+                            | ThreadItem::CommandExecution { .. }
+                            | ThreadItem::FileChange { .. }
+                            | ThreadItem::McpToolCall { result: None, .. }
+                            | ThreadItem::DynamicToolCall { content_items: None, .. }
+                            | ThreadItem::CollabAgentToolCall { .. }
+                            | ThreadItem::SubAgentActivity { .. }
+                            | ThreadItem::WebSearch(_)
+                            | ThreadItem::ImageView { .. }
+                            | ThreadItem::Sleep(_)
+                            | ThreadItem::EnteredReviewMode { .. }
+                            | ThreadItem::ExitedReviewMode { .. }
+                            | ThreadItem::ContextCompaction { .. }
+                            | ThreadItem::ModelRouterDecision { .. } => false,
+                        };
+                        (Some(index) == first_user_message
+                            || Some(index) == final_agent_message
+                            || has_images)
+                            .then_some(item)
+                    })
+                    .collect();
                 turn.items_view = TurnItemsView::Summary;
             }
             TurnItemsView::Full => {

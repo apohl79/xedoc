@@ -3,18 +3,6 @@
 use super::*;
 use crate::city_lights::CityLightsStylize;
 
-#[derive(Debug)]
-struct McpImageOutputCell;
-
-impl HistoryCell for McpImageOutputCell {
-    fn display_lines(&self, _width: u16) -> Vec<Line<'static>> {
-        vec!["tool result (image output)".into()]
-    }
-
-    fn raw_lines(&self) -> Vec<Line<'static>> {
-        vec![Line::from("tool result (image output)")]
-    }
-}
 fn mcp_auth_status_label(status: McpAuthStatus) -> &'static str {
     match status {
         McpAuthStatus::Unsupported => "Unsupported",
@@ -249,67 +237,44 @@ pub fn new_active_mcp_tool_call(
 ) -> McpToolCallCell {
     McpToolCallCell::new(call_id, invocation, animations_enabled)
 }
-/// Returns an additional history cell if an MCP tool result includes a decodable image.
-///
-/// This intentionally returns at most one cell: the first image in `CallToolResult.content` that
-/// successfully base64-decodes and parses as an image. This is used as a lightweight “image output
-/// exists” affordance separate from the main MCP tool call cell.
-///
-/// Manual testing tip:
-/// - Run the rmcp stdio test server (`xedoc-rs/rmcp-client/src/bin/test_stdio_server.rs`) and
-///   register it as an MCP server via `xedoc mcp add`.
-/// - Use its `image_scenario` tool with cases like `text_then_image`,
-///   `invalid_base64_then_image`, or `invalid_image_bytes_then_image` to ensure this path triggers
-///   even when the first block is not a valid image.
 fn try_new_completed_mcp_tool_call_with_image_output(
     result: &Result<xedoc_protocol::mcp::CallToolResult, String>,
-) -> Option<McpImageOutputCell> {
-    result
-        .as_ref()
-        .ok()?
-        .content
-        .iter()
-        .find_map(decode_mcp_image)?;
-
-    Some(McpImageOutputCell)
+) -> Option<ImageOutputCell> {
+    new_mcp_image_output(&result.as_ref().ok()?.content)
 }
 
-/// Decodes an MCP `ImageContent` block into an in-memory image.
-///
-/// Returns `None` when the block is not an image, when base64 decoding fails, when the format
-/// cannot be inferred, or when the image decoder rejects the bytes.
-fn decode_mcp_image(block: &serde_json::Value) -> Option<DynamicImage> {
-    let content = serde_json::from_value::<rmcp::model::Content>(block.clone()).ok()?;
-    let rmcp::model::RawContent::Image(image) = content.raw else {
-        return None;
-    };
-    let base64_data = if let Some(data_url) = image.data.strip_prefix("data:") {
-        data_url.split_once(',')?.1
-    } else {
-        image.data.as_str()
-    };
-    let raw_data = base64::engine::general_purpose::STANDARD
-        .decode(base64_data)
-        .map_err(|e| {
-            error!("Failed to decode image data: {e}");
-            e
-        })
-        .ok()?;
-    let reader = ImageReader::new(Cursor::new(raw_data))
-        .with_guessed_format()
-        .map_err(|e| {
-            error!("Failed to guess image format: {e}");
-            e
-        })
-        .ok()?;
+/// Retains bounded MCP image payloads for GUI previews without decoding them in the TUI.
+pub fn new_mcp_image_output(content: &[serde_json::Value]) -> Option<ImageOutputCell> {
+    const MAX_IMAGES: usize = 32;
+    const MAX_IMAGE_BYTES: usize = 12 * 1024 * 1024;
+    const MAX_TOTAL_BYTES: usize = 32 * 1024 * 1024;
 
-    reader
-        .decode()
-        .map_err(|e| {
-            error!("Image decoding failed: {e}");
-            e
-        })
-        .ok()
+    let mut images = Vec::new();
+    let mut total_bytes = 0;
+    for block in content {
+        if block.get("type").and_then(serde_json::Value::as_str) != Some("image") {
+            continue;
+        }
+        let Some(data) = block.get("data").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        if data.len() > MAX_IMAGE_BYTES || data.len() > MAX_TOTAL_BYTES - total_bytes {
+            images.push(String::new());
+        } else {
+            total_bytes += data.len();
+            images.push(data.to_owned());
+        }
+        if images.len() == MAX_IMAGES {
+            break;
+        }
+    }
+    if images.is_empty() {
+        return None;
+    }
+    Some(ImageOutputCell {
+        images,
+        fallback: PlainHistoryCell::new(vec!["tool result (image output)".into()]),
+    })
 }
 /// Render a summary of configured MCP servers from the current `Config`.
 pub fn empty_mcp_output() -> PlainHistoryCell {

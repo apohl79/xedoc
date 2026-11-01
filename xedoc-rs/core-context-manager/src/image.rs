@@ -1,3 +1,5 @@
+use base64::Engine;
+use std::io::Cursor;
 use tracing::warn;
 use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::FunctionCallOutputContentItem;
@@ -24,6 +26,67 @@ const ORIGINAL_DETAIL_LIMITS: PromptImageResizeLimits = PromptImageResizeLimits 
     max_dimension: 6000,
     max_patches: 10_000,
 };
+
+/// Validates sampled assistant images without rewriting signed provider content.
+pub fn validate_assistant_image_message(item: &ResponseItem) -> Result<(), String> {
+    let ResponseItem::Message { role, content, .. } = item else {
+        return Ok(());
+    };
+    if role != "assistant" {
+        return Ok(());
+    }
+    let images: Vec<_> = content
+        .iter()
+        .filter_map(|part| match part {
+            ContentItem::OutputImage { image_url, .. }
+            | ContentItem::InputImage { image_url, .. } => Some(image_url),
+            _ => None,
+        })
+        .take(33)
+        .collect();
+    if images.is_empty() {
+        return Ok(());
+    }
+    if images.len() > 32
+        || images.iter().any(|image| image.len() > 12 * 1024 * 1024)
+        || images.iter().map(|image| image.len()).sum::<usize>() > 32 * 1024 * 1024
+    {
+        return Err("Assistant image output exceeds the image size limit".to_string());
+    }
+    if crate::estimate_item_token_count(item) > 10_000 {
+        return Err(
+            "Assistant image output exceeds the 10,000-token context item limit".to_string(),
+        );
+    }
+    for source in images {
+        let (header, encoded) = source
+            .split_once(',')
+            .ok_or("Assistant image output must be an inline raster data URL")?;
+        let format = match header {
+            "data:image/png;base64" => image::ImageFormat::Png,
+            "data:image/jpeg;base64" => image::ImageFormat::Jpeg,
+            "data:image/gif;base64" => image::ImageFormat::Gif,
+            "data:image/webp;base64" => image::ImageFormat::WebP,
+            _ => return Err("Assistant image output must be an inline raster data URL".to_string()),
+        };
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .map_err(|_| "Assistant image output contains invalid base64")?;
+        if bytes.len() > 8 * 1024 * 1024 {
+            return Err("Assistant image output exceeds the image size limit".to_string());
+        }
+        let mut reader = image::ImageReader::with_format(Cursor::new(bytes), format);
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(8192);
+        limits.max_image_height = Some(8192);
+        limits.max_alloc = Some(64 * 1024 * 1024);
+        reader.limits(limits);
+        reader
+            .decode()
+            .map_err(|error| format!("Assistant image output is invalid or oversized: {error}"))?;
+    }
+    Ok(())
+}
 #[derive(Debug, thiserror::Error)]
 enum ImagePreparationError {
     #[error("remote image URLs are not supported")]

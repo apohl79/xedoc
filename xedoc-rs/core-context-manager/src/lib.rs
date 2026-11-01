@@ -20,3 +20,4 @@ pub use history::estimate_item_token_count;
 pub use history::is_user_turn_boundary;
 pub use history::truncate_function_output_payload;
 pub use image::prepare_image_response_items;
+pub use image::validate_assistant_image_message;

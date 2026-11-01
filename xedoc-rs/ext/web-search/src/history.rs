@@ -30,7 +30,14 @@ fn push_visible_message(messages: &mut Vec<ResponseItem>, item: &ResponseItem) {
     match item {
         ResponseItem::Message { role, .. } if role == ASSISTANT_ROLE => {
             let mut message = item.clone();
+            if let ResponseItem::Message { content, .. } = &mut message {
+                content.retain(|part| !matches!(part, ContentItem::OutputImage { .. }));
+                if content.is_empty() {
+                    return;
+                }
+            }
             message.set_id(/*new_id*/ None);
+            message.clear_provider_metadata();
             messages.push(message);
         }
         ResponseItem::AgentMessage {
@@ -45,6 +52,7 @@ fn push_visible_message(messages: &mut Vec<ResponseItem>, item: &ResponseItem) {
                     role: ASSISTANT_ROLE.to_string(),
                     content: vec![ContentItem::OutputText {
                         text: format!("Agent message from {author}:\n{text}"),
+                        provider_metadata: None,
                     }],
                     phase: None,
                     internal_chat_message_metadata_passthrough: metadata.clone(),

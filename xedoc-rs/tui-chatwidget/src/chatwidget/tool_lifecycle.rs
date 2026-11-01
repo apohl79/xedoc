@@ -44,7 +44,23 @@ impl ChatWidget {
         status: String,
         revised_prompt: Option<String>,
         saved_path: Option<AbsolutePathBuf>,
+        result: String,
     ) {
+        let fallback = history_cell::new_image_generation_call(
+            call_id.clone(),
+            &status,
+            revised_prompt,
+            saved_path.clone(),
+        );
+        let images = if status.eq_ignore_ascii_case("completed") {
+            vec![if result.len() <= 12 * 1024 * 1024 {
+                result
+            } else {
+                String::new()
+            }]
+        } else {
+            Vec::new()
+        };
         if self.optimized_tool_call_rendering() {
             self.record_tool_call_completion(
                 call_id,
@@ -58,15 +74,16 @@ impl ChatWidget {
                     history_cell::ToolCallSummaryOutcome::Failed
                 },
             );
+            if !images.is_empty() {
+                self.add_to_history(history_cell::ImageOutputCell {
+                    images,
+                    fallback: history_cell::PlainHistoryCell::new(Vec::new()),
+                });
+            }
             return;
         }
         self.flush_answer_stream_with_separator();
-        self.add_to_history(history_cell::new_image_generation_call(
-            call_id,
-            &status,
-            revised_prompt,
-            saved_path,
-        ));
+        self.add_to_history(history_cell::ImageOutputCell { images, fallback });
         self.request_redraw();
     }
 
@@ -96,7 +113,20 @@ impl ChatWidget {
 
     pub(super) fn on_mcp_tool_call_completed(&mut self, item: ThreadItem) {
         if self.optimized_tool_call_rendering() {
+            let images = if let ThreadItem::McpToolCall {
+                result: Some(result),
+                ..
+            } = &item
+            {
+                history_cell::new_mcp_image_output(&result.content)
+            } else {
+                None
+            };
             self.handle_tool_summary_completed_now(item);
+            if let Some(mut images) = images {
+                images.fallback = history_cell::PlainHistoryCell::new(Vec::new());
+                self.add_to_history(images);
+            }
             return;
         }
         self.defer_or_handle(

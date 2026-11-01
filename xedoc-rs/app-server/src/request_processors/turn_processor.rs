@@ -60,7 +60,8 @@ fn validate_response_item_image_urls(items: &[ResponseItem]) -> Result<(), JSONR
         ResponseItem::Message { content, .. } => content.iter().any(|item| {
             matches!(
                 item,
-                ContentItem::InputImage { image_url, .. } if is_remote_image_url(image_url)
+                ContentItem::InputImage { image_url, .. }
+                    | ContentItem::OutputImage { image_url, .. } if is_remote_image_url(image_url)
             )
         }),
         ResponseItem::FunctionCallOutput { output, .. }

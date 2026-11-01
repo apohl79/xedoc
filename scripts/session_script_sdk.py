@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 
 
 MAX_MESSAGE_BYTES = 1 << 20
+MAX_RECEIVED_MESSAGE_BYTES = 128 << 20
 MAX_BUFFERED_RESPONSES = 64
 
 
@@ -108,7 +109,7 @@ class WebSocketTransport:
         self._send(0x1, json.dumps(value, separators=(",", ":")).encode())
 
     def receive_json(self) -> dict[str, Any]:
-        fragments: list[bytes] = []
+        fragments = bytearray()
         opcode: Optional[int] = None
         while True:
             fin, frame_opcode, payload = self._receive()
@@ -123,11 +124,11 @@ class WebSocketTransport:
                 opcode = frame_opcode
             elif frame_opcode != 0x0 or opcode is None:
                 raise RpcError("invalid websocket message sequence")
-            fragments.append(payload)
-            if sum(map(len, fragments)) > MAX_MESSAGE_BYTES:
+            if len(fragments) + len(payload) > MAX_RECEIVED_MESSAGE_BYTES:
                 raise RpcError("websocket message exceeds the size limit")
+            fragments.extend(payload)
             if fin:
-                return _decode_json_object(b"".join(fragments))
+                return _decode_json_object(bytes(fragments))
 
     def _send(self, opcode: int, payload: bytes) -> None:
         if len(payload) > MAX_MESSAGE_BYTES:
@@ -150,7 +151,7 @@ class WebSocketTransport:
             payload_length = struct.unpack("!H", self._read_exact(2))[0]
         elif payload_length == 127:
             payload_length = struct.unpack("!Q", self._read_exact(8))[0]
-        if payload_length > MAX_MESSAGE_BYTES:
+        if payload_length > MAX_RECEIVED_MESSAGE_BYTES:
             raise RpcError("websocket message exceeds the size limit")
         mask = self._read_exact(4) if second & 0x80 else b""
         payload = self._read_exact(payload_length)
@@ -161,13 +162,17 @@ class WebSocketTransport:
         return bool(first & 0x80), first & 0x0F, payload
 
     def _read_exact(self, size: int) -> bytes:
-        while len(self.buffer) < size:
-            chunk = self.socket.recv(4096)
+        if len(self.buffer) >= size:
+            result, self.buffer = self.buffer[:size], self.buffer[size:]
+            return result
+        data = bytearray(self.buffer)
+        self.buffer = b""
+        while len(data) < size:
+            chunk = self.socket.recv(min(64 * 1024, size - len(data)))
             if not chunk:
                 raise RpcError("app-server closed the connection")
-            self.buffer += chunk
-        result, self.buffer = self.buffer[:size], self.buffer[size:]
-        return result
+            data.extend(chunk)
+        return bytes(data)
 
     def _read_until(self, marker: bytes) -> bytes:
         while marker not in self.buffer:
@@ -206,11 +211,14 @@ class HostChildTransport:
             if not chunk:
                 raise RpcError("app-server closed the child pipe")
             self._input.extend(chunk)
-            if b"\n" not in self._input and len(self._input) > MAX_MESSAGE_BYTES:
+            if (
+                b"\n" not in self._input
+                and len(self._input) > MAX_RECEIVED_MESSAGE_BYTES
+            ):
                 raise RpcError("JSON-RPC message exceeds the size limit")
         line, _, remaining = self._input.partition(b"\n")
         self._input = bytearray(remaining)
-        if len(line) > MAX_MESSAGE_BYTES:
+        if len(line) > MAX_RECEIVED_MESSAGE_BYTES:
             raise RpcError("JSON-RPC message exceeds the size limit")
         return _decode_json_object(line)
 

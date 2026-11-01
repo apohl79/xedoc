@@ -175,7 +175,9 @@ fn raw_assistant_output_text_from_item(item: &ResponseItem) -> Option<String> {
             content
                 .iter()
                 .filter_map(|item| match item {
-                    xedoc_protocol::models::ContentItem::OutputText { text } => Some(text.as_str()),
+                    xedoc_protocol::models::ContentItem::OutputText { text, .. } => {
+                        Some(text.as_str())
+                    }
                     _ => None,
                 })
                 .collect(),

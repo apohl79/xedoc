@@ -339,7 +339,7 @@ pub(crate) fn strip_images_when_unsupported(
                 let mut normalized_content = Vec::with_capacity(content.len());
                 for content_item in content.iter() {
                     match content_item {
-                        ContentItem::InputImage { .. } => {
+                        ContentItem::InputImage { .. } | ContentItem::OutputImage { .. } => {
                             normalized_content.push(ContentItem::InputText {
                                 text: IMAGE_CONTENT_OMITTED_PLACEHOLDER.to_string(),
                             });

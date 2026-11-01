@@ -707,6 +707,8 @@ fn image_data_url_estimate_adjustment(item: &ResponseItem) -> (i64, i64) {
             for content_item in content {
                 if let ContentItem::InputImage { image_url, detail } = content_item {
                     accumulate(image_url, *detail);
+                } else if let ContentItem::OutputImage { image_url, .. } = content_item {
+                    accumulate(image_url, /*detail*/ None);
                 }
             }
         }
@@ -836,12 +838,14 @@ pub fn content_items_to_text(content: &[ContentItem]) -> Option<String> {
     let mut pieces = Vec::new();
     for item in content {
         match item {
-            ContentItem::InputText { text } | ContentItem::OutputText { text } => {
+            ContentItem::InputText { text } | ContentItem::OutputText { text, .. } => {
                 if !text.is_empty() {
                     pieces.push(text.as_str());
                 }
             }
-            ContentItem::InputImage { .. } | ContentItem::InputAudio { .. } => {}
+            ContentItem::InputImage { .. }
+            | ContentItem::OutputImage { .. }
+            | ContentItem::InputAudio { .. } => {}
         }
     }
     (!pieces.is_empty()).then(|| pieces.join("\n"))

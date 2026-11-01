@@ -163,9 +163,12 @@ impl AnthropicStreamTranslator {
     fn finish_block(&mut self) -> Vec<ResponseEvent> {
         match self.active_block.take() {
             Some(ActiveBlock::Text { text }) => {
-                vec![ResponseEvent::OutputItemDone(
-                    self.message_item(vec![ContentItem::OutputText { text }]),
-                )]
+                vec![ResponseEvent::OutputItemDone(self.message_item(vec![
+                    ContentItem::OutputText {
+                        text,
+                        provider_metadata: None,
+                    },
+                ]))]
             }
             Some(ActiveBlock::Thinking {
                 id,

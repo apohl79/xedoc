@@ -49,7 +49,7 @@ pub fn truncate_assistant_output_text_to_token_budget(
         }
 
         content.retain_mut(|content_item| {
-            let ContentItem::OutputText { text } = content_item else {
+            let ContentItem::OutputText { text, .. } = content_item else {
                 return true;
             };
             if remaining_budget == 0 {

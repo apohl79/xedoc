@@ -1,6 +1,7 @@
 use crate::protocol::EventMsg;
 use crate::protocol::RolloutItem;
 use xedoc_extension_items::ExtensionItem;
+use xedoc_protocol::dynamic_tools::DynamicToolCallOutputContentItem;
 use xedoc_protocol::items::TurnItem;
 use xedoc_protocol::models::ResponseItem;
 use xedoc_protocol::protocol::ThreadHistoryMode;
@@ -69,6 +70,13 @@ pub fn should_persist_event_msg(ev: &EventMsg, history_mode: ThreadHistoryMode) 
                 || matches!(
                     event.item,
                     TurnItem::Plan(_) | TurnItem::Extension(ExtensionItem::Sleep(_))
+                )
+                || matches!(
+                    &event.item,
+                    TurnItem::DynamicToolCall(call)
+                        if call.content_items.as_ref().is_some_and(|content| content.iter().any(
+                            |part| matches!(part, DynamicToolCallOutputContentItem::InputImage { .. })
+                        ))
                 )
         }
         EventMsg::TokenCount(_)

@@ -68,8 +68,12 @@ impl<T: HttpTransport> GeminiClient<T> {
         &self,
         request: ResponsesApiRequest,
     ) -> Result<ResponseStream, ApiError> {
-        let translated = translate_request(&request, &self.thought_signatures)
-            .map_err(|error| ApiError::Stream(format!("failed to translate request: {error}")))?;
+        let translated =
+            translate_request(&request, &self.thought_signatures).map_err(|error| {
+                ApiError::InvalidRequest {
+                    message: format!("failed to translate request: {error}"),
+                }
+            })?;
         let endpoint = format!(
             "models/{}:streamGenerateContent",
             urlencoding::encode(&translated.model)
@@ -184,6 +188,12 @@ async fn process_gemini_stream(
             Ok(None) => {
                 let translated = match translator.complete() {
                     Ok(events) => events,
+                    Err(crate::GeminiStreamError::InvalidImageOutput(message)) => {
+                        let _ = tx_event
+                            .send(Err(ApiError::InvalidRequest { message }))
+                            .await;
+                        return;
+                    }
                     Err(error) => {
                         send_error(&tx_event, error.to_string()).await;
                         return;

@@ -31,7 +31,7 @@ pub(crate) use xedoc_app_server_transport::start_session_script_connection;
 pub(crate) use xedoc_app_server_transport::start_stdio_connection;
 pub(crate) use xedoc_app_server_transport::start_websocket_acceptor;
 
-const OUTBOUND_QUEUE_BYTE_CAPACITY: usize = 16 * 1024 * 1024;
+const OUTBOUND_QUEUE_BYTE_CAPACITY: usize = 128 * 1024 * 1024;
 
 pub(crate) struct ConnectionState {
     pub(crate) outbound_initialized: Arc<AtomicBool>,
