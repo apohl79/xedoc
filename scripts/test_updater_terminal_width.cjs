@@ -17,12 +17,17 @@ module.exports = async function verifyUpdaterTerminalWidth(page) {
       const available = terminal.clientWidth - parseFloat(style.paddingLeft)
         - parseFloat(style.paddingRight) - (viewport.offsetWidth - viewport.clientWidth);
       const gap = available - screen.getBoundingClientRect().width;
-      return Math.abs(dialog.getBoundingClientRect().width - (innerWidth - 24)) < 1
+      const bounds = dialog.getBoundingClientRect();
+      return Math.abs(bounds.width - innerWidth * .6) < 1
+        && Math.abs(bounds.left - (innerWidth - bounds.right)) < 1
+        && dialog.scrollWidth === dialog.clientWidth
         && gap >= -1 && gap < 10 && terminal.scrollWidth === terminal.clientWidth;
     });
     const geometry = await dialog.evaluate(node => {
       const terminal = node.querySelector("#update-terminal");
       return { viewport: innerWidth, dialogWidth: node.getBoundingClientRect().width,
+        left: node.getBoundingClientRect().left,
+        right: innerWidth - node.getBoundingClientRect().right,
         terminalWidth: terminal.clientWidth,
         screenWidth: terminal.querySelector(".xterm-screen").getBoundingClientRect().width,
         overflow: terminal.scrollWidth - terminal.clientWidth };
