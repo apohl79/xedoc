@@ -414,6 +414,21 @@
         item.type = "button";
         item.role = "menuitemradio";
         item.textContent = option.label || option.id;
+        if (kind === "routerTable") {
+          item.title = option.description || "";
+          if (option.disabled) {
+            item.disabled = true;
+            item.textContent += ` — ${option.description || "Unavailable"}`;
+          }
+        }
+        if (kind === "router" && option.id !== "off") {
+          const table = composerState.routerTableOptions?.find((table) =>
+            table.id === composerState.routerTable && table.disabled);
+          if (table) {
+            item.disabled = true;
+            item.title = table.description || "Choose a working routing table.";
+          }
+        }
         if (kind === "model" && option.availability === "unavailable") {
           item.disabled = true;
           item.textContent += " (unavailable on this backend)";

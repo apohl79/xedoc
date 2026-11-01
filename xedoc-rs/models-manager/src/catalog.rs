@@ -47,6 +47,8 @@ pub(crate) struct ProviderPreferences {
     #[serde(default)]
     pub(crate) roles: BTreeMap<String, String>,
     #[serde(default)]
+    aliases: BTreeMap<String, String>,
+    #[serde(default)]
     prices: BTreeMap<String, ModelTokenPrices>,
     #[serde(default)]
     capabilities: BTreeMap<String, ModelCapabilities>,
@@ -99,6 +101,17 @@ impl Catalog {
                     !matches!(role.as_str(), "fast" | "balanced" | "strong" | "flagship")
                         || !ids.contains(model)
                 })
+                || provider.aliases.len() > 32
+                || provider.aliases.iter().any(|(alias, model)| {
+                    alias.is_empty()
+                        || alias.len() > 128
+                        || !alias.bytes().all(|byte| {
+                            byte.is_ascii_alphanumeric()
+                                || matches!(byte, b'-' | b'_' | b'.' | b':')
+                        })
+                        || ids.contains(alias)
+                        || !ids.contains(model)
+                })
                 || provider.prices.keys().any(|model| !ids.contains(model))
                 || provider.capabilities.iter().any(|(model, capabilities)| {
                     !ids.contains(model)
@@ -148,6 +161,13 @@ impl Catalog {
             .iter()
             .filter(|(provider, _)| matches!(provider.as_str(), "openai" | "anthropic"))
             .map(|(provider, preferences)| (provider.clone(), preferences.roles.clone()))
+            .collect()
+    }
+
+    pub(crate) fn routing_aliases(&self) -> BTreeMap<String, BTreeMap<String, String>> {
+        self.providers
+            .iter()
+            .map(|(provider, preferences)| (provider.clone(), preferences.aliases.clone()))
             .collect()
     }
 

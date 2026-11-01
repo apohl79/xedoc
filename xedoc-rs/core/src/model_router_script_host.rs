@@ -1506,6 +1506,10 @@ fn validate_router_state(state: RouterState) -> Result<RouterState, ModelRouterS
         "strict" | "balanced" | "permissive"
     ) || !valid_router_state_text(&state.policy_revision, MAX_ROUTER_STATE_REVISION_BYTES)
         || !state
+            .unavailable_reason
+            .as_ref()
+            .is_none_or(|reason| valid_router_state_text(reason, MAX_SCRIPT_FEEDBACK_TEXT_BYTES))
+        || !state
             .classifier_route
             .as_ref()
             .is_none_or(valid_router_state_route)

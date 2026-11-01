@@ -230,7 +230,7 @@ impl XedocThread {
         self.session.set_model_router_session_mode(mode).await;
     }
 
-    /// Returns this live session's router mode override, if one is active.
+    /// Reconciles confirmed table unavailability and returns this session's mode override.
     pub async fn model_router_session_mode(&self) -> Option<String> {
         self.session.model_router_session_mode().await
     }

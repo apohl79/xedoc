@@ -7,10 +7,10 @@ use std::sync::Arc;
 use xedoc_core_config::config::Config;
 use xedoc_login::AuthManager;
 use xedoc_model_provider::configured_provider_has_credentials;
-use xedoc_models_manager::manager::RefreshStrategy;
 use xedoc_models_manager::manager::SharedModelsManager;
 use xedoc_protocol::auth::AuthMode;
 use xedoc_protocol::config_types::SERVICE_TIER_DEFAULT_REQUEST_VALUE;
+use xedoc_protocol::openai_models::ModelAvailability;
 use xedoc_protocol::openai_models::ReasoningEffort;
 use xedoc_script_protocol::EligibleRoute as ScriptEligibleRoute;
 use xedoc_script_protocol::ModelId as ScriptModelId;
@@ -18,7 +18,7 @@ use xedoc_script_protocol::ProviderId as ScriptProviderId;
 use xedoc_script_protocol::ReasoningEffort as ScriptReasoningEffort;
 use xedoc_script_protocol::Route as ScriptRoute;
 
-/// Distinguishes authenticated backends from catalogs that remain browsable while signed out.
+/// Exposes authenticated backends and providers that require no authentication.
 pub(crate) fn available_script_providers(
     config: &Config,
     auth_manager: &Arc<AuthManager>,
@@ -27,7 +27,11 @@ pub(crate) fn available_script_providers(
         .model_providers
         .iter()
         .filter(|(provider_id, provider)| {
-            (provider.requires_openai_auth
+            (!provider.requires_openai_auth
+                && provider.env_key.is_none()
+                && provider.auth.is_none()
+                && provider.aws.is_none())
+                || (provider.requires_openai_auth
                 && auth_manager
                     .auth_mode()
                     .is_some_and(|mode| mode == AuthMode::ApiKey || mode.uses_xedoc_backend()))
@@ -95,13 +99,11 @@ pub(crate) async fn eligible_script_routes(
     models_manager: &SharedModelsManager,
 ) -> Vec<ScriptEligibleRoute> {
     let models = models_manager
-        .list_models(RefreshStrategy::Offline, config.http_client_factory())
+        .list_routing_models(config.http_client_factory())
         .await;
     let mut routes = BTreeMap::<(String, String), BTreeSet<String>>::new();
     for model in models {
-        if !model.show_in_picker
-            || model.availability != xedoc_protocol::openai_models::ModelAvailability::Available
-        {
+        if !model.show_in_picker || model.availability == ModelAvailability::Unavailable {
             continue;
         }
         let provider_id = if !model.provider_id.is_empty() {
@@ -146,6 +148,37 @@ pub(crate) async fn eligible_script_routes(
             },
         )
         .collect()
+}
+
+/// Projects discovery evidence; the reserved `*` key classifies unlisted model IDs.
+pub(crate) async fn script_model_availability(
+    config: &Config,
+    models_manager: &SharedModelsManager,
+) -> BTreeMap<String, BTreeMap<String, ModelAvailability>> {
+    let mut availability = BTreeMap::<String, BTreeMap<String, ModelAvailability>>::new();
+    for model in models_manager
+        .list_routing_models(config.http_client_factory())
+        .await
+        .into_iter()
+        .take(256)
+    {
+        let provider_id = if model.provider_id.is_empty() {
+            config.model_provider_id.clone()
+        } else {
+            model.provider_id
+        };
+        availability
+            .entry(provider_id)
+            .or_default()
+            .insert(model.model, model.availability);
+    }
+    for provider_id in config.model_providers.keys().take(64) {
+        availability.entry(provider_id.clone()).or_default().insert(
+            "*".to_string(),
+            models_manager.unlisted_model_availability_for_provider(provider_id),
+        );
+    }
+    availability
 }
 
 /// Represents the selected route in the script protocol.

@@ -1630,12 +1630,15 @@ def supports_session_mode(context):
 
 
 def effective_mode(policy, context):
-    return session_mode(context) or policy["mode"]
+    return "off" if unavailable_table_reason(policy, context) else session_mode(context) or policy["mode"]
 
 
 def root_menu(policy, context=None, conflict=None, session_update=None):
     context = context or {}
     subtitle = "Update routing settings and the policy."
+    unavailable = unavailable_table_reason(policy, context)
+    if unavailable:
+        subtitle = f"Routing disabled for this session: {unavailable} Choose a working table, then enable routing."
     if conflict:
         subtitle = f"Settings conflict: {conflict} {subtitle}"
     items = [
@@ -1731,6 +1734,7 @@ def item(
     host_action=None,
     bindings=None,
     current=None,
+    disabled=False,
 ):
     return {
         "id": identifier,
@@ -1742,6 +1746,7 @@ def item(
         ),
         **({"description": description} if description else {}),
         **({"current": True} if current else {}),
+        **({"disabled": True} if disabled else {}),
     }
 
 
@@ -2098,7 +2103,7 @@ def policy_route_options(policy, context):
     available = {route_key(route) for route in routes}
     for table in policy["ranking"]["tables"].values():
         for entry in table["ladder"]:
-            route = entry_route(entry)
+            route = canonical_route(entry_route(entry), context)
             if route not in routes:
                 routes.append(route)
     reporting_baseline = policy.get("reportingBaseline")
@@ -2210,29 +2215,85 @@ def policy_menu(policy, context):
     )
 
 
+def canonical_route(route, context):
+    aliases = (context.get("modelAliases") or {}).get(route["providerId"], {})
+    return {**route, "model": aliases.get(route["model"], route["model"])}
+
+
+def table_status(policy, context, name):
+    pending = False
+    pending_reason = None
+    for entry in ladder(policy, name):
+        route = canonical_route(entry_route(entry), context)
+        provider, model = route["providerId"], route["model"]
+        availability = (context.get("modelAvailability") or {}).get(provider, {}).get(model)
+        # A backend may resolve its own credentials without the host's API-key hint.
+        if (
+            isinstance(context.get("availableProviders"), list)
+            and provider not in context["availableProviders"]
+            and availability != "available"
+        ):
+            return "unavailable", f"{name}: backend {provider} is not connected."
+        if availability is None and not any(
+            offered.get("providerId") == provider and offered.get("model") == model
+            for offered in eligible(context)
+        ):
+            availability = (context.get("modelAvailability") or {}).get(provider, {}).get("*")
+        if availability == "unavailable":
+            return "unavailable", f"{name}: {provider}/{model} is unavailable on this backend/account."
+        if valid_route(route, eligible(context)) is None:
+            if availability == "available":
+                return "unavailable", f"{name}: {route_label(route)} is not supported by the current configuration."
+            pending_reason = f"{name}: availability of {provider}/{model} is not yet known."
+            continue
+        pending |= availability != "available"
+    if pending_reason:
+        return "pending", pending_reason
+    return ("unknown", "Availability is not yet confirmed.") if pending else ("available", None)
+
+
+def configured_tables(policy):
+    ranking = policy["ranking"]
+    keys = {
+        "shared": ("shared",),
+        "scope": ("root", "subagent"),
+        "budget": ("primary", "secondary", "root", "subagent"),
+    }[ranking["tableMode"]]
+    return [ranking["tableSelection"][key] for key in keys]
+
+
+def unavailable_table_reason(policy, context):
+    for name in configured_tables(policy):
+        status, reason = table_status(policy, context, name)
+        if status == "unavailable":
+            return reason
+    return None
+
+
 def available_tables(policy, context):
-    providers = {route.get("providerId") for route in eligible(context)}
-    if isinstance(context.get("availableProviders"), list):
-        providers.intersection_update(context["availableProviders"])
     return {
-        name: table
-        for name, table in policy["ranking"]["tables"].items()
-        if name not in BUILTIN_TABLES or table["ladder"][0]["providerId"] in providers
+        name: table for name, table in policy["ranking"]["tables"].items()
+        if table_status(policy, context, name)[0] in ("available", "unknown")
     }
 
 
 def table_picker_menu(policy, context):
     ranking = policy["ranking"]
+    current = next(
+        (name for name in configured_tables(policy)
+         if table_status(policy, context, name)[0] == "unavailable"),
+        selected_table(policy, context)[0],
+    )
     return menu(
         policy,
         "Routing table",
         [
             item(
-                name, name, f"Curve: {table['curve']}", f"select-table-{name}",
-                current=ranking["tableMode"] == "shared"
-                and ranking["tableSelection"]["shared"] == name,
+                name, name, table_status(policy, context, name)[1] or f"Curve: {table['curve']}", f"select-table-{name}",
+                current=current == name,
+                disabled=name not in available_tables(policy, context),
             )
-            for name, table in sorted(available_tables(policy, context).items())
+            for name, table in sorted(ranking["tables"].items())
         ] + [item("back", "Back", None, "back")],
         "Choose a table for all decisions.",
         continuation="settings:table-picker",
@@ -2246,9 +2307,8 @@ def routing_tables_menu(policy, context):
     selection = ranking["tableSelection"]
     available = available_tables(policy, context)
     table_options = [
-        {"id": name, "label": name, **({"disabled": True} if name not in available else {})}
+        {"id": name, "label": name if name in available else f"{name} — {table_status(policy, context, name)[1]}", **({"disabled": True} if name not in available else {})}
         for name in sorted(ranking["tables"])
-        if name in available or name in selection.values()
     ]
     fields = [
         policy_select_field(
@@ -2383,7 +2443,7 @@ def table_manager_menu(policy, context):
             "open-create-table",
         )
     ]
-    for name, table in sorted(available_tables(policy, context).items()):
+    for name, table in sorted(policy["ranking"]["tables"].items()):
         items.append(
             item(
                 f"table-{name}",
@@ -2444,7 +2504,7 @@ def named_table_form(policy, context, name):
             policy_select_field(
                 f"ladder-{entry['rank']}",
                 f"Rank {entry['rank']} · {entry['class']}",
-                policy_route_id(entry_route(entry), routes),
+                policy_route_id(canonical_route(entry_route(entry), context), routes),
                 route_options,
                 search_placeholder="Filter model routes",
             )
@@ -2467,7 +2527,7 @@ def settings_open(request, policy):
     return root_menu(policy, request.get("context") or {})
 
 
-def routing_state(policy):
+def routing_state(policy, context):
     return {
         "kind": "state",
         "state": {
@@ -2478,6 +2538,7 @@ def routing_state(policy):
             "classifierRoute": policy["classifierRoute"],
             "reportingBaseline": policy["reportingBaseline"],
             "policyRevision": str(policy["revision"]),
+            "unavailableReason": unavailable_table_reason(policy, context),
         },
     }
 
@@ -2515,9 +2576,7 @@ def settings_surface(policy, context, continuation):
     if continuation == "settings:policy:create-table" or continuation.startswith(
         "settings:policy:create-table:"
     ):
-        available = available_tables(policy, context)
-        if not available:
-            return error_notice(policy, "Connect a backend before copying a routing table.")
+        available = policy["ranking"]["tables"]
         source = continuation.removeprefix("settings:policy:create-table:")
         if source not in available:
             source = policy["ranking"]["tableSelection"]["shared"]
@@ -2827,12 +2886,16 @@ def settings_response(request, policy):
         mode = values.get("mode")
         if mode not in MODES:
             return error_notice(policy, "Mode must be one of the offered choices.")
+        if mode != "off" and (reason := unavailable_table_reason(policy, context)):
+            return error_notice(policy, f"Cannot enable routing: {reason}")
         update(policy, mode=mode)
         return root_menu(policy, context)
     if action_id == "set-session-mode":
         mode = values.get("mode")
         if mode != "default" and mode not in MODES:
             return error_notice(policy, "Session mode must be one of the offered choices.")
+        if mode != "off" and (reason := unavailable_table_reason(policy, context)):
+            return error_notice(policy, f"Cannot enable routing: {reason}")
         updated_context = {
             **context,
             "session": {
@@ -2967,7 +3030,7 @@ def settings_response(request, policy):
         return settings_surface(policy, context, "settings:policy:create-table")
     if action_id.startswith("copy-table-"):
         name = action_id.removeprefix("copy-table-")
-        if name in available_tables(policy, context):
+        if name in policy["ranking"]["tables"]:
             return settings_surface(policy, context, f"settings:policy:create-table:{name}")
     if action_id.startswith("open-table-"):
         name = action_id.removeprefix("open-table-")
@@ -2982,7 +3045,7 @@ def settings_response(request, policy):
             or re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,31}", name) is None
             or name in ranking["tables"]
             or len(ranking["tables"].keys() - BUILTIN_TABLES.keys()) >= 12
-            or source not in available_tables(policy, context)
+            or source not in ranking["tables"]
         ):
             return error_notice(policy, "Choose a unique table name and an existing source table.")
         copied_table = copy.deepcopy(ranking["tables"][source])
@@ -3987,7 +4050,7 @@ def choose_route(policy, context, axes, *, advance_budget_latch=False):
     table, table_label = selected_table(
         policy, context, advance_budget_latch=advance_budget_latch
     )
-    if table in BUILTIN_TABLES and table not in available_tables(policy, context):
+    if table not in available_tables(policy, context):
         available = set()
     eligible_entries = [
         entry
@@ -3996,7 +4059,7 @@ def choose_route(policy, context, axes, *, advance_budget_latch=False):
             CLASS_ORDER[minimum_class]
             <= CLASS_ORDER[entry["class"]]
             <= CLASS_ORDER[maximum_class]
-            and route_key(entry_route(entry)) in available
+            and route_key(canonical_route(entry_route(entry), context)) in available
         )
     ]
     if not eligible_entries:
@@ -4034,7 +4097,7 @@ def choose_route(policy, context, axes, *, advance_budget_latch=False):
         key=lambda candidate: abs(candidate["rank"] - target_rank),
     )
     return {
-        "route": entry_route(entry),
+        "route": canonical_route(entry_route(entry), context),
         "score": score,
         "minimumClass": minimum_class,
         "maximumClass": maximum_class,
@@ -5522,11 +5585,14 @@ def routing_decide(
     has_prior_messages = isinstance(recent_messages, list) and bool(recent_messages)
     scope = turn.get("scope", "root")
     mode = effective_mode(policy, context)
+    unavailable = unavailable_table_reason(policy, context)
+    table, _ = selected_table(policy, context)
+    table_ready = table in available_tables(policy, context)
     enabled = mode == "full" or (mode == "subagents" and scope == "subagent")
     shadow = mode == "shadow-full" or (
         mode == "shadow-subagents" and scope == "subagent"
     )
-    if not (enabled or shadow):
+    if not (enabled or shadow) or not table_ready:
         session_router_mode = session_mode(context)
         return {
             "kind": "route",
@@ -5535,7 +5601,7 @@ def routing_decide(
                 "disposition": "keepCurrent",
                 "route": None,
                 "resetToBaseline": True,
-                "summary": None,
+                "summary": unavailable or (table_status(policy, context, table)[1] if not table_ready else None),
                 "feedback": {
                     "enabled": False,
                     "classification": (
@@ -6108,13 +6174,8 @@ def approval_response(request, policy):
         )
     selected = (params.get("action") or {}).get("id")
     rendered_table, _ = selected_table(policy, rendered_context)
-    if rendered_table in BUILTIN_TABLES and rendered_table not in available_tables(policy, current_context):
-        return decision(
-            policy, request["requestId"], axes, confidence, margin,
-            {**selection, "route": None}, "keepCurrent",
-            "The selected routing backend is unavailable; current route retained.",
-            used_route=current_context.get("currentRoute"),
-        )
+    if rendered_table not in available_tables(policy, current_context):
+        return routing_decide({**request, "context": current_context}, policy)
     automated = params.get("automated") is True
     if selected == "keep-current" or params.get("outcome") != "accepted":
         if raw_confidence is not None and not steering and not automated:
@@ -6500,7 +6561,7 @@ def main():
         elif method == "routing.decide":
             result = routing_decide(request, policy)
         elif method == "routing.state":
-            result = routing_state(policy)
+            result = routing_state(policy, request.get("context") or {})
         elif method == "routing.classifier.respond":
             result = routing_classifier_response(request, policy)
         elif method == "report.render":

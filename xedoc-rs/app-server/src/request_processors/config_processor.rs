@@ -395,9 +395,11 @@ impl ConfigRequestProcessor {
             thread
                 .set_model_router_session_mode(Some(mode.to_string()))
                 .await;
-            return Ok(ModelRouterModeCycleResponse {
-                mode: mode.to_string(),
-            });
+            let mode = thread
+                .model_router_session_mode()
+                .await
+                .unwrap_or_else(|| mode.to_string());
+            return Ok(ModelRouterModeCycleResponse { mode });
         }
         let current_mode =
             xedoc_core::model_router_settings::effective_mode(&config, session_mode.as_deref())
@@ -421,9 +423,11 @@ impl ConfigRequestProcessor {
         thread
             .set_model_router_session_mode(Some(mode.to_string()))
             .await;
-        Ok(ModelRouterModeCycleResponse {
-            mode: mode.to_string(),
-        })
+        let mode = thread
+            .model_router_session_mode()
+            .await
+            .unwrap_or_else(|| mode.to_string());
+        Ok(ModelRouterModeCycleResponse { mode })
     }
 
     pub(crate) async fn model_router_settings_respond(

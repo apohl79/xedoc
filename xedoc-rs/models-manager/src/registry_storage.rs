@@ -32,6 +32,7 @@ struct RegistryFile {
 pub(super) struct RegistryState {
     pub(super) resolved: ModelRegistry,
     pub(super) routing_roles: BTreeMap<String, BTreeMap<String, String>>,
+    pub(super) routing_aliases: BTreeMap<String, BTreeMap<String, String>>,
     baseline: ModelRegistry,
     catalog_revision: String,
     file: RegistryFile,
@@ -74,6 +75,7 @@ impl RegistryState {
                 let baseline = managed.registry;
                 let state = Self {
                     routing_roles: managed.routing_roles,
+                    routing_aliases: managed.routing_aliases,
                     resolved: baseline.clone(),
                     baseline,
                     file: RegistryFile {
@@ -174,6 +176,7 @@ impl RegistryState {
         }
         let mut state = Self {
             routing_roles: managed.routing_roles,
+            routing_aliases: managed.routing_aliases,
             resolved: migration_source.unwrap_or_else(|| baseline.clone()),
             baseline,
             catalog_revision,

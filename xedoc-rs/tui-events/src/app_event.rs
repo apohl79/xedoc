@@ -379,6 +379,9 @@ pub enum AppEvent {
     /// Refresh the live model picker catalog after provider credentials change.
     RefreshModelCatalog,
 
+    /// Reconcile the displayed session's router mode and table availability.
+    RefreshModelRouter,
+
     /// Navigate within the model-manager popup.
     ModelManagerUi(ModelManagerUiAction),
 

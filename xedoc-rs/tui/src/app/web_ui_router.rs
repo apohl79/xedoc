@@ -36,6 +36,7 @@ impl App {
                     session.routing_tables = tables;
                     session.last_publish = None;
                 }
+                self.refresh_model_router_mode(app_server, Some(thread_id));
             }
             Err(error) => self
                 .chat_widget
@@ -54,6 +55,8 @@ pub(crate) struct RoutingTables {
 pub(crate) struct TableOption {
     id: String,
     label: String,
+    disabled: bool,
+    description: Option<String>,
 }
 
 async fn routing_tables(
@@ -108,7 +111,7 @@ async fn routing_tables(
     let mut tables = RoutingTables::default();
     for item in items
         .into_iter()
-        .filter(|item| item.disabled != Some(true) && item.action.id.starts_with("select-table-"))
+        .filter(|item| item.action.id.starts_with("select-table-"))
     {
         if item.current == Some(true) {
             tables.current = Some(item.id.clone());
@@ -116,6 +119,8 @@ async fn routing_tables(
         tables.options.push(TableOption {
             id: item.id,
             label: item.label,
+            disabled: item.disabled == Some(true),
+            description: item.description,
         });
     }
     Ok(tables)

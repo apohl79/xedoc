@@ -26,6 +26,7 @@ pub(crate) struct ManagedDefaults {
     pub(crate) revision: String,
     pub(crate) registry: ModelRegistry,
     pub(crate) routing_roles: BTreeMap<String, BTreeMap<String, String>>,
+    pub(crate) routing_aliases: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 pub(crate) fn managed_registry(home: &Path) -> io::Result<ManagedDefaults> {
@@ -38,6 +39,7 @@ pub(crate) fn managed_registry(home: &Path) -> io::Result<ManagedDefaults> {
     Ok(ManagedDefaults {
         revision: catalog.revision.to_string(),
         routing_roles: catalog.routing_roles(),
+        routing_aliases: catalog.routing_aliases(),
         registry: catalog.apply(legacy_defaults()?)?,
     })
 }

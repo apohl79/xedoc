@@ -130,6 +130,15 @@ impl fmt::Debug for RegistryModelsManager {
 }
 
 impl ModelsManager for RegistryModelsManager {
+    fn unlisted_model_availability_for_provider(&self, provider_id: &str) -> ModelAvailability {
+        self.inner
+            .unlisted_model_availability_for_provider(provider_id)
+    }
+
+    fn routing_model_aliases(&self) -> BTreeMap<String, BTreeMap<String, String>> {
+        self.registry.routing_model_aliases()
+    }
+
     fn routing_model_roles(&self) -> BTreeMap<String, BTreeMap<String, String>> {
         self.registry.routing_model_roles()
     }

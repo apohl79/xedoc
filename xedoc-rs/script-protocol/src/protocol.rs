@@ -471,6 +471,9 @@ pub struct RouterState {
     pub reporting_baseline: Option<Route>,
     /// Script-owned policy revision.
     pub policy_revision: String,
+    /// Why an active table cannot run on this backend/account, if confirmed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<String>,
 }
 
 /// One model route eligible for a script to select.

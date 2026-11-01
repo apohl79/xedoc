@@ -81,6 +81,14 @@ impl PartialEq for SharedModelRegistry {
 }
 
 impl SharedModelRegistry {
+    pub(crate) fn routing_model_aliases(&self) -> BTreeMap<String, BTreeMap<String, String>> {
+        self.registry
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .routing_aliases
+            .clone()
+    }
+
     pub(crate) fn routing_model_roles(&self) -> BTreeMap<String, BTreeMap<String, String>> {
         self.registry
             .read()

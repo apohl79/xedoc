@@ -104,6 +104,11 @@ type SharedModelsEndpointClient = Arc<dyn ModelsEndpointClient>;
 
 /// Coordinates model discovery plus cached metadata on disk.
 pub trait ModelsManager: fmt::Debug + Send + Sync {
+    /// Provider-scoped aliases from the managed catalog, independent of user pins.
+    fn routing_model_aliases(&self) -> BTreeMap<String, BTreeMap<String, String>> {
+        BTreeMap::new()
+    }
+
     /// Bounded managed role mappings for scripted routing, independent of user pins.
     fn routing_model_roles(&self) -> BTreeMap<String, BTreeMap<String, String>> {
         BTreeMap::new()
@@ -131,6 +136,14 @@ pub trait ModelsManager: fmt::Debug + Send + Sync {
         )
     }
 
+    /// Lists routing candidates without merging identical IDs from different providers.
+    fn list_routing_models(
+        &self,
+        http_client_factory: HttpClientFactory,
+    ) -> ModelsManagerFuture<'_, Vec<ModelPreset>> {
+        self.list_models(RefreshStrategy::Offline, http_client_factory)
+    }
+
     /// Return the active raw model catalog, refreshing according to the specified strategy.
     fn raw_model_catalog(
         &self,
@@ -155,6 +168,11 @@ pub trait ModelsManager: fmt::Debug + Send + Sync {
 
     /// Returns discovery evidence without treating bundled preferences as backend access.
     fn model_availability(&self, _model: &str) -> ModelAvailability {
+        ModelAvailability::Unknown
+    }
+
+    /// Classifies models absent from this provider's current, credential-scoped discovery.
+    fn unlisted_model_availability_for_provider(&self, _provider_id: &str) -> ModelAvailability {
         ModelAvailability::Unknown
     }
 
@@ -331,6 +349,39 @@ impl MultiProviderModelsManager {
 }
 
 impl ModelsManager for MultiProviderModelsManager {
+    fn unlisted_model_availability_for_provider(&self, provider_id: &str) -> ModelAvailability {
+        self.managers
+            .iter()
+            .find(|(id, _)| id.as_str() == provider_id)
+            .map_or(ModelAvailability::Unknown, |(_, manager)| {
+                manager.unlisted_model_availability_for_provider(provider_id)
+            })
+    }
+
+    fn routing_model_aliases(&self) -> BTreeMap<String, BTreeMap<String, String>> {
+        self.active_manager().routing_model_aliases()
+    }
+
+    fn list_routing_models(
+        &self,
+        http_client_factory: HttpClientFactory,
+    ) -> ModelsManagerFuture<'_, Vec<ModelPreset>> {
+        let managers = self.prioritized_managers();
+        Box::pin(async move {
+            let mut models = Vec::new();
+            for (provider_id, manager) in managers {
+                for mut model in manager
+                    .list_routing_models(http_client_factory.clone())
+                    .await
+                {
+                    model.provider_id.clone_from(&provider_id);
+                    models.push(model);
+                }
+            }
+            models
+        })
+    }
+
     fn routing_model_roles(&self) -> BTreeMap<String, BTreeMap<String, String>> {
         self.active_manager().routing_model_roles()
     }
@@ -607,6 +658,16 @@ impl StaticModelsManager {
 }
 
 impl ModelsManager for OpenAiModelsManager {
+    fn unlisted_model_availability_for_provider(&self, _provider_id: &str) -> ModelAvailability {
+        if !self.catalog_known.load(Ordering::Acquire) {
+            return ModelAvailability::Unknown;
+        }
+        match self.remote_models.try_read() {
+            Ok(_models) => self.endpoint_client.unlisted_model_availability(),
+            Err(_) => ModelAvailability::Unknown,
+        }
+    }
+
     fn model_availability(&self, model: &str) -> ModelAvailability {
         if !self.catalog_known.load(Ordering::Acquire) {
             return ModelAvailability::Unknown;
@@ -855,6 +916,10 @@ impl OpenAiModelsManager {
 }
 
 impl ModelsManager for StaticModelsManager {
+    fn unlisted_model_availability_for_provider(&self, _provider_id: &str) -> ModelAvailability {
+        ModelAvailability::Unavailable
+    }
+
     fn model_availability(&self, model: &str) -> ModelAvailability {
         if self
             .remote_models

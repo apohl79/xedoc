@@ -559,7 +559,21 @@ impl App {
                     .chat_widget
                     .add_error_message(format!("Failed to load model manager: {error}")),
             },
-            AppEvent::RefreshModelCatalog => self.refresh_model_catalog(app_server).await,
+            AppEvent::RefreshModelCatalog => {
+                self.refresh_model_catalog(app_server).await;
+                self.app_event_tx.send(AppEvent::RefreshModelRouter);
+            }
+            AppEvent::RefreshModelRouter => {
+                let thread_id = self.current_displayed_thread_id();
+                if let Some(thread_id) = thread_id
+                    && tui.web_ui.is_some()
+                {
+                    self.update_web_ui_routing_tables(tui, app_server, thread_id, None)
+                        .await;
+                } else {
+                    self.refresh_model_router_mode(app_server, thread_id);
+                }
+            }
             AppEvent::ModelManagerUi(action) => {
                 self.chat_widget.handle_model_manager_ui(action);
             }

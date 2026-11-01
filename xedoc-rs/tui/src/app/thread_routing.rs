@@ -1717,6 +1717,13 @@ impl App {
     }
 
     pub(super) fn handle_thread_event_now(&mut self, event: ThreadBufferedEvent) {
+        if matches!(
+            &event,
+            ThreadBufferedEvent::Notification(ServerNotification::TurnStarted(_))
+                | ThreadBufferedEvent::Notification(ServerNotification::TurnCompleted(_))
+        ) {
+            self.app_event_tx.send(AppEvent::RefreshModelRouter);
+        }
         let needs_refresh = matches!(
             &event,
             ThreadBufferedEvent::Notification(ServerNotification::TurnStarted(_))

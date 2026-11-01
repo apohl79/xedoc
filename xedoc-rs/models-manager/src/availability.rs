@@ -45,6 +45,19 @@ impl fmt::Debug for AvailabilityGatedModelsManager {
 }
 
 impl ModelsManager for AvailabilityGatedModelsManager {
+    fn unlisted_model_availability_for_provider(&self, provider_id: &str) -> ModelAvailability {
+        if (self.is_available)() {
+            self.inner
+                .unlisted_model_availability_for_provider(provider_id)
+        } else {
+            ModelAvailability::Unavailable
+        }
+    }
+
+    fn routing_model_aliases(&self) -> BTreeMap<String, BTreeMap<String, String>> {
+        self.inner.routing_model_aliases()
+    }
+
     fn routing_model_roles(&self) -> BTreeMap<String, BTreeMap<String, String>> {
         self.inner.routing_model_roles()
     }

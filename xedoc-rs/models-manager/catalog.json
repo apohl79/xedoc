@@ -1,11 +1,15 @@
 {
   "schemaVersion": 1,
-  "revision": 2026103101,
+  "revision": 2026110101,
   "providers": {
     "openai": {
       "defaultModel": "gpt-6.1-sol",
       "fastModel": "gpt-6-luna",
       "models": ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna", "gpt-6.1-terra"],
+      "aliases": {
+        "gpt-6-sol": "gpt-6.1-sol",
+        "gpt-5.6-terra": "gpt-6.1-terra"
+      },
       "roles": {
         "fast": "gpt-6-luna",
         "balanced": "gpt-6.1-terra",
