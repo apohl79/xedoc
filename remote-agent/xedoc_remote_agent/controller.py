@@ -198,7 +198,11 @@ class _ControllerConnection:
     def _list_sessions(
         self, *, cursor: str | None = None, limit: int | None = None
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {"sortKey": "updated_at"}
+        params: dict[str, Any] = {
+            "sortKey": "updated_at",
+            "modelProviders": [],
+            "useStateDbOnly": True,
+        }
         if cursor is not None:
             params["cursor"] = cursor
         if limit is not None:

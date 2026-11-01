@@ -295,7 +295,9 @@ class LocalIpcServer:
                     response = self._dispatch(request, request_id)
                 except TimeoutError:
                     response = _error_response(
-                        self.host_id, request_id, BrokerError.unavailable()
+                        self.host_id,
+                        request_id,
+                        BrokerError.unavailable("broker request timed out"),
                     )
                 except BrokerError as error:
                     response = _error_response(self.host_id, request_id, error)
@@ -691,6 +693,8 @@ class LocalIpcClient:
                 response = _receive_json(connection, self.max_response_bytes)
         except BrokerError:
             raise
+        except TimeoutError as error:
+            raise BrokerError.unavailable("broker request timed out") from error
         except (AttributeError, NotImplementedError, OSError) as error:
             raise BrokerError.unavailable() from error
         return _parse_response(response, request_id)

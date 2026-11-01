@@ -27,6 +27,7 @@ _MAX_IDENTIFIER_LENGTH = 128
 _MAX_WAIT_SECONDS = 3_600
 _WAIT_TIMEOUT_BUFFER_SECONDS = 5.0
 _SESSION_START_TIMEOUT_SECONDS = 30.0
+_SESSION_CATALOG_TIMEOUT_SECONDS = 35.0
 _REMOTE_SESSION_WATCH_POLL_SECONDS = 1.0
 _REMOTE_SESSION_UPDATE_BYTES = 4_096
 _MAX_FORWARDED_ITEMS = 4_096
@@ -736,6 +737,8 @@ def _optional_hostname(value: Any) -> str | None:
 def _broker_timeout(tool: str, arguments: Mapping[str, Any]) -> float | None:
     if tool == "session_start":
         return _SESSION_START_TIMEOUT_SECONDS
+    if tool in {"sessions_list", "sessions_search"}:
+        return _SESSION_CATALOG_TIMEOUT_SECONDS
     if tool not in {"hosts_discover", "session_wait"}:
         return None
     timeout = arguments.get("timeoutSeconds")

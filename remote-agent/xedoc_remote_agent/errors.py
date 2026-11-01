@@ -121,14 +121,16 @@ def map_controller_error(error: BaseException) -> BrokerError:
         marker in text for marker in ("limit", "too large", "quota", "rate")
     ):
         return BrokerError.limit_exceeded()
+    if isinstance(error, TimeoutError) or any(
+        marker in text for marker in ("timed out", "timeout")
+    ):
+        return BrokerError.unavailable("controller request timed out")
     if any(
         marker in text
         for marker in (
             "closed",
             "disconnect",
             "unavailable",
-            "timed out",
-            "timeout",
             "connection",
             "network",
         )
