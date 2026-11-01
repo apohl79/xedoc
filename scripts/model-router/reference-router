@@ -3672,6 +3672,8 @@ def classify(
     llm_classification=None,
     embedder_state=None,
 ):
+    # Subagent scope is the pre-spawn decision, not a reply to the parent's history.
+    has_prior_messages = has_prior_messages and scope != "subagent"
     if embedder_state is None:
         inputs = [prompt]
         if has_prior_messages:
@@ -3703,7 +3705,7 @@ def classify(
         axes = embedder_state["axes"]
         evidence = embedder_state["evidence"]
         work_type_similarities = embedder_state.get("workTypeSimilarities")
-        steering = embedder_state["steering"]
+        steering = has_prior_messages and embedder_state["steering"]
         embedding_elapsed_ms = embedder_state["embeddingElapsedMs"]
         embedding_input_count = embedder_state["embeddingInputCount"]
     embedder_work_type = axes["work_type"]
@@ -3761,7 +3763,7 @@ def classify(
                     "steeringSource": "llm",
                 }
             )
-            steering = llm_steering
+            steering = has_prior_messages and llm_steering
     subagent_orchestration = policy["semanticClassifier"].get(
         "subagentOrchestration", {}
     )
