@@ -518,7 +518,9 @@
     }
     for (const kind of ["model", "effort", "router", "routerTable"]) {
       const button = document.getElementById(kind);
-      const value = state[kind];
+      const value = kind === "model" ? state.displayModel ?? state.model
+        : kind === "effort" && "displayEffort" in state ? state.displayEffort
+        : state[kind];
       if (kind === "router" || kind === "routerTable") {
         button.querySelector(kind === "router" ? ".router-mode" : ".router-table").textContent =
           value || (kind === "routerTable" ? "table" : kind);
