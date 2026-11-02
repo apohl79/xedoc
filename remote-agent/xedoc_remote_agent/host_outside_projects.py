@@ -4,7 +4,7 @@ import os
 import time
 from pathlib import Path
 
-from .errors import BrokerError
+from .errors import BrokerError, ErrorCode
 
 
 OTHER_WORKSPACE = "@other"
@@ -63,6 +63,32 @@ def session_inventory(service, username: str, roots: dict, *, include_outside: b
         thread_id = thread.get("id")
         if isinstance(thread_id, str):
             threads[thread_id] = thread
+    cursor = None
+    for _ in range(10):
+        page = service._activity_request(
+            "thread/loaded/list", {"limit": 100, "cursor": cursor}
+        )
+        for thread_id in page.get("data", []):
+            if (
+                not isinstance(thread_id, str)
+                or thread_id in threads
+                or thread_id in closed
+            ):
+                continue
+            try:
+                response = service._activity_request(
+                    "thread/read", {"threadId": thread_id, "includeTurns": False}
+                )
+            except BrokerError as error:
+                if error.code not in (ErrorCode.NOT_FOUND, ErrorCode.INVALID_REQUEST):
+                    raise
+                continue
+            thread = response.get("thread")
+            if isinstance(thread, dict) and thread.get("id") == thread_id:
+                threads[thread_id] = thread
+        cursor = page.get("nextCursor")
+        if not cursor:
+            break
     canonical_roots = {
         key: Path(os.path.realpath(value)) for key, value in roots.items()
     }
