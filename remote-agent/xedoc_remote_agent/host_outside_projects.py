@@ -66,6 +66,24 @@ def session_inventory(service, username: str, roots: dict, *, include_outside: b
     canonical_roots = {
         key: Path(os.path.realpath(value)) for key, value in roots.items()
     }
+    linked_projects = {}
+    for key, root in canonical_roots.items():
+        try:
+            with os.scandir(root) as entries:
+                for entry in sorted(entries, key=lambda entry: entry.name):
+                    try:
+                        if (
+                            not entry.name.startswith(".")
+                            and entry.is_symlink()
+                            and entry.is_dir()
+                        ):
+                            linked_projects.setdefault(
+                                Path(os.path.realpath(entry.path)), (key, entry.name)
+                            )
+                    except OSError:
+                        continue
+        except OSError:
+            continue
     result = {key: [] for key in roots}
     if include_outside:
         result[OTHER_WORKSPACE] = []
@@ -86,6 +104,9 @@ def session_inventory(service, username: str, roots: dict, *, include_outside: b
             ),
             None,
         )
+        project_name = directory.name
+        if workspace_id is None and directory in linked_projects:
+            workspace_id, project_name = linked_projects[directory]
         status = thread.get("status")
         status = status if isinstance(status, dict) else {}
         updated = thread.get("updatedAt")
@@ -97,11 +118,10 @@ def session_inventory(service, username: str, roots: dict, *, include_outside: b
                 continue
             workspace_id, project_name = OTHER_WORKSPACE, str(directory)
         else:
-            if directory.name.startswith(".") or (
+            if project_name.startswith(".") or (
                 updated < cutoff and status.get("type") != "active"
             ):
                 continue
-            project_name = directory.name
         result[workspace_id].append(
             {
                 "threadId": thread_id,

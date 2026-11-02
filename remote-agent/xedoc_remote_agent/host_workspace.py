@@ -350,9 +350,13 @@ class HostWorkspaces:
             entries = []
             with os.scandir(directory) as children:
                 for child in children:
-                    if child.is_dir(
-                        follow_symlinks=False
-                    ) and not child.name.startswith(_PROJECT_CLONE_TEMP_PREFIX):
+                    try:
+                        is_directory = child.is_dir()
+                    except OSError:
+                        continue
+                    if is_directory and not child.name.startswith(
+                        _PROJECT_CLONE_TEMP_PREFIX
+                    ):
                         entries.append(
                             {"name": child.name, "path": str(directory / child.name)}
                         )
@@ -785,12 +789,10 @@ class HostWorkspaces:
         try:
             root = Path(roots[workspace_id]).resolve(strict=True)
             project = root / project_name
-            if project.is_symlink():
-                raise BrokerError.invalid_request(
-                    "Project directory cannot be a symlink"
-                )
+            if project.parent != root:
+                raise BrokerError.invalid_request("Project directory is unavailable")
             project = project.resolve(strict=True)
-            if project.parent != root or not project.is_dir():
+            if not project.is_dir():
                 raise BrokerError.invalid_request("Project directory is unavailable")
             return project
         except (OSError, ValueError, RuntimeError) as error:
