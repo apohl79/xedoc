@@ -121,6 +121,7 @@ window.XedocHostActivity = class {
       group.append(marker);
     }
     element.append(group);
+    return group;
   }
 
   markVisible() {
@@ -145,6 +146,7 @@ window.XedocHostActivity = class {
       const selectedTab = group.closest(".session-tab")
         ?.getAttribute("aria-selected") === "true";
       const states = {
+        active: sessions.some((session) => session.active),
         running: sessions.some((session) => session.active && !session.needsInput),
         waiting: sessions.some((session) => session.needsInput),
         completed: !selectedTab

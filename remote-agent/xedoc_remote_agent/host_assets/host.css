@@ -319,7 +319,8 @@ aside button.project {
 #project-clone-fields { display: grid; }
 #resume-sessions { max-height: 60vh; overflow: auto; }
 #resume-sessions button { display: flex; width: 100%; justify-content: space-between; text-align: left; gap: 8px; margin: 2px 0; }
-#resume-sessions button span { overflow: hidden; text-overflow: ellipsis; }
+#resume-sessions .resume-session-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-state > .resume-session-running { width: auto; height: auto; color: var(--accent); font-size: 10px; font-weight: 600; white-space: nowrap; }
 #resume-sessions small { color: var(--muted); white-space: nowrap; }
 dialog {
   width: min(560px, calc(100% - 32px));
@@ -386,4 +387,7 @@ dialog fieldset { border-color: var(--border); }
 @media (max-width: 700px) {
   .tab-strip #project-title { display: none; }
   .session-tab { max-width: 200px; }
+  #resume-sessions button { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  #resume-sessions .session-state { grid-column: 2; grid-row: 1; }
+  #resume-sessions small { grid-column: 1 / -1; grid-row: 2; }
 }

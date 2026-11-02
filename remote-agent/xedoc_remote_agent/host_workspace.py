@@ -861,9 +861,8 @@ class HostWorkspaces:
                         "modelProviders": [],
                         "sourceKinds": _THREAD_SOURCES,
                         "archived": archived,
+                        "useStateDbOnly": True,
                     }
-                    if not include_history:
-                        params["useStateDbOnly"] = True
                     page = request(
                         "thread/list",
                         params,

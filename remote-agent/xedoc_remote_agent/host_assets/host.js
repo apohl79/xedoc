@@ -928,10 +928,13 @@
     byId("resume-sessions").replaceChildren(...sessions.map((session) => {
       const element = document.createElement("button");
       element.type = "button";
-      element.append(text("span", session.title || session.threadId), text("small",
+      element.append(text("span", session.title || session.threadId, "resume-session-title"), text("small",
         session.updatedAt ? new Date(session.updatedAt * 1000).toLocaleString() : ""));
       activity.observe(session, selectedWorkspace, selectedProject);
-      activity.attach(element, selectedWorkspace, selectedProject, session.threadId);
+      const state = activity.attach(element, selectedWorkspace, selectedProject, session.threadId);
+      const running = text("span", "RUNNING", "resume-session-running");
+      running.dataset.kind = "active";
+      state.append(running);
       element.addEventListener("click", () => run(async () => {
         byId("resume-dialog").close();
         activeThread = session.threadId;
