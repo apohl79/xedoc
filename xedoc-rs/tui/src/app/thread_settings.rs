@@ -11,6 +11,28 @@ use xedoc_protocol::config_types::ModeKind;
 use xedoc_protocol::models::PermissionProfile;
 
 impl App {
+    pub(super) async fn update_model_and_provider(
+        &mut self,
+        app_server: &mut AppServerSession,
+        model: String,
+        provider_id: String,
+        effort: Option<xedoc_protocol::openai_models::ReasoningEffort>,
+    ) -> bool {
+        self.config.model_provider_id.clone_from(&provider_id);
+        if let Some(provider) = self.config.model_providers.get(&provider_id).cloned() {
+            self.config.model_provider = provider;
+        }
+        self.chat_widget.set_model_provider(&provider_id);
+        self.chat_widget.set_model(&model);
+        self.on_update_reasoning_effort(effort.clone());
+        let updated = self
+            .sync_active_thread_model_selection_setting(app_server, model, provider_id, effort)
+            .await;
+        self.sync_active_thread_service_tier_to_cached_session()
+            .await;
+        updated
+    }
+
     pub(super) async fn sync_active_thread_model_setting(
         &mut self,
         app_server: &mut AppServerSession,
@@ -41,13 +63,13 @@ impl App {
         model: String,
         provider_id: String,
         effort: Option<xedoc_protocol::openai_models::ReasoningEffort>,
-    ) {
+    ) -> bool {
         let Some(params) =
             self.active_thread_model_selection_update_params(model, provider_id, effort)
         else {
-            return;
+            return false;
         };
-        self.send_thread_settings_update(app_server, params).await;
+        self.send_thread_settings_update(app_server, params).await
     }
 
     pub(super) fn active_thread_model_selection_update_params(
@@ -191,14 +213,18 @@ impl App {
         &mut self,
         app_server: &mut AppServerSession,
         params: ThreadSettingsUpdateParams,
-    ) {
+    ) -> bool {
         if !thread_settings_update_has_changes(&params) {
-            return;
+            return true;
         }
-        if let Err(err) = app_server.thread_settings_update(params).await {
-            tracing::warn!("failed to update app-server thread settings from TUI: {err}");
-            self.chat_widget
-                .add_error_message(format!("Failed to update thread settings: {err}"));
+        match app_server.thread_settings_update(params).await {
+            Ok(_) => app_server.supports_thread_settings_update(),
+            Err(err) => {
+                tracing::warn!("failed to update app-server thread settings from TUI: {err}");
+                self.chat_widget
+                    .add_error_message(format!("Failed to update thread settings: {err}"));
+                false
+            }
         }
     }
 }

@@ -898,22 +898,30 @@ impl App {
                 provider_id,
                 effort,
             } => {
-                self.config.model_provider_id.clone_from(&provider_id);
-                if let Some(provider) = self.config.model_providers.get(&provider_id).cloned() {
-                    self.config.model_provider = provider;
-                }
-                self.chat_widget.set_model_provider(&provider_id);
-                self.chat_widget.set_model(&model);
-                self.on_update_reasoning_effort(effort.clone());
-                self.sync_active_thread_model_selection_setting(
-                    app_server,
-                    model,
-                    provider_id,
-                    effort,
-                )
-                .await;
-                self.sync_active_thread_service_tier_to_cached_session()
+                self.update_model_and_provider(app_server, model, provider_id, effort)
                     .await;
+            }
+            AppEvent::UpdateWebUiModelAndProvider {
+                model,
+                provider_id,
+                effort,
+            } => {
+                if self
+                    .update_model_and_provider(
+                        app_server,
+                        model.clone(),
+                        provider_id,
+                        effort.clone(),
+                    )
+                    .await
+                {
+                    let mut message = format!("Model changed to {model}");
+                    if let Some(label) = Self::reasoning_label_for(&model, effort.as_ref()) {
+                        message.push(' ');
+                        message.push_str(&label);
+                    }
+                    self.chat_widget.add_info_message(message, /*hint*/ None);
+                }
             }
             AppEvent::UpdatePersonality(personality) => {
                 self.on_update_personality(personality);

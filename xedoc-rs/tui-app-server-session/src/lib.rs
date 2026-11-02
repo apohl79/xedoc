@@ -1050,6 +1050,10 @@ impl AppServerSession {
         }
     }
 
+    pub fn supports_thread_settings_update(&self) -> bool {
+        self.thread_settings_update_supported
+    }
+
     async fn sync_environment_variables(&mut self, thread_id: &str) -> Result<()> {
         let Some(environment_variables) = environment_variables_for_mode(self.thread_params_mode)
         else {

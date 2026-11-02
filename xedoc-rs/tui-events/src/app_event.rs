@@ -670,6 +670,13 @@ pub enum AppEvent {
         effort: Option<ReasoningEffort>,
     },
 
+    /// Update the model selection from the web UI and report successful changes.
+    UpdateWebUiModelAndProvider {
+        model: String,
+        provider_id: String,
+        effort: Option<ReasoningEffort>,
+    },
+
     /// Update the current personality in the running app and widget.
     UpdatePersonality(Personality),
 

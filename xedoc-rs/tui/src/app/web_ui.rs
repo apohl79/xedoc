@@ -215,14 +215,15 @@ impl App {
                             .map(|item| item.effort.clone())
                     });
                     if model.is_some() && (effort.is_none() || chosen_effort.is_some()) {
-                        self.app_event_tx.send(AppEvent::UpdateModelAndProvider {
-                            model: preset.model.clone(),
-                            provider_id: preset.provider_id.clone(),
-                            effort: Some(
-                                chosen_effort
-                                    .unwrap_or_else(|| preset.default_reasoning_effort.clone()),
-                            ),
-                        });
+                        self.app_event_tx
+                            .send(AppEvent::UpdateWebUiModelAndProvider {
+                                model: preset.model.clone(),
+                                provider_id: preset.provider_id.clone(),
+                                effort: Some(
+                                    chosen_effort
+                                        .unwrap_or_else(|| preset.default_reasoning_effort.clone()),
+                                ),
+                            });
                     } else if let Some(effort) = chosen_effort {
                         self.app_event_tx
                             .send(AppEvent::UpdateReasoningEffort(Some(effort)));
