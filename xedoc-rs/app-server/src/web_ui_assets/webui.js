@@ -684,23 +684,56 @@
         }
         const textWalker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT);
         const referencePattern = /\[(?:Image|Doc) #\d+\]/g;
-        const referenceNodes = [];
+        const webUrlPattern = /https?:\/\/[^\s<>"'`]+/gi;
+        const textNodes = [];
         while (textWalker.nextNode()) {
           const node = textWalker.currentNode;
-          if (!node.parentElement.closest("code, pre, a, .editor-reference") && referencePattern.test(node.data)) {
-            referenceNodes.push(node);
+          if (!node.parentElement.closest("code, pre, a, .editor-reference")
+              && (referencePattern.test(node.data) || webUrlPattern.test(node.data))) {
+            textNodes.push(node);
           }
           referencePattern.lastIndex = 0;
+          webUrlPattern.lastIndex = 0;
         }
-        for (const node of referenceNodes) {
+        for (const node of textNodes) {
           const replacement = document.createDocumentFragment();
           let offset = 0;
-          for (const match of node.data.matchAll(referencePattern)) {
+          const matches = [
+            ...node.data.matchAll(referencePattern),
+            ...node.data.matchAll(webUrlPattern),
+          ].sort((left, right) => left.index - right.index);
+          for (const match of matches) {
             replacement.append(document.createTextNode(node.data.slice(offset, match.index)));
-            const reference = document.createElement("span");
-            reference.className = "editor-reference";
-            reference.textContent = match[0];
-            replacement.append(reference);
+            if (match[0].startsWith("[")) {
+              const reference = document.createElement("span");
+              reference.className = "editor-reference";
+              reference.textContent = match[0];
+              replacement.append(reference);
+            } else {
+              let linkEnd = match[0].length;
+              while (linkEnd > 0 && /[.,;!]/.test(match[0][linkEnd - 1])) linkEnd--;
+              for (const [closing, opening] of [[")", "("], ["]", "["], ["}", "{"]]) {
+                while (linkEnd > 0 && match[0][linkEnd - 1] === closing) {
+                  const candidate = match[0].slice(0, linkEnd);
+                  if (candidate.split(closing).length <= candidate.split(opening).length) break;
+                  linkEnd--;
+                }
+              }
+              const destination = match[0].slice(0, linkEnd);
+              let parsed;
+              try { parsed = new URL(destination); } catch {}
+              if (parsed && ["http:", "https:"].includes(parsed.protocol) && parsed.hostname) {
+                const link = document.createElement("a");
+                link.href = parsed.href;
+                link.target = "_blank";
+                link.rel = "noopener noreferrer";
+                link.textContent = destination;
+                replacement.append(link);
+                replacement.append(document.createTextNode(match[0].slice(linkEnd)));
+              } else {
+                replacement.append(document.createTextNode(match[0]));
+              }
+            }
             offset = match.index + match[0].length;
           }
           replacement.append(document.createTextNode(node.data.slice(offset)));
