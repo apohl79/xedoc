@@ -1000,9 +1000,7 @@ fn reasoning_item_completed_uses_synthetic_id() {
 fn warning_event_produces_error_item() {
     let mut processor = EventProcessorWithJsonOutput::new(/*last_message_path*/ None);
 
-    let collected = processor.collect_warning(
-        "Heads up: Long conversations and multiple compactions can cause the model to be less accurate. Start a new conversation when possible to keep conversations small and targeted.".to_string(),
-    );
+    let collected = processor.collect_warning("Example warning message.".to_string());
 
     assert_eq!(
         collected,
@@ -1011,7 +1009,7 @@ fn warning_event_produces_error_item() {
                 item: ExecThreadItem {
                     id: "item_0".to_string(),
                     details: ThreadItemDetails::Error(ErrorItem {
-                        message: "Heads up: Long conversations and multiple compactions can cause the model to be less accurate. Start a new conversation when possible to keep conversations small and targeted.".to_string(),
+                        message: "Example warning message.".to_string(),
                     }),
                 },
             })],

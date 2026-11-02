@@ -5,7 +5,6 @@
 //! request payload that Xedoc would send to the model and assert that the
 //! model-visible history matches the expected sequence of messages.
 
-use super::compact::COMPACT_WARNING_MESSAGE;
 use super::compact::FIRST_REPLY;
 use super::compact::SUMMARY_TEXT;
 use anyhow::Result;
@@ -41,7 +40,6 @@ use xedoc_protocol::config_types::ModeKind;
 use xedoc_protocol::config_types::Settings;
 use xedoc_protocol::protocol::EventMsg;
 use xedoc_protocol::protocol::Op;
-use xedoc_protocol::protocol::WarningEvent;
 use xedoc_protocol::user_input::UserInput;
 
 const AFTER_SECOND_RESUME: &str = "AFTER_SECOND_RESUME";
@@ -798,17 +796,6 @@ async fn compact_conversation(conversation: &Arc<XedocThread>) {
         .submit(Op::Compact)
         .await
         .expect("compact conversation");
-    let warning_event = wait_for_event(conversation, |ev| {
-        matches!(
-            ev,
-            EventMsg::Warning(WarningEvent { message }) if message == COMPACT_WARNING_MESSAGE
-        )
-    })
-    .await;
-    let EventMsg::Warning(WarningEvent { message }) = warning_event else {
-        panic!("expected warning event after compact");
-    };
-    assert_eq!(message, COMPACT_WARNING_MESSAGE);
     wait_for_event(conversation, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 }
 

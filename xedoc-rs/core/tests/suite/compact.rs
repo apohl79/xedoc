@@ -92,8 +92,6 @@ const NEW_GLOBAL_INSTRUCTIONS: &str = "new global instructions";
 const OLD_GLOBAL_INSTRUCTIONS: &str = "old global instructions";
 const REMOTE_V2_SUMMARY: &str = "global-instructions-remote-v2-summary";
 
-pub(super) const COMPACT_WARNING_MESSAGE: &str = "Heads up: Long threads and multiple compactions can cause the model to be less accurate. Start a new thread when possible to keep threads small and targeted.";
-
 fn ev_shell_command_call(call_id: &str, command: &str) -> serde_json::Value {
     ev_function_call(
         call_id,
@@ -531,17 +529,6 @@ async fn summarize_context_three_requests_and_instructions() {
 
     // 2) Summarize – second hit should include the summarization prompt.
     xedoc.submit(Op::Compact).await.unwrap();
-    let warning_event = wait_for_event(&xedoc, |ev| {
-        matches!(
-            ev,
-            EventMsg::Warning(WarningEvent { message }) if message == COMPACT_WARNING_MESSAGE
-        )
-    })
-    .await;
-    let EventMsg::Warning(WarningEvent { message }) = warning_event else {
-        panic!("expected warning event after compact");
-    };
-    assert_eq!(message, COMPACT_WARNING_MESSAGE);
     wait_for_event(&xedoc, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     // 3) Next user input – third hit; history should include only the summary.
@@ -742,13 +729,6 @@ async fn manual_pre_compact_block_decision_does_not_block_compaction() {
     })
     .await;
     assert_eq!(completed.run.status, HookRunStatus::Failed);
-    wait_for_event(&xedoc, |ev| {
-        matches!(
-            ev,
-            EventMsg::Warning(WarningEvent { message }) if message == COMPACT_WARNING_MESSAGE
-        )
-    })
-    .await;
     wait_for_event(&xedoc, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     let requests = request_log.requests();
@@ -810,13 +790,6 @@ async fn compact_hooks_respect_matchers_and_post_runs_after_compaction() {
     wait_for_event(&xedoc, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     xedoc.submit(Op::Compact).await.expect("trigger compact");
-    wait_for_event(&xedoc, |ev| {
-        matches!(
-            ev,
-            EventMsg::Warning(WarningEvent { message }) if message == COMPACT_WARNING_MESSAGE
-        )
-    })
-    .await;
     wait_for_event(&xedoc, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     assert_eq!(request_log.requests().len(), 2);
@@ -886,17 +859,6 @@ async fn manual_compact_uses_custom_prompt() {
     wait_for_event(&xedoc, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     xedoc.submit(Op::Compact).await.expect("trigger compact");
-    let warning_event = wait_for_event(&xedoc, |ev| {
-        matches!(
-            ev,
-            EventMsg::Warning(WarningEvent { message }) if message == COMPACT_WARNING_MESSAGE
-        )
-    })
-    .await;
-    let EventMsg::Warning(WarningEvent { message }) = warning_event else {
-        panic!("expected warning event after compact");
-    };
-    assert_eq!(message, COMPACT_WARNING_MESSAGE);
     wait_for_event(&xedoc, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     let requests = request_log.requests();
@@ -3275,17 +3237,6 @@ async fn manual_compact_retries_after_context_window_error() {
     wait_for_event(&xedoc, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     xedoc.submit(Op::Compact).await.unwrap();
-    let warning_event = wait_for_event(&xedoc, |ev| {
-        matches!(
-            ev,
-            EventMsg::Warning(WarningEvent { message }) if message == COMPACT_WARNING_MESSAGE
-        )
-    })
-    .await;
-    let EventMsg::Warning(WarningEvent { message }) = warning_event else {
-        panic!("expected warning event after compact retry");
-    };
-    assert_eq!(message, COMPACT_WARNING_MESSAGE);
     wait_for_event(&xedoc, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
 
     let requests = request_log.requests();

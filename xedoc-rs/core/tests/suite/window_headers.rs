@@ -1,4 +1,3 @@
-use super::compact::COMPACT_WARNING_MESSAGE;
 use anyhow::Result;
 use core_test_support::responses::ResponsesRequest;
 use core_test_support::responses::ev_assistant_message;
@@ -15,7 +14,6 @@ use xedoc_core::XedocThread;
 use xedoc_core::compact::SUMMARIZATION_PROMPT;
 use xedoc_protocol::protocol::EventMsg;
 use xedoc_protocol::protocol::Op;
-use xedoc_protocol::protocol::WarningEvent;
 use xedoc_protocol::user_input::UserInput;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -118,17 +116,6 @@ async fn submit_user_turn(xedoc: &Arc<XedocThread>, text: &str) -> Result<()> {
 
 async fn submit_compact_turn(xedoc: &Arc<XedocThread>) -> Result<()> {
     xedoc.submit(Op::Compact).await?;
-    let warning_event = wait_for_event(xedoc, |event| {
-        matches!(
-            event,
-            EventMsg::Warning(WarningEvent { message }) if message == COMPACT_WARNING_MESSAGE
-        )
-    })
-    .await;
-    let EventMsg::Warning(WarningEvent { message }) = warning_event else {
-        panic!("expected warning event after compact");
-    };
-    assert_eq!(message, COMPACT_WARNING_MESSAGE);
     wait_for_event(xedoc, |event| matches!(event, EventMsg::TurnComplete(_))).await;
     Ok(())
 }
