@@ -512,6 +512,36 @@ class PeerState:
             ).fetchall()
         return tuple(_relationship_from_row(row) for row in rows)
 
+    def refresh_endpoint(self, verified: Relationship, endpoint: str) -> bool:
+        """Update an authenticated address without changing trust or grants.
+
+        Compare the probed relationship so a concurrent revoke, removal, or
+        re-pair cannot be undone by an in-flight network refresh.
+        """
+
+        _validate_relationship_input(
+            verified.peer_host_id, verified.peer_role, verified.certificate, endpoint
+        )
+        with self._lock, self._transaction() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE relationships SET endpoint = ?, updated_at = ?
+                WHERE peer_host_id = ? AND fingerprint = ? AND endpoint = ?
+                  AND status = ? AND status IN ('paired', 'suspended')
+                  AND paired_at IS ?
+                """,
+                (
+                    endpoint,
+                    _now(),
+                    verified.peer_host_id,
+                    verified.certificate.fingerprint,
+                    verified.endpoint,
+                    verified.status,
+                    verified.paired_at,
+                ),
+            )
+            return cursor.rowcount == 1
+
     def trusted_certificates(self) -> tuple[CertificateMaterial, ...]:
         """Return non-revoked persisted certificates for listener trust roots."""
 

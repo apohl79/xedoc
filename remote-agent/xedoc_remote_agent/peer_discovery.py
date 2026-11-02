@@ -22,6 +22,7 @@ import time
 from typing import Callable, Iterable, Mapping
 
 from .errors import BrokerError
+from .lan_interfaces import ipv4_addresses
 from .models import Role
 from .peer_protocol import PROTOCOL_MAJOR, PROTOCOL_MINOR, PeerEndpoint, fingerprint
 
@@ -32,6 +33,8 @@ DISCOVERY_GROUP = "239.255.70.40"
 DISCOVERY_PORT = 43_371
 DISCOVERY_PORT_SLOTS = 16
 ANNOUNCE_INTERVAL_SECONDS = 30.0
+NETWORK_CHECK_INTERVAL_SECONDS = 1.0
+MEMBERSHIP_REFRESH_INTERVAL_SECONDS = 30.0
 ANNOUNCE_JITTER = 0.2
 ANNOUNCE_TTL_SECONDS = 95
 MAX_ANNOUNCE_TTL_SECONDS = 600
@@ -91,20 +94,22 @@ class PeerDiscovery:
         self._capabilities = capabilities
         self._on_announce = on_announce
         self._socket: socket.socket | None = None
+        self._listener_lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._announcer: threading.Thread | None = None
         self._stopping = threading.Event()
         self._local_registration: Path | None = None
 
     def start(self) -> None:
-        if self._socket is not None:
+        if self._thread is not None or self._socket is not None:
             raise BrokerError.conflict()
         try:
             listener = _bind_listener()
-        except OSError as error:
-            raise BrokerError.unavailable() from error
+        except OSError:
+            listener = None
         self._socket = listener
-        self._register_local_listener(listener)
+        if listener is not None:
+            self._register_local_listener(listener)
         self._stopping.clear()
         self._thread = threading.Thread(
             target=self._serve,
@@ -125,8 +130,9 @@ class PeerDiscovery:
         if announcer is not None and announcer is not threading.current_thread():
             announcer.join(timeout=1.0)
         self._announce(ttl_seconds=0)
-        listener, self._socket = self._socket, None
-        self._remove_local_listener()
+        with self._listener_lock:
+            listener, self._socket = self._socket, None
+            self._remove_local_listener()
         if listener is not None:
             try:
                 listener.close()
@@ -188,17 +194,59 @@ class PeerDiscovery:
                     except TimeoutError:
                         continue
                     candidate = _candidate(payload, "response", query_id)
-                    if candidate is not None and candidate.host_id != self._host_id:
+                    if (
+                        candidate is not None
+                        and candidate.host_id != self._host_id
+                        and _announced_from(candidate, address[0])
+                    ):
                         results[candidate.host_id] = candidate
         except OSError as error:
             raise BrokerError.unavailable() from error
         return tuple(sorted(results.values(), key=lambda candidate: candidate.host_id))
 
     def _serve(self) -> None:
+        network_addresses: tuple[str, ...] | None = None
+        next_check = 0.0
+        next_refresh = time.monotonic() + MEMBERSHIP_REFRESH_INTERVAL_SECONDS
         while not self._stopping.is_set():
+            now = time.monotonic()
+            if now >= next_check:
+                next_check = now + NETWORK_CHECK_INTERVAL_SECONDS
+                try:
+                    addresses = ipv4_addresses()
+                except OSError:
+                    addresses = network_addresses
+                refreshed = False
+                with self._listener_lock:
+                    if self._stopping.is_set():
+                        return
+                    if (
+                        self._socket is None
+                        or (
+                            network_addresses is not None
+                            and addresses != network_addresses
+                        )
+                        or now >= next_refresh
+                    ):
+                        listener, self._socket = self._socket, None
+                        if listener is not None:
+                            listener.close()
+                        self._remove_local_listener()
+                        try:
+                            self._socket = _bind_listener()
+                        except OSError:
+                            pass
+                        else:
+                            self._register_local_listener(self._socket)
+                            next_refresh = now + MEMBERSHIP_REFRESH_INTERVAL_SECONDS
+                            refreshed = True
+                    network_addresses = addresses
+                if refreshed and not self._stopping.is_set():
+                    self._announce(ttl_seconds=ANNOUNCE_TTL_SECONDS)
             listener = self._socket
             if listener is None:
-                return
+                self._stopping.wait(0.2)
+                continue
             try:
                 payload, address = listener.recvfrom(MAX_DISCOVERY_PACKET_BYTES + 1)
             except TimeoutError:
@@ -206,6 +254,12 @@ class PeerDiscovery:
             except OSError:
                 if self._stopping.is_set():
                     return
+                with self._listener_lock:
+                    if self._socket is listener:
+                        self._socket = None
+                        listener.close()
+                        self._remove_local_listener()
+                self._stopping.wait(0.2)
                 continue
             query_id = _query_id(payload)
             if query_id is not None:

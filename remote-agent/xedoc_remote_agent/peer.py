@@ -56,6 +56,7 @@ from .peer_session_contract import (
     validate_session_result,
 )
 from .peer_sessions import PeerSessionOperations
+from .peer_relocation import PeerRelocation
 from .peer_state import (
     Grant,
     GrantPolicy,
@@ -226,7 +227,9 @@ class PeerService:
         self._discovery: PeerDiscovery | None = None
         self._candidates: dict[str, DiscoveredPeer] = {}
         self._presence = PresenceTracker()
+        self._relocation = PeerRelocation(state)
         self._refresh_stop = threading.Event()
+        self._refresh_wake = threading.Event()
         self._refresh_thread: threading.Thread | None = None
 
     @property
@@ -374,12 +377,13 @@ class PeerService:
     def _on_announce(self, record: DiscoveryCandidate) -> None:
         """Fold one unauthenticated announcement into the presence cache.
 
-        Paired hosts are ignored: their liveness and hostname come only from the
-        authenticated describe in the refresher, so a spoofed announcement can
-        neither rename, hide, nor revive them.
+        Paired address changes only wake the authenticated refresher. A spoofed
+        announcement cannot rename, hide, revive, or redirect a paired host.
         """
 
         if self.state.relationship(record.host_id) is not None:
+            if self._relocation.observe(record):
+                self._refresh_wake.set()
             return
         existing = self._candidates.get(record.host_id)
         if record.ttl_seconds == 0:
@@ -432,6 +436,7 @@ class PeerService:
 
     def _start_host_refresh(self) -> None:
         self._refresh_stop = threading.Event()
+        self._refresh_wake.clear()
         thread = threading.Thread(
             target=self._refresh_loop,
             name="xedoc-remote-agent-host-refresh",
@@ -443,24 +448,29 @@ class PeerService:
 
     def _stop_host_refresh(self) -> None:
         self._refresh_stop.set()
+        self._refresh_wake.set()
         thread, self._refresh_thread = self._refresh_thread, None
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=1.0)
 
     def _refresh_loop(self, stop: threading.Event) -> None:
-        while True:
+        while not stop.is_set():
+            self._refresh_wake.clear()
             try:
                 self._refresh_hosts()
             except Exception:  # noqa: BLE001 - a refresh failure must not stop the loop
                 pass
-            if stop.wait(_HOST_REFRESH_INTERVAL_SECONDS):
+            if stop.wait(_HOST_REFRESH_TIMEOUT_SECONDS):
                 return
+            self._refresh_wake.wait(
+                _HOST_REFRESH_INTERVAL_SECONDS - _HOST_REFRESH_TIMEOUT_SECONDS
+            )
 
     def _refresh_hosts(self) -> None:
         """Describe every paired and statically configured host in parallel."""
 
-        targets: list[tuple[str | None, StaticPeer]] = [
-            (relationship.peer_host_id, _peer_from_relationship(relationship))
+        targets: list[tuple[Relationship | None, StaticPeer]] = [
+            (relationship, _peer_from_relationship(relationship))
             for relationship in self.state.relationships()
             if relationship.status != "revoked"
         ]
@@ -469,28 +479,44 @@ class PeerService:
             return
 
         def describe(
-            target: tuple[str | None, StaticPeer],
-        ) -> tuple[str | None, DiscoveredPeer | None]:
-            expected_host_id, peer = target
-            try:
-                response = self._client.operation(
-                    peer,
-                    "host/describe",
-                    {},
-                    timeout_seconds=_HOST_REFRESH_TIMEOUT_SECONDS,
-                )
-                return expected_host_id, _discovered_peer(response, peer)
-            except BrokerError:
-                return expected_host_id, None
+            target: tuple[Relationship | None, StaticPeer],
+        ) -> tuple[Relationship | None, DiscoveredPeer | None]:
+            relationship, peer = target
+            hint = (
+                self._relocation.take(relationship)
+                if relationship is not None
+                else None
+            )
+            for destination in (hint, peer):
+                if destination is None:
+                    continue
+                try:
+                    response = self._client.operation(
+                        destination,
+                        "host/describe",
+                        {},
+                        timeout_seconds=_HOST_REFRESH_TIMEOUT_SECONDS,
+                    )
+                    candidate = _discovered_peer(response, destination)
+                    if relationship is None or candidate.role is relationship.peer_role:
+                        return relationship, candidate
+                except BrokerError:
+                    continue
+            return relationship, None
 
         with ThreadPoolExecutor(max_workers=_HOST_REFRESH_WORKERS) as pool:
-            for expected_host_id, candidate in pool.map(describe, targets):
+            for relationship, candidate in pool.map(describe, targets):
                 if candidate is None:
-                    if expected_host_id is not None:
-                        self._presence.unreachable(expected_host_id)
+                    if relationship is not None:
+                        self._presence.unreachable(relationship.peer_host_id)
                     continue
-                if expected_host_id is not None and candidate.host_id != expected_host_id:
-                    self._presence.unreachable(expected_host_id)
+                if (
+                    relationship is not None
+                    and candidate.endpoint != relationship.endpoint
+                    and not self.state.refresh_endpoint(
+                        relationship, candidate.endpoint
+                    )
+                ):
                     continue
                 self._candidates[candidate.host_id] = candidate
                 self._presence.seen(candidate.host_id, ttl_seconds=None)
@@ -639,11 +665,7 @@ class PeerService:
         if timeout_seconds > 0 and discovery is not None:
             remaining = max(0, int(deadline - time.monotonic() + 0.999))
             for record in discovery.discover(remaining, direct_endpoints):
-                if self._lan_record_may_replace(record.host_id):
-                    self._candidates[record.host_id] = _discovered_lan_peer(record)
-                    self._presence.seen(
-                        record.host_id, ttl_seconds=float(record.ttl_seconds)
-                    )
+                self._on_announce(record)
         self._prune_announced()
         candidates = sorted(
             self._candidates.values(), key=lambda candidate: candidate.host_id

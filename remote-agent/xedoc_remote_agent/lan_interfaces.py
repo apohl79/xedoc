@@ -1,4 +1,4 @@
-"""IPv4 subnet broadcasts from the operating system's network interfaces."""
+"""IPv4 addresses and subnet broadcasts from operating-system interfaces."""
 
 import ctypes
 import ipaddress
@@ -10,10 +10,14 @@ import sys
 def ipv4_broadcasts() -> tuple[str, ...]:
     if os.name == "nt":
         return _windows_broadcasts()
-    return _unix_broadcasts()
+    return _unix_ipv4("broadcast")
 
 
-def _unix_broadcasts() -> tuple[str, ...]:
+def ipv4_addresses() -> tuple[str, ...]:
+    return _unix_ipv4("address")
+
+
+def _unix_ipv4(address_field: str) -> tuple[str, ...]:
     class Interface(ctypes.Structure):
         pass
 
@@ -34,7 +38,8 @@ def _unix_broadcasts() -> tuple[str, ...]:
     first = ctypes.POINTER(Interface)()
     if library.getifaddrs(ctypes.byref(first)) != 0:
         raise OSError(ctypes.get_errno(), "Cannot enumerate network interfaces")
-    broadcasts = set()
+    addresses = set()
+    required_flags = 0x3 if address_field == "broadcast" else 0x1
     try:
         current = first
         for _ in range(256):
@@ -43,10 +48,10 @@ def _unix_broadcasts() -> tuple[str, ...]:
             interface = current.contents
             current = interface.next
             if (
-                interface.flags & 0x3 != 0x3
+                interface.flags & required_flags != required_flags
                 or interface.flags & 0x8
                 or not interface.address
-                or not interface.broadcast
+                or not getattr(interface, address_field)
             ):
                 continue
             address = ctypes.string_at(interface.address, 8)
@@ -56,11 +61,11 @@ def _unix_broadcasts() -> tuple[str, ...]:
                 else int.from_bytes(address[:2], sys.byteorder)
             )
             if family == socket.AF_INET:
-                broadcast = ctypes.string_at(interface.broadcast, 8)[4:8]
-                broadcasts.add(socket.inet_ntoa(broadcast))
+                value = ctypes.string_at(getattr(interface, address_field), 8)[4:8]
+                addresses.add(socket.inet_ntoa(value))
     finally:
         library.freeifaddrs(first)
-    return tuple(sorted(broadcasts))
+    return tuple(sorted(addresses))
 
 
 def _windows_broadcasts() -> tuple[str, ...]:
