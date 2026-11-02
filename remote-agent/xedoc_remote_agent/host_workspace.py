@@ -34,13 +34,15 @@ _THREAD_SOURCES = [
     "vscode",
     "exec",
     "appServer",
-    "subAgent",
-    "subAgentReview",
-    "subAgentCompact",
-    "subAgentThreadSpawn",
-    "subAgentOther",
     "unknown",
 ]
+
+
+def _is_root_session(thread: dict) -> bool:
+    source = thread.get("source")
+    return not thread.get("parentThreadId") and not (
+        isinstance(source, dict) and ("subAgent" in source or "subagent" in source)
+    )
 
 
 def _valid_project_name(name: Any) -> bool:
@@ -291,7 +293,11 @@ class HostWorkspaces:
                 sessions = response.get("data", [])
                 self._active_sessions_cache = (
                     time.monotonic(),
-                    [session for session in sessions if isinstance(session, dict)]
+                    [
+                        session
+                        for session in sessions
+                        if isinstance(session, dict) and _is_root_session(session)
+                    ]
                     if isinstance(sessions, list)
                     else [],
                 )
@@ -533,7 +539,7 @@ class HostWorkspaces:
                     },
                 )
                 for thread in page.get("data", []):
-                    if not isinstance(thread, dict):
+                    if not isinstance(thread, dict) or not _is_root_session(thread):
                         continue
                     cwd, updated = thread.get("cwd"), thread.get("updatedAt")
                     if not isinstance(updated, int) or updated < cutoff:
@@ -815,6 +821,7 @@ class HostWorkspaces:
             not isinstance(thread, dict)
             or thread.get("id") != thread_id
             or not isinstance(cwd, str)
+            or not _is_root_session(thread)
         ):
             raise BrokerError.not_found()
         try:
@@ -868,6 +875,8 @@ class HostWorkspaces:
                         params,
                     )
                     for item in page.get("data", []):
+                        if not isinstance(item, dict) or not _is_root_session(item):
+                            continue
                         updated = item.get("updatedAt", 0)
                         if not include_history and (
                             not isinstance(updated, int) or updated < cutoff

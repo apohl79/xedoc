@@ -565,10 +565,8 @@ impl App {
             }
             AppEvent::RefreshModelRouter => {
                 let thread_id = self.current_displayed_thread_id();
-                if let Some(thread_id) = thread_id
-                    && tui.web_ui.is_some()
-                {
-                    self.update_web_ui_routing_tables(tui, app_server, thread_id, None)
+                if thread_id.is_some() && tui.web_ui.is_some() {
+                    self.update_web_ui_routing_tables(tui, app_server, /*table*/ None)
                         .await;
                 } else {
                     self.refresh_model_router_mode(app_server, thread_id);

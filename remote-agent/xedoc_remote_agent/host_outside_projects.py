@@ -27,7 +27,7 @@ def outside_directory(value: str) -> Path:
 
 
 def session_inventory(service, username: str, roots: dict, *, include_outside: bool):
-    from .host_workspace import _THREAD_SOURCES
+    from .host_workspace import _THREAD_SOURCES, _is_root_session
 
     closed = set(service._closed_sessions.get(username, []))
     threads = {}
@@ -117,6 +117,7 @@ def session_inventory(service, username: str, roots: dict, *, include_outside: b
         cwd = thread.get("cwd")
         if (
             thread_id in closed
+            or not _is_root_session(thread)
             or not isinstance(cwd, str)
             or not Path(cwd).is_absolute()
         ):

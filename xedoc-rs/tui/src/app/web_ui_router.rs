@@ -10,7 +10,6 @@ use xedoc_app_server_protocol::ExtensionInteractionRequestResponse;
 use xedoc_app_server_protocol::ExtensionInteractionSelectedAction;
 use xedoc_app_server_protocol::ExtensionInteractionSurface;
 use xedoc_app_server_protocol::ModelRouterSettingsInteraction;
-use xedoc_protocol::ThreadId;
 
 use super::App;
 use crate::app_server_session::AppServerSession;
@@ -21,22 +20,15 @@ impl App {
         &mut self,
         tui: &mut Tui,
         app_server: &AppServerSession,
-        thread_id: ThreadId,
         table: Option<&str>,
     ) {
-        let result = routing_tables(
-            app_server.request_handle(),
-            self.chat_widget.thread_id().unwrap_or(thread_id),
-            table,
-        )
-        .await;
+        let result = routing_tables(app_server.request_handle(), table).await;
         match result {
             Ok(tables) => {
                 if let Some(session) = &mut tui.web_ui {
                     session.routing_tables = tables;
                     session.last_publish = None;
                 }
-                self.refresh_model_router_mode(app_server, Some(thread_id));
             }
             Err(error) => self
                 .chat_widget
@@ -61,11 +53,11 @@ pub(crate) struct TableOption {
 
 async fn routing_tables(
     handle: AppServerRequestHandle,
-    thread_id: ThreadId,
     selected: Option<&str>,
 ) -> Result<RoutingTables> {
     let opened =
-        crate::config_update::open_model_router_settings(handle.clone(), Some(thread_id)).await?;
+        crate::config_update::open_model_router_settings(handle.clone(), /*thread_id*/ None)
+            .await?;
     let Some(root) = opened.interaction else {
         return if selected.is_none() {
             Ok(RoutingTables::default())
@@ -84,7 +76,7 @@ async fn routing_tables(
     else {
         return Ok(RoutingTables::default());
     };
-    let mut picker = respond(handle.clone(), thread_id, &root, &shortcut.action.id).await?;
+    let mut picker = respond(handle.clone(), &root, &shortcut.action.id).await?;
     if picker.continuation != "settings:table-picker" {
         return Err(eyre!("Router settings changed; reopen the table menu"));
     }
@@ -100,7 +92,7 @@ async fn routing_tables(
                     && item.action.id.starts_with("select-table-")
             })
             .ok_or_else(|| eyre!("Choose an available routing table"))?;
-        picker = respond(handle, thread_id, &picker, &option.action.id).await?;
+        picker = respond(handle, &picker, &option.action.id).await?;
     }
     if picker.continuation != "settings:table-picker" {
         return Err(eyre!("Router settings changed; reopen the table menu"));
@@ -128,7 +120,6 @@ async fn routing_tables(
 
 async fn respond(
     handle: AppServerRequestHandle,
-    thread_id: ThreadId,
     interaction: &ModelRouterSettingsInteraction,
     action_id: &str,
 ) -> Result<ModelRouterSettingsInteraction> {
@@ -146,7 +137,7 @@ async fn respond(
             values: json!({}),
         },
         /*jev_api_key*/ None,
-        Some(thread_id),
+        /*thread_id*/ None,
     )
     .await?;
     result.interaction.ok_or_else(|| {

@@ -189,7 +189,7 @@ impl App {
                 }
             }
             Ok(BrowserInput::RoutingTable { table }) => {
-                self.update_web_ui_routing_tables(tui, app_server, thread_id, table.as_deref())
+                self.update_web_ui_routing_tables(tui, app_server, table.as_deref())
                     .await;
             }
             Ok(BrowserInput::RefreshModels) => {
