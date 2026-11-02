@@ -12,6 +12,7 @@
   <script src="/xterm.js" defer></script>
   <script src="/updates.js" defer></script>
   <script src="/activity.js" defer></script>
+  <script src="/plugin-panels.js" defer></script>
   <script src="/host.js" defer></script>
 </head>
 <body>
@@ -50,7 +51,13 @@
         <div id="session-empty" class="empty-state" hidden>No recent sessions. Start a new session or resume one.</div>
         <section id="session-view" hidden>
           <div id="session-loading" class="loading loading-session" role="status" hidden>Loading session…</div>
-          <div id="session-frames"></div>
+          <div id="session-layout">
+            <div id="session-frames"></div>
+            <section id="plugin-panels" aria-label="Plugin panels" hidden>
+              <nav id="plugin-panel-tabs" aria-label="Open plugin panels"></nav>
+              <div id="plugin-panel-frames"></div>
+            </section>
+          </div>
         </section>
       </section>
     </section>

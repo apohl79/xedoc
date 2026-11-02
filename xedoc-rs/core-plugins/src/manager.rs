@@ -156,6 +156,7 @@ pub struct PluginReadOutcome {
 pub struct PluginDetail {
     pub id: String,
     pub name: String,
+    pub local_path: Option<AbsolutePathBuf>,
     pub local_version: Option<String>,
     pub description: Option<String>,
     pub source: MarketplacePluginSource,
@@ -900,6 +901,7 @@ impl PluginsManager {
             return Ok(PluginDetail {
                 id: plugin_key,
                 name: plugin.name,
+                local_path: None,
                 local_version: None,
                 description: Some(description),
                 source: plugin.source,
@@ -1000,6 +1002,7 @@ impl PluginsManager {
         Ok(PluginDetail {
             id: plugin.id,
             name: plugin.name,
+            local_path: Some(source_path),
             local_version: manifest.version.clone(),
             description,
             source: plugin.source,

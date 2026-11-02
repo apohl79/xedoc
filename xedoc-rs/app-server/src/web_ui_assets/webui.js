@@ -69,6 +69,9 @@
   let linkPreviewTimeout = null;
   let linkPreviewAnchor = null;
   let linkPreviewElement = null;
+  let pluginActions = [];
+  let pluginRequest = 0;
+  const pluginPending = new Map();
   const cells = new Map();
   const htmlById = new Map();
   const imageTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -720,6 +723,7 @@
           const content = window.XedocPromptMarkdown.render(prompt.textContent);
           prompt.replaceChildren(...content.childNodes);
         }
+        decorateFileReferences(fragment);
         const textWalker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT);
         const referencePattern = /\[(?:Image|Doc) #\d+\]/g;
         const webUrlPattern = /https?:\/\/[^\s<>"'`]+/gi;
@@ -1265,9 +1269,126 @@
     linkPreviewElement?.remove();
     linkPreviewElement = null;
   }
+  function actionsForLink(anchor) {
+    const target = anchor.dataset.xedocTarget ?? anchor.getAttribute("href") ?? "";
+    const destination = target.trim();
+    const sourcePath = destination.split(/[?#]/, 1)[0];
+    const withoutRange = sourcePath.replace(/:\d+(?::\d+)?(?:-\d+(?::\d+)?)?$/, "");
+    const fileRange = sourcePath !== withoutRange && pluginActions.some((action) =>
+      (action.extensions || []).some((extension) => withoutRange.toLowerCase().endsWith(extension)));
+    const scheme = /^[a-z][a-z\d+.-]*:/i.exec(fileRange ? withoutRange : destination)?.[0].slice(0, -1).toLowerCase();
+    const local = !scheme && !destination.startsWith("//") || scheme === "file"
+      || /^[a-z]:[\\/]/i.test(destination);
+    let path = destination.split(/[?#]/, 1)[0].replace(/:\d+(?::\d+)?(?:-\d+(?::\d+)?)?$/, "");
+    try { path = decodeURIComponent(path); } catch { /* Keep malformed URLs inert. */ }
+    const actions = pluginActions.filter((action) =>
+      (action.schemes || []).some((value) => value.toLowerCase().replace(/:$/, "") === scheme)
+      || local && (action.extensions || []).some((value) => path.toLowerCase().endsWith(value.toLowerCase())));
+    return { target, actions };
+  }
+  function decorateFileReferences(root) {
+    for (const anchor of root.querySelectorAll("a.plugin-file-reference")) {
+      if (!actionsForLink(anchor).actions.length) anchor.replaceWith(...anchor.childNodes);
+    }
+    if (!pluginActions.length) return;
+    for (const code of root.querySelectorAll("code:not(pre code):not(a code)")) {
+      const target = code.textContent.trim();
+      if (!target || target.includes("\n") || target.length > 4096) continue;
+      const anchor = document.createElement("a");
+      anchor.dataset.xedocTarget = target;
+      if (!actionsForLink(anchor).actions.length) continue;
+      anchor.href = "";
+      anchor.className = "plugin-file-reference";
+      code.replaceWith(anchor);
+      anchor.append(code);
+    }
+  }
+  function showLinkActions(anchor) {
+    const { target, actions } = actionsForLink(anchor);
+    if (!actions.length) return false;
+    clearLinkTargetPreview();
+    linkPreviewAnchor = anchor;
+    const preview = document.createElement("div");
+    preview.id = "link-target-preview";
+    preview.className = "link-actions";
+    preview.setAttribute("role", "group");
+    preview.setAttribute("aria-label", "Link actions");
+    const label = document.createElement("div");
+    label.textContent = target;
+    preview.append(label);
+    for (const action of actions) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = action.title;
+      button.addEventListener("click", () => {
+        const requestId = String(++pluginRequest);
+        button.disabled = true;
+        button.textContent = "Opening…";
+        const timer = setTimeout(() => {
+          pluginPending.delete(requestId);
+          button.disabled = false;
+          button.textContent = action.title;
+          showNotice("Opening the plugin panel timed out. Try again.");
+        }, 240000);
+        pluginPending.set(requestId, { button, title: action.title, timer });
+        window.parent.postMessage({
+          type: "xedoc-plugin-open", requestId, pluginId: action.pluginId,
+          panelId: action.panelId, handlerId: action.handlerId, target,
+        }, location.origin);
+      });
+      preview.append(button);
+    }
+    const href = anchor.getAttribute("href");
+    if (href) {
+      const open = document.createElement("a");
+      open.href = href;
+      open.target = "_blank";
+      open.rel = "noopener noreferrer";
+      open.textContent = "Open link";
+      preview.append(open);
+    }
+    preview.addEventListener("pointerenter", () => {
+      if (linkPreviewTimeout !== null) clearTimeout(linkPreviewTimeout);
+      linkPreviewTimeout = null;
+    });
+    preview.addEventListener("pointerleave", () => {
+      if (!preview.contains(document.activeElement)) clearLinkTargetPreview();
+    });
+    document.body.append(preview);
+    const bounds = anchor.getBoundingClientRect();
+    const { width, height } = preview.getBoundingClientRect();
+    preview.style.left = `${Math.max(8, Math.min(bounds.left, innerWidth - width - 8))}px`;
+    preview.style.top = `${Math.max(8, Math.min(bounds.bottom + 4, innerHeight - height - 8))}px`;
+    linkPreviewElement = preview;
+    return true;
+  }
+  window.addEventListener("message", (event) => {
+    if (window.parent === window || event.origin !== location.origin || event.source !== window.parent) return;
+    if (event.data?.type === "xedoc-plugin-actions") {
+      const actions = Array.isArray(event.data.actions) ? event.data.actions : [];
+      if (JSON.stringify(actions) !== JSON.stringify(pluginActions)) {
+        pluginActions = actions;
+        decorateFileReferences(history);
+      }
+    }
+    if (event.data?.type === "xedoc-plugin-result") {
+      const pending = pluginPending.get(event.data.requestId);
+      if (!pending) return;
+      clearTimeout(pending.timer);
+      pending.button.disabled = false;
+      pending.button.textContent = pending.title;
+      pluginPending.delete(event.data.requestId);
+      if (event.data.error) showNotice(event.data.error);
+      else clearLinkTargetPreview();
+    }
+  });
+  if (window.parent !== window) {
+    window.parent.postMessage({ type: "xedoc-plugin-ready" }, location.origin);
+  }
   history.addEventListener("mouseover", (event) => {
     const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
     if (!anchor || !history.contains(anchor) || anchor === linkPreviewAnchor) return;
+    if (showLinkActions(anchor)) return;
     clearLinkTargetPreview();
     linkPreviewAnchor = anchor;
     const { clientX, clientY } = event;
@@ -1277,7 +1398,7 @@
       const preview = document.createElement("div");
       preview.id = "link-target-preview";
       preview.setAttribute("role", "tooltip");
-      preview.textContent = anchor.href;
+      preview.textContent = anchor.dataset.xedocTarget ?? anchor.href;
       document.body.append(preview);
       const { width, height } = preview.getBoundingClientRect();
       const left = Math.max(8, Math.min(clientX + 12, innerWidth - width - 8));
@@ -1293,9 +1414,50 @@
   history.addEventListener("mouseout", (event) => {
     const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
     if (!anchor || event.relatedTarget instanceof Node && anchor.contains(event.relatedTarget)) return;
-    if (anchor === linkPreviewAnchor) clearLinkTargetPreview();
+    if (anchor !== linkPreviewAnchor) return;
+    if (linkPreviewElement?.classList.contains("link-actions")) {
+      if (event.relatedTarget instanceof Node && linkPreviewElement.contains(event.relatedTarget)) return;
+      linkPreviewTimeout = setTimeout(() => {
+        if (!linkPreviewElement?.contains(document.activeElement)) clearLinkTargetPreview();
+      }, 250);
+    } else clearLinkTargetPreview();
   });
-  history.addEventListener("click", clearLinkTargetPreview);
+  history.addEventListener("focusin", (event) => {
+    const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (anchor && anchor !== linkPreviewAnchor) showLinkActions(anchor);
+  });
+  history.addEventListener("click", (event) => {
+    const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (anchor && actionsForLink(anchor).actions.length
+      && (anchor.classList.contains("plugin-file-reference")
+        || window.matchMedia("(hover: none)").matches)) {
+      event.preventDefault();
+      showLinkActions(anchor);
+      linkPreviewElement?.querySelector("button")?.focus();
+    } else clearLinkTargetPreview();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (!linkPreviewElement?.classList.contains("link-actions")) return;
+    if (event.key === "Escape") {
+      const anchor = linkPreviewAnchor;
+      anchor?.focus();
+      clearLinkTargetPreview();
+      event.preventDefault();
+    } else if (event.target === linkPreviewAnchor
+      && (event.key === "ArrowDown" || event.key === "Tab" && !event.shiftKey)) {
+      linkPreviewElement.querySelector("button")?.focus();
+      event.preventDefault();
+    }
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (event.target instanceof Node && !linkPreviewElement?.contains(event.target)
+      && !linkPreviewAnchor?.contains(event.target)) clearLinkTargetPreview();
+  });
+  document.addEventListener("focusin", (event) => {
+    if (event.target instanceof Node && !linkPreviewElement?.contains(event.target)
+      && !linkPreviewAnchor?.contains(event.target)) clearLinkTargetPreview();
+  });
+  history.addEventListener("scroll", clearLinkTargetPreview);
   quoteSelection.addEventListener("pointerdown", (event) => {
     event.preventDefault();
   });

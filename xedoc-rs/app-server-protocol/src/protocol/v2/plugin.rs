@@ -391,6 +391,8 @@ pub struct PluginSummary {
 pub struct PluginDetail {
     pub marketplace_name: String,
     pub marketplace_path: Option<AbsolutePathBuf>,
+    /// Resolved plugin root on the app-server host, not the execution host.
+    pub local_path: Option<AbsolutePathBuf>,
     pub summary: PluginSummary,
     pub description: Option<String>,
     pub skills: Vec<SkillSummary>,

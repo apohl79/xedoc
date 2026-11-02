@@ -29,6 +29,17 @@
   const projectActivityRefreshAt = new Map();
   const activity = new window.XedocHostActivity();
   const updates = new window.XedocHostUpdates(api);
+  const pluginPanels = new window.XedocPluginPanels(api, () => {
+    const session = openedSessions.get(activeThread);
+    const frame = sessionFrames.get(activeThread);
+    if (!state || !session || !frame || frame.hidden
+      || byId("session-view").hidden || byId("session-workspace").hidden
+      || session.workspaceId !== selectedWorkspace || session.projectName !== selectedProject) return null;
+    return {
+      generation: accountGeneration, workspaceId: selectedWorkspace,
+      projectName: selectedProject, threadId: activeThread, frame,
+    };
+  }, run);
   let refreshingRestartState = false;
   let sidebarLocked = (() => {
     try {
@@ -285,6 +296,7 @@
     projectActivityLoaded.clear();
     projectActivityRefreshAt.clear();
     byId("session-frames").replaceChildren();
+    pluginPanels.clear();
     byId("host-view").hidden = true;
     byId("navigation").hidden = true;
     byId("login-view").hidden = false;
@@ -874,6 +886,7 @@
     sessionFrames.get(threadId)?.remove();
     sessionFrames.delete(threadId);
     openedSessions.delete(threadId);
+    pluginPanels.removeSession(threadId);
     activity.releaseLive(threadId);
     projectCache.delete(projectCacheKey(workspaceId));
     sessionCache.delete(projectSessionKey(workspaceId, projectName));

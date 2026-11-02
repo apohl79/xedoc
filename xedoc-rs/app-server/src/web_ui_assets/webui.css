@@ -221,6 +221,11 @@ a { color: #8fc4e7; }
 #menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; font-size: 13px; }
 #menu button[aria-checked="true"] { color: #c9b3eb; background: #364250; }
 #link-target-preview { position: fixed; z-index: 10000; max-width: min(720px, calc(100vw - 32px)); padding: 7px 10px; border: 1px solid #485d6b; border-radius: 7px; background: #26333d; color: #a8bac9; box-shadow: 0 8px 26px #0007; font-family: var(--mono); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; pointer-events: none; }
+#link-target-preview.link-actions { pointer-events: auto; display: flex; flex-wrap: wrap; gap: 6px; max-width: min(480px, calc(100vw - 16px)); }
+.link-actions > div { flex-basis: 100%; }
+.link-actions button, .link-actions a { padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-main); color: var(--accent); font: inherit; cursor: pointer; text-decoration: none; }
+.link-actions button:focus-visible, .link-actions a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.link-actions button:disabled { opacity: .65; cursor: wait; }
 #quote-selection { position: fixed; z-index: 11; padding: 6px 12px; border: 1px solid #485d6b; border-radius: 6px; background: #26333d; box-shadow: 0 4px 16px #0005; font-size: 13px; }
 .menu-empty { padding: 10px; color: #8499a8; font-size: 13px; }
 #notice { position: fixed; bottom: 16px; right: 16px; left: 16px; padding: 10px 14px; color: #edb2a8; background: #293039; border: 1px solid #9d6b65; border-radius: 6px; white-space: pre-wrap; z-index: 20; }

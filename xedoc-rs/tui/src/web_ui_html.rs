@@ -418,6 +418,8 @@ fn markdown_html(source: &str) -> String {
                             "<a target=\"_blank\" rel=\"noopener noreferrer\" href=\"",
                         );
                         escape_html(&mut open, if safe { &dest_url } else { "" });
+                        open.push_str("\" data-xedoc-target=\"");
+                        escape_html(&mut open, &dest_url);
                         open.push_str("\">");
                         (open, "</a>")
                     }

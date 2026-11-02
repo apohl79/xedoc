@@ -6,4 +6,8 @@ import type { PluginHookSummary } from "./PluginHookSummary";
 import type { PluginSummary } from "./PluginSummary";
 import type { SkillSummary } from "./SkillSummary";
 
-export type PluginDetail = { marketplaceName: string, marketplacePath: AbsolutePathBuf | null, summary: PluginSummary, description: string | null, skills: Array<SkillSummary>, hooks: Array<PluginHookSummary>, mcpServers: Array<string>, };
+export type PluginDetail = { marketplaceName: string, marketplacePath: AbsolutePathBuf | null,
+/**
+ * Resolved plugin root on the app-server host, not the execution host.
+ */
+localPath: AbsolutePathBuf | null, summary: PluginSummary, description: string | null, skills: Array<SkillSummary>, hooks: Array<PluginHookSummary>, mcpServers: Array<string>, };

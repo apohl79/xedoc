@@ -376,6 +376,7 @@ impl PluginRequestProcessor {
         let plugin = PluginDetail {
             marketplace_name: outcome.marketplace_name,
             marketplace_path: outcome.marketplace_path,
+            local_path: outcome.plugin.local_path,
             summary: PluginSummary {
                 id: outcome.plugin.id,
                 local_version: outcome.plugin.local_version,

@@ -30,6 +30,8 @@ from .host_gui_config import HostGuiConfig
 from .host_workspace import HostWorkspaces
 from .host_outside_projects import OTHER_WORKSPACE, outside_directory, session_inventory
 from .host_session_gui import HostSessionGuis, proxy_session_gui
+from .host_plugin_panels import HostPluginPanels
+from .host_panel_transport import PanelBroker, proxy_plugin_panel
 from .host_updates import HostUpdates
 from .work_admission import WorkAdmissionGate
 
@@ -65,9 +67,11 @@ class HostServer(ThreadingHTTPServer):
             work_admission=work_admission,
         )
         self.session_guis = HostSessionGuis(home, self.workspaces._bootstrap_path)
+        self.plugin_panels = HostPluginPanels(home, self.workspaces, self.auth)
         self.slots = threading.BoundedSemaphore(48)
         self.tls_context = None
         super().__init__(address, HostHandler)
+        self.panel_broker = PanelBroker(self.plugin_panels)
         self.ca_discovery: HostCADiscovery | None = None
         self.host_discovery: HostGuiDiscovery | None = None
         tls_config = HostGuiConfig.load(home)
@@ -110,6 +114,8 @@ class HostServer(ThreadingHTTPServer):
             self.ca_discovery.stop()
             self.ca_discovery = None
         self.session_guis.close()
+        self.plugin_panels.close()
+        self.panel_broker.close()
         super().server_close()
 
     def process_request(self, request, client_address):
@@ -212,6 +218,12 @@ class HostHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         self.dispatch()
 
+    do_PUT = do_POST
+    do_PATCH = do_POST
+    do_DELETE = do_POST
+    do_OPTIONS = do_POST
+    do_HEAD = do_GET
+
     def reply(
         self,
         status,
@@ -266,6 +278,12 @@ class HostHandler(BaseHTTPRequestHandler):
                 return
             parsed = urlsplit(self.path)
             path = parsed.path
+            if path.startswith("/plugin-ui/"):
+                proxy_plugin_panel(self, self.server.plugin_panels, path, parsed.query)
+                return
+            if self.command not in ("GET", "POST"):
+                self.reply(405, {"error": "Method not allowed"})
+                return
             body = {}
             if self.command == "POST":
                 if self.headers.get("Origin") != self.server.origin_for_authority(
@@ -287,6 +305,7 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/host.js",
                 "/activity.js",
                 "/updates.js",
+                "/plugin-panels.js",
                 "/xterm.js",
                 "/xterm.css",
                 "/host.css",
@@ -299,6 +318,7 @@ class HostHandler(BaseHTTPRequestHandler):
                     "/host.js": "host.js",
                     "/activity.js": "activity.js",
                     "/updates.js": "updates.js",
+                    "/plugin-panels.js": "plugin-panels.js",
                     "/xterm.js": "xterm.js",
                     "/xterm.css": "xterm.css",
                     "/host.css": "host.css",
@@ -311,6 +331,7 @@ class HostHandler(BaseHTTPRequestHandler):
                     "/host.js": "text/javascript",
                     "/activity.js": "text/javascript",
                     "/updates.js": "text/javascript",
+                    "/plugin-panels.js": "text/javascript",
                     "/xterm.js": "text/javascript",
                     "/xterm.css": "text/css",
                     "/host.css": "text/css",
@@ -425,6 +446,7 @@ class HostHandler(BaseHTTPRequestHandler):
             if self.command == "POST" and path == "/api/logout":
                 self.server.auth.logout(token)
                 self.server.session_guis.close(account["username"])
+                self.server.plugin_panels.close(account["username"])
                 self.reply(200, {"ok": True}, cookie="")
                 return
             if self.command == "GET" and path == "/api/state":
@@ -488,6 +510,9 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/api/session/close",
                 "/api/session/turn",
                 "/api/session/gui",
+                "/api/plugin/panels",
+                "/api/plugin/open",
+                "/api/plugin/close",
             ):
                 if not admin and (
                     workspace_id == OTHER_WORKSPACE
@@ -500,6 +525,30 @@ class HostHandler(BaseHTTPRequestHandler):
                     if self.command == "POST"
                     else parse_qs(parsed.query).get("projectName", [""])[0]
                 )
+                if path.startswith("/api/plugin/"):
+                    params = body if self.command == "POST" else {
+                        key: values[0] for key, values in parse_qs(parsed.query).items()
+                    }
+                    thread_id = params.get("threadId")
+                    panels = self.server.plugin_panels
+                    if self.command == "GET" and path == "/api/plugin/panels":
+                        self.reply(200, panels.snapshot(
+                            account, workspace_id, project_name, thread_id
+                        ))
+                    elif self.command == "POST" and path == "/api/plugin/open":
+                        self.reply(200, panels.open(
+                            account, workspace_id, project_name, thread_id,
+                            body.get("pluginId"), body.get("panelId"), body.get("target"),
+                            body.get("handlerId"),
+                        ))
+                    elif self.command == "POST" and path == "/api/plugin/close":
+                        panels.close_panel(
+                            account, workspace_id, project_name, thread_id, body.get("panelId")
+                        )
+                        self.reply(200, {"ok": True})
+                    else:
+                        self.reply(405, {"error": "Method not allowed"})
+                    return
                 if self.command == "POST" and path == "/api/session/gui":
                     thread_id = body.get("threadId")
                     with service._lock:
@@ -508,17 +557,18 @@ class HostHandler(BaseHTTPRequestHandler):
                         result = service._request(
                             "thread/webUi/open", {"threadId": thread_id}
                         )
-                    self.reply(
-                        200,
-                        self.server.session_guis.open(
-                            account["username"],
-                            workspace_id,
-                            project_name,
-                            thread_id,
-                            project,
-                            result["url"],
-                        ),
+                    gui = self.server.session_guis.open(
+                        account["username"],
+                        workspace_id,
+                        project_name,
+                        thread_id,
+                        project,
+                        result["url"],
                     )
+                    self.server.plugin_panels.attach(
+                        account, token, workspace_id, project_name, thread_id, project
+                    )
+                    self.reply(200, gui)
                     return
                 if self.command == "GET" and path == "/api/project/sessions":
                     include_history = (
@@ -574,6 +624,9 @@ class HostHandler(BaseHTTPRequestHandler):
                         body.get("threadId"),
                     )
                     self.server.session_guis.close(
+                        account["username"], body.get("threadId")
+                    )
+                    self.server.plugin_panels.close(
                         account["username"], body.get("threadId")
                     )
                     self.reply(200, {"ok": True})
@@ -695,6 +748,7 @@ class HostHandler(BaseHTTPRequestHandler):
             elif self.command == "POST" and path == "/api/workspace/remove":
                 service.remove(workspace_id)
                 self.server.session_guis.close(workspace_id=workspace_id)
+                self.server.plugin_panels.close(workspace_id=workspace_id)
             elif self.command == "POST" and path == "/api/user/save":
                 assignments = body.get("workspaces", [])
                 known = {

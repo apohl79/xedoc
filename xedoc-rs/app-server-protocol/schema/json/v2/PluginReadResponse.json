@@ -42,6 +42,17 @@
           },
           "type": "array"
         },
+        "localPath": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AbsolutePathBuf"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Resolved plugin root on the app-server host, not the execution host."
+        },
         "marketplaceName": {
           "type": "string"
         },
