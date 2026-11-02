@@ -3,6 +3,44 @@
 (() => {
   const history = document.getElementById("history");
   const active = document.getElementById("active");
+  const imageViewer = document.createElement("dialog");
+  imageViewer.className = "image-viewer";
+  imageViewer.setAttribute("aria-label", "Image viewer");
+  const imageViewerClose = document.createElement("button");
+  imageViewerClose.className = "image-viewer-close";
+  imageViewerClose.type = "button";
+  imageViewerClose.setAttribute("aria-label", "Close image");
+  imageViewerClose.title = "Close image";
+  imageViewerClose.textContent = "×";
+  const imageViewerImage = document.createElement("img");
+  const imageViewerCaption = document.createElement("figcaption");
+  const imageViewerFigure = document.createElement("figure");
+  imageViewerFigure.append(imageViewerImage, imageViewerCaption);
+  imageViewer.append(imageViewerClose, imageViewerFigure);
+  document.body.append(imageViewer);
+  let imageViewerTrigger = null;
+  history.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const trigger = event.target.closest(".history-image-trigger");
+    const image = trigger?.querySelector("img");
+    if (!trigger || !image) return;
+    imageViewerImage.src = image.src;
+    imageViewerImage.alt = image.alt;
+    imageViewerCaption.textContent = trigger.nextElementSibling?.textContent || "";
+    imageViewerTrigger = trigger;
+    imageViewer.showModal();
+    imageViewerClose.focus({ preventScroll: true });
+  });
+  imageViewerClose.addEventListener("click", () => imageViewer.close());
+  imageViewer.addEventListener("click", (event) => {
+    if (event.target === imageViewer) imageViewer.close();
+  });
+  imageViewer.addEventListener("close", () => {
+    imageViewerImage.removeAttribute("src");
+    imageViewerTrigger?.isConnected
+      && imageViewerTrigger.focus({ preventScroll: true });
+    imageViewerTrigger = null;
+  });
   const favicon = document.getElementById("favicon");
   const staticFavicon = favicon.href;
   const faviconCanvas = document.createElement("canvas");

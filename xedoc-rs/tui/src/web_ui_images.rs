@@ -6,14 +6,22 @@ use base64::Engine;
 
 pub(crate) fn image_html(source: &str) -> String {
     match preview(source) {
-        Some(data_url) => format!(
-            "<figure class=\"history-image\"><img src=\"{data_url}\" alt=\"Image output\" loading=\"lazy\"></figure>"
+        Some(preview) => format!(
+            "<figure class=\"history-image\"><button class=\"history-image-trigger\" type=\"button\" aria-label=\"View image at full size\"><img src=\"{}\" alt=\"Generated image\" loading=\"lazy\"></button><figcaption>{} × {} · {}</figcaption></figure>",
+            preview.data_url, preview.width, preview.height, preview.format
         ),
         None => "<div class=\"history-tool\">Image preview unavailable</div>".to_string(),
     }
 }
 
-fn preview(source: &str) -> Option<String> {
+struct ImagePreview {
+    data_url: String,
+    width: u32,
+    height: u32,
+    format: &'static str,
+}
+
+fn preview(source: &str) -> Option<ImagePreview> {
     if source.len() > 12 * 1024 * 1024 {
         return None;
     }
@@ -41,21 +49,20 @@ fn preview(source: &str) -> Option<String> {
     let mut reader = image::ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .ok()?;
-    if !matches!(
-        reader.format()?,
-        image::ImageFormat::Png
-            | image::ImageFormat::Jpeg
-            | image::ImageFormat::Gif
-            | image::ImageFormat::WebP
-    ) {
-        return None;
-    }
+    let format = match reader.format()? {
+        image::ImageFormat::Png => "PNG",
+        image::ImageFormat::Jpeg => "JPEG",
+        image::ImageFormat::Gif => "GIF",
+        image::ImageFormat::WebP => "WebP",
+        _ => return None,
+    };
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(8192);
     limits.max_image_height = Some(8192);
     limits.max_alloc = Some(64 * 1024 * 1024);
     reader.limits(limits);
     let image = reader.decode().ok()?;
+    let (width, height) = (image.width(), image.height());
     for size in [1024, 512, 256, 128] {
         let mut output = Cursor::new(Vec::new());
         image
@@ -64,10 +71,15 @@ fn preview(source: &str) -> Option<String> {
             .ok()?;
         let bytes = output.into_inner();
         if bytes.len() <= 256 * 1024 {
-            return Some(format!(
-                "data:image/png;base64,{}",
-                base64::engine::general_purpose::STANDARD.encode(bytes)
-            ));
+            return Some(ImagePreview {
+                data_url: format!(
+                    "data:image/png;base64,{}",
+                    base64::engine::general_purpose::STANDARD.encode(bytes)
+                ),
+                width,
+                height,
+                format,
+            });
         }
     }
     None

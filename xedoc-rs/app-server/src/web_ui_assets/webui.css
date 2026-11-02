@@ -34,8 +34,17 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #history { flex: 1; min-height: 0; overflow: auto; overflow-x: hidden; }
 #earlier { align-self: center; padding: 4px 12px; color: #8195a5; }
 .history-cell { margin: 0 0 22px; overflow-wrap: anywhere; min-width: 0; }
-.history-image { margin: 12px 0; }
-.history-image img { display: block; max-width: 100%; max-height: 640px; width: auto; height: auto; object-fit: contain; border-radius: 6px; }
+.history-image { max-width: calc(100% - 26px); margin: 12px 0 12px 26px; }
+.history-image-trigger { display: block; max-width: 100%; padding: 0; background: transparent; }
+.history-image-trigger:hover:not(:disabled) { background: transparent; }
+.history-image-trigger img { display: block; max-width: 100%; max-height: 640px; width: auto; height: auto; object-fit: contain; border-radius: 6px; cursor: zoom-in; }
+.history-image figcaption { margin-top: 6px; color: #75838e; font-size: .78rem; line-height: 1.3; }
+.image-viewer { position: relative; width: fit-content; max-width: 96vw; max-height: 96dvh; margin: auto; padding: 48px 16px 12px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-main); color: inherit; }
+.image-viewer::backdrop { background: #090d11ed; }
+.image-viewer figure { margin: 0; }
+.image-viewer img { display: block; max-width: calc(96vw - 32px); max-height: calc(92dvh - 56px); width: auto; height: auto; object-fit: contain; margin: 0 auto; border-radius: 4px; }
+.image-viewer figcaption { margin-top: 8px; color: #8795a0; font-size: .82rem; text-align: center; }
+.image-viewer-close { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; font-size: 22px; line-height: 1; }
 .history-cell p { margin: .8em 0; white-space: pre-wrap; }
 .image-anchor { color: #00a8b5; font-family: var(--mono); }
 .history-markdown { padding: 0 8px 0 26px; }
