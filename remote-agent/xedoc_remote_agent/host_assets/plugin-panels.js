@@ -10,9 +10,44 @@ window.XedocPluginPanels = class {
     this.actions = [];
     this.key = null;
     this.refreshing = new Set();
+    this.opening = new Map();
+    this.browserPanels = new Map();
     this.container = document.getElementById("plugin-panels");
     this.tabs = document.getElementById("plugin-panel-tabs");
     this.frames = document.getElementById("plugin-panel-frames");
+    this.divider = document.getElementById("plugin-panel-divider");
+    const layout = document.getElementById("session-layout");
+    const resize = (percentage) => {
+      const width = Math.min(80, Math.max(20, percentage));
+      layout.style.setProperty("--plugin-panel-width", `${width}%`);
+      this.divider.setAttribute("aria-valuenow", String(Math.round(width)));
+    };
+    this.divider.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      this.divider.setPointerCapture(event.pointerId);
+      layout.classList.add("panel-resizing");
+    });
+    this.divider.addEventListener("pointermove", (event) => {
+      if (!this.divider.hasPointerCapture(event.pointerId)) return;
+      const bounds = layout.getBoundingClientRect();
+      resize((bounds.right - event.clientX) / bounds.width * 100);
+    });
+    this.divider.addEventListener("pointerup", (event) => {
+      if (this.divider.hasPointerCapture(event.pointerId)) {
+        this.divider.releasePointerCapture(event.pointerId);
+      }
+    });
+    this.divider.addEventListener("lostpointercapture", () => {
+      layout.classList.remove("panel-resizing");
+    });
+    this.divider.addEventListener("keydown", (event) => {
+      const width = Number(this.divider.getAttribute("aria-valuenow"));
+      const next = { ArrowLeft: width + 5, ArrowRight: width - 5, Home: 20, End: 80 }[event.key];
+      if (next === undefined) return;
+      event.preventDefault();
+      resize(next);
+    });
     new MutationObserver(() => this.sync()).observe(document.getElementById("host-view"), {
       subtree: true, attributes: true, attributeFilter: ["hidden"],
     });
@@ -61,14 +96,17 @@ window.XedocPluginPanels = class {
   async refresh() {
     const current = this.context();
     const key = this.contextKey(current);
-    if (!key || this.refreshing.has(key)) return;
+    if (!key || this.refreshing.has(key) || [...this.opening.values()].includes(key)) return;
     this.refreshing.add(key);
     try {
       const result = await this.api(`plugin/panels?${new URLSearchParams(this.params(current))}`);
-      if (key !== this.contextKey(this.context())) return;
+      if (key !== this.contextKey(this.context()) || [...this.opening.values()].includes(key)) return;
       this.actions = Array.isArray(result.actions) ? result.actions : [];
       const panels = Array.isArray(result.panels) ? result.panels : [];
       const ids = new Set(panels.map((panel) => panel.panelId));
+      for (const [id, owner] of this.browserPanels) {
+        if (owner === key && !ids.has(id)) this.browserPanels.delete(id);
+      }
       let changed = false;
       for (const [id, entry] of this.entries) {
         if (entry.key === key && !ids.has(id)) {
@@ -77,7 +115,9 @@ window.XedocPluginPanels = class {
           changed = true;
         }
       }
-      for (const panel of panels) changed = this.add(panel, key) || changed;
+      for (const panel of panels) {
+        if (!this.browserPanels.has(panel.panelId)) changed = this.add(panel, key) || changed;
+      }
       if (changed) this.render();
       this.publish(current);
     } catch {
@@ -115,35 +155,47 @@ window.XedocPluginPanels = class {
     this.tabs.replaceChildren();
     for (const entry of visible) {
       const tab = document.createElement("div");
-      tab.className = "plugin-panel-tab";
-      const select = document.createElement("button");
-      select.type = "button";
+      tab.className = "session-tab plugin-panel-tab";
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-selected", String(entry.panelId === selected));
+      tab.tabIndex = 0;
+      const select = document.createElement("span");
       select.textContent = entry.title || "Plugin panel";
       select.title = entry.target || select.textContent;
-      select.setAttribute("aria-pressed", String(entry.panelId === selected));
-      select.addEventListener("click", () => {
+      const activate = () => {
         this.selected.set(this.key, entry.panelId);
         this.render();
-        this.tabs.querySelector('[aria-pressed="true"]')?.focus();
+        this.tabs.querySelector('[aria-selected="true"]')?.focus();
+      };
+      tab.addEventListener("click", activate);
+      tab.addEventListener("keydown", (event) => {
+        if (event.target === tab && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          activate();
+        }
       });
       const close = document.createElement("button");
       close.type = "button";
+      close.className = "close-tab";
       close.textContent = "×";
       close.setAttribute("aria-label", `Close ${entry.title || "plugin panel"}`);
-      close.addEventListener("click", () => this.run(async () => {
-        const current = this.context();
-        if (this.contextKey(current) !== entry.key) return;
-        close.disabled = true;
-        try {
-          await this.api("plugin/close", { ...this.params(current), panelId: entry.panelId });
-          entry.frame.remove();
-          this.entries.delete(entry.panelId);
-          this.render();
-          this.tabs.querySelector("button")?.focus();
-        } finally {
-          close.disabled = false;
-        }
-      }));
+      close.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.run(async () => {
+          const current = this.context();
+          if (this.contextKey(current) !== entry.key) return;
+          close.disabled = true;
+          try {
+            await this.api("plugin/close", { ...this.params(current), panelId: entry.panelId });
+            entry.frame.remove();
+            this.entries.delete(entry.panelId);
+            this.render();
+            this.tabs.querySelector('[role="tab"]')?.focus();
+          } finally {
+            close.disabled = false;
+          }
+        });
+      });
       const browser = document.createElement("a");
       browser.href = entry.url;
       browser.target = "_blank";
@@ -151,10 +203,12 @@ window.XedocPluginPanels = class {
       browser.className = "plugin-panel-open";
       browser.textContent = "↗";
       browser.setAttribute("aria-label", `Open ${entry.title || "plugin panel"} in browser`);
+      browser.addEventListener("click", (event) => event.stopPropagation());
       tab.append(select, browser, close);
       this.tabs.append(tab);
     }
     this.container.hidden = !visible.length;
+    this.divider.hidden = !visible.length;
   }
 
   async open(current, data) {
@@ -162,28 +216,40 @@ window.XedocPluginPanels = class {
       && item.panelId === data.panelId && item.handlerId === data.handlerId);
     if (!action || typeof data.target !== "string") return;
     const key = this.contextKey(current);
+    const launch = JSON.stringify([key, action.pluginId, action.panelId, action.handlerId, data.target]);
+    if (this.opening.has(launch)) return;
+    if (data.destination !== undefined && !["xedoc", "browser"].includes(data.destination)) return;
+    this.opening.set(launch, key);
     try {
       const panel = await this.api("plugin/open", {
         ...this.params(current), pluginId: action.pluginId, panelId: action.panelId,
         handlerId: action.handlerId, target: data.target,
       });
-      if (key !== this.contextKey(this.context())) return;
-      this.add(panel, key);
-      this.selected.set(key, panel.panelId);
-      this.render();
+      if (data.destination === "browser") {
+        if (!this.entries.has(panel.panelId)) this.browserPanels.set(panel.panelId, key);
+      } else {
+        this.browserPanels.delete(panel.panelId);
+        this.add(panel, key);
+        this.selected.set(key, panel.panelId);
+        this.render();
+      }
       current.frame.contentWindow.postMessage({
-        type: "xedoc-plugin-result", requestId: data.requestId,
+        type: "xedoc-plugin-result", requestId: data.requestId, url: panel.url,
       }, location.origin);
     } catch (error) {
-      if (key !== this.contextKey(this.context())) return;
       current.frame.contentWindow.postMessage({
         type: "xedoc-plugin-result", requestId: data.requestId, error: error.message,
       }, location.origin);
       throw error;
+    } finally {
+      this.opening.delete(launch);
     }
   }
 
   removeSession(threadId) {
+    for (const [id, key] of this.browserPanels) {
+      if (JSON.parse(key)[3] === threadId) this.browserPanels.delete(id);
+    }
     for (const [id, entry] of this.entries) {
       if (JSON.parse(entry.key)[3] !== threadId) continue;
       entry.frame.remove();
@@ -196,6 +262,7 @@ window.XedocPluginPanels = class {
   clear() {
     this.entries.clear();
     this.selected.clear();
+    this.browserPanels.clear();
     this.frames.replaceChildren();
     this.key = null;
     this.actions = [];

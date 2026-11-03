@@ -310,13 +310,15 @@ aside button.project {
 #session-view { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
 #session-layout { display: flex; flex: 1; min-width: 0; min-height: 0; }
 #session-frames { display: flex; flex: 1; min-width: 0; min-height: 0; }
-#plugin-panels { display: flex; flex: 1; flex-direction: column; width: 50%; min-width: 0; border-left: 1px solid var(--border); background: var(--canvas); }
-#plugin-panel-tabs { display: flex; flex: none; gap: 3px; margin: 0; padding: 5px; overflow-x: auto; background: var(--tabbar); }
-.plugin-panel-tab { display: flex; min-width: 0; flex: none; }
-.plugin-panel-tab button:first-child { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.plugin-panel-tab button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
-.plugin-panel-tab button:last-child { color: var(--muted); }
-.plugin-panel-open { display: grid; place-items: center; padding: 0 8px; text-decoration: none; }
+#plugin-panels { display: flex; flex: 0 0 var(--plugin-panel-width, 50%); flex-direction: column; min-width: 0; background: var(--canvas); }
+#plugin-panel-divider { flex: 0 0 5px; background: var(--tabbar); border-inline: 1px solid #000; cursor: col-resize; touch-action: none; }
+#plugin-panel-divider:hover, #plugin-panel-divider:focus-visible, .panel-resizing #plugin-panel-divider { background: var(--accent); }
+#plugin-panel-divider:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.panel-resizing, .panel-resizing * { cursor: col-resize !important; user-select: none !important; }
+#plugin-panel-tabs { flex: none; align-self: stretch; margin: 0; padding: 0 4px; }
+.plugin-panel-tab { min-width: 0; }
+.plugin-panel-open { display: grid; place-items: center; color: var(--muted); text-decoration: none; }
+.plugin-panel-open:hover { color: var(--text); }
 #plugin-panel-frames { display: flex; flex: 1; min-height: 0; }
 .plugin-panel-frame { width: 100%; height: 100%; border: 0; background: var(--canvas); }
 .session-frame { display: block; width: 100%; height: 100%; flex: 1; border: 0; background: var(--canvas); }
@@ -396,7 +398,8 @@ dialog fieldset { border-color: var(--border); }
 }
 @media (max-width: 700px) {
   #session-layout { flex-direction: column; }
-  #plugin-panels { width: 100%; border-left: 0; border-top: 1px solid var(--border); }
+  #plugin-panels { flex: 1; width: 100%; border-top: 1px solid var(--border); }
+  #plugin-panel-divider { display: none; }
   .tab-strip #project-title { display: none; }
   .session-tab { max-width: 200px; }
   #resume-sessions button { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }

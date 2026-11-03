@@ -1319,6 +1319,11 @@
       anchor.append(code);
     }
   }
+  function refreshLinkActionButtons() {
+    for (const button of linkPreviewElement?.querySelectorAll("button[data-plugin-key]") || []) {
+      button.disabled = [...pluginPending.values()].some((pending) => pending.key === button.dataset.pluginKey);
+    }
+  }
   function showLinkActions(anchor) {
     const { target, actions } = actionsForLink(anchor);
     if (!actions.length) return false;
@@ -1327,41 +1332,40 @@
     const preview = document.createElement("div");
     preview.id = "link-target-preview";
     preview.className = "link-actions";
-    preview.setAttribute("role", "group");
+    preview.setAttribute("role", "menu");
     preview.setAttribute("aria-label", "Link actions");
-    const label = document.createElement("div");
-    label.textContent = target;
-    preview.append(label);
     for (const action of actions) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = action.title;
-      button.addEventListener("click", () => {
-        const requestId = String(++pluginRequest);
-        button.disabled = true;
-        button.textContent = "Opening…";
-        const timer = setTimeout(() => {
-          pluginPending.delete(requestId);
-          button.disabled = false;
-          button.textContent = action.title;
-          showNotice("Opening the plugin panel timed out. Try again.");
-        }, 240000);
-        pluginPending.set(requestId, { button, title: action.title, timer });
-        window.parent.postMessage({
-          type: "xedoc-plugin-open", requestId, pluginId: action.pluginId,
-          panelId: action.panelId, handlerId: action.handlerId, target,
-        }, location.origin);
-      });
-      preview.append(button);
-    }
-    const href = anchor.getAttribute("href");
-    if (href) {
-      const open = document.createElement("a");
-      open.href = href;
-      open.target = "_blank";
-      open.rel = "noopener noreferrer";
-      open.textContent = "Open link";
-      preview.append(open);
+      const key = JSON.stringify([action.pluginId, action.panelId, action.handlerId, target]);
+      for (const [destination, title] of [["xedoc", "Open in xedoc"], ["browser", "Open in browser"]]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = title;
+        button.dataset.pluginKey = key;
+        button.setAttribute("role", "menuitem");
+        button.addEventListener("click", () => {
+          if ([...pluginPending.values()].some((pending) => pending.key === key)) return;
+          const browser = destination === "browser" ? window.open("about:blank", "_blank") : null;
+          if (destination === "browser" && !browser) {
+            showNotice("Allow popups to open the discussion in a browser tab.");
+            return;
+          }
+          if (browser) browser.opener = null;
+          const requestId = String(++pluginRequest);
+          const timer = setTimeout(() => {
+            pluginPending.delete(requestId);
+            browser?.close();
+            refreshLinkActionButtons();
+            showNotice("Opening the plugin panel timed out. Try again.");
+          }, 240000);
+          pluginPending.set(requestId, { key, browser, timer });
+          refreshLinkActionButtons();
+          window.parent.postMessage({
+            type: "xedoc-plugin-open", requestId, pluginId: action.pluginId,
+            panelId: action.panelId, handlerId: action.handlerId, target, destination,
+          }, location.origin);
+        });
+        preview.append(button);
+      }
     }
     preview.addEventListener("pointerenter", () => {
       if (linkPreviewTimeout !== null) clearTimeout(linkPreviewTimeout);
@@ -1376,6 +1380,7 @@
     preview.style.left = `${Math.max(8, Math.min(bounds.left, innerWidth - width - 8))}px`;
     preview.style.top = `${Math.max(8, Math.min(bounds.bottom + 4, innerHeight - height - 8))}px`;
     linkPreviewElement = preview;
+    refreshLinkActionButtons();
     return true;
   }
   window.addEventListener("message", (event) => {
@@ -1391,11 +1396,21 @@
       const pending = pluginPending.get(event.data.requestId);
       if (!pending) return;
       clearTimeout(pending.timer);
-      pending.button.disabled = false;
-      pending.button.textContent = pending.title;
       pluginPending.delete(event.data.requestId);
-      if (event.data.error) showNotice(event.data.error);
-      else clearLinkTargetPreview();
+      refreshLinkActionButtons();
+      if (event.data.error) {
+        pending.browser?.close();
+        showNotice(event.data.error);
+      } else if (pending.browser) {
+        const url = event.data.url;
+        if (typeof url === "string" && url.startsWith("/plugin-ui/") && !url.includes("\\")) {
+          if (!pending.browser.closed) pending.browser.location.replace(new URL(url, location.origin).href);
+          clearLinkTargetPreview();
+        } else {
+          pending.browser.close();
+          showNotice("The plugin returned an invalid browser address.");
+        }
+      } else clearLinkTargetPreview();
     }
   });
   if (window.parent !== window) {
@@ -1458,6 +1473,11 @@
       const anchor = linkPreviewAnchor;
       anchor?.focus();
       clearLinkTargetPreview();
+      event.preventDefault();
+    } else if (linkPreviewElement.contains(event.target) && ["ArrowDown", "ArrowUp"].includes(event.key)) {
+      const items = [...linkPreviewElement.querySelectorAll("button:not(:disabled)")];
+      const index = items.indexOf(document.activeElement);
+      items[(index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
       event.preventDefault();
     } else if (event.target === linkPreviewAnchor
       && (event.key === "ArrowDown" || event.key === "Tab" && !event.shiftKey)) {

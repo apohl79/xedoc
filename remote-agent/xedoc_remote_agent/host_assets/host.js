@@ -820,7 +820,7 @@
       byId("session-view").hidden = false;
       byId("session-loading").hidden = true;
       sessionFrames.forEach((frame) => { frame.hidden = frame !== cachedFrame; });
-      document.querySelectorAll(".session-tab").forEach((tab) => {
+      document.querySelectorAll("#sessions .session-tab").forEach((tab) => {
         tab.setAttribute("aria-selected", String(tab.dataset.threadId === threadId));
       });
       markActiveSessionVisited();
@@ -851,7 +851,7 @@
         tab.scrollIntoView({ block: "nearest", inline: "end" });
       }
       byId("session-empty").hidden = true;
-      document.querySelectorAll(".session-tab").forEach((tab) => {
+      document.querySelectorAll("#sessions .session-tab").forEach((tab) => {
         tab.setAttribute("aria-selected", String(tab.dataset.threadId === threadId));
       });
       const result = await api("session/gui", { workspaceId, projectName, threadId });
