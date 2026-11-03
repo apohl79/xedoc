@@ -24,13 +24,14 @@ struct HostWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> MobileWebView {
         let configuration = WKWebViewConfiguration()
+        configuration.userContentController.add(context.coordinator, name: "xedocNotifications")
         do {
-            for name in ["Mobile", "TUIControls"] {
+            for name in ["Mobile", "TUIControls", "Notifications"] {
                 guard let scriptURL = Bundle.main.url(forResource: name, withExtension: "js")
                 else { throw CocoaError(.fileNoSuchFile) }
                 let script = try String(contentsOf: scriptURL, encoding: .utf8)
                 configuration.userContentController.addUserScript(WKUserScript(
-                    source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: false
+                    source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: name == "Notifications"
                 ))
             }
         } catch {
@@ -54,13 +55,26 @@ struct HostWebView: UIViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    static func dismantleUIView(_ view: MobileWebView, coordinator: Coordinator) {
+        view.configuration.userContentController.removeScriptMessageHandler(forName: "xedocNotifications")
+    }
+
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         var parent: HostWebView
         var reload: Int
 
         init(_ parent: HostWebView) {
             self.parent = parent
             reload = parent.reload
+        }
+
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.frameInfo.isMainFrame,
+                  let source = message.frameInfo.request.url,
+                  source.scheme == parent.url.scheme, source.host == parent.url.host,
+                  (source.port ?? 443) == (parent.url.port ?? 443)
+            else { return }
+            MobileNotifications.shared.receive(message.body, host: parent.url)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

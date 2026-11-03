@@ -95,6 +95,7 @@ private struct HostScreen: View {
 
     var body: some View {
         HostWebView(url: host.url, reload: reload, error: $error)
+            .task { await MobileNotifications.shared.requestPermission() }
             .overlay {
                 if let error {
                     VStack(spacing: 16) {

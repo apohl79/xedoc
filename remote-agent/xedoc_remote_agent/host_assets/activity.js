@@ -48,6 +48,15 @@ window.XedocHostActivity = class {
       needsInput,
     };
     this.sessions.set(session.threadId, next);
+    if (this.account && previous) {
+      const kind = needsInput && !previous.needsInput ? "inputNeeded"
+        : !active && previous.active ? "turnFinished" : null;
+      if (kind) {
+        window.dispatchEvent(new CustomEvent("xedoc-activity-notification", {
+          detail: { kind, threadId: session.threadId, projectName },
+        }));
+      }
+    }
     if (saved?.updatedAt !== updatedAt || saved?.completed !== completed) {
       this.saved[session.threadId] = { updatedAt, completed };
       this.persist();

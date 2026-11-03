@@ -19,6 +19,18 @@ and swipe left to hide the portrait overlay.
 TUI dialogs show arrow, Enter, Escape, and keyboard buttons. Use the keyboard
 button to enter text into a TUI menu.
 
+## Notifications
+
+Connecting to a host requests notification permission. Allow it to receive
+alerts when an observed turn finishes or starts waiting for input or approval.
+Alerts include the host and project name, not conversation content. Change
+permission later in iOS Settings → Notifications → Xedoc.
+
+These are connected-app alerts, not APNs push notifications. They work in the
+foreground and while the app can still process host events in the background.
+iOS suspension, disconnection, or closing the app stops new alerts. Opening a
+session does not generate alerts for its existing state.
+
 ## Signing and host trust
 
 Automatic signing defaults to the repository owner's team. Override
