@@ -8,7 +8,7 @@ struct XedocApp: App {
         WindowGroup {
             NavigationStack {
                 if let host = selectedHost {
-                    HostScreen(host: host) { selectedHost = nil }
+                    HostScreen(host: host)
                 } else {
                     HostSelector { selectedHost = $0 }
                 }
@@ -89,7 +89,6 @@ private struct HostSelector: View {
 
 private struct HostScreen: View {
     let host: DiscoveredHost
-    let showHosts: () -> Void
     @State private var reload = 0
     @State private var error: HostLoadError?
     @State private var showCertificateSetup = false
@@ -114,7 +113,6 @@ private struct HostScreen: View {
                     .background(.background)
                 }
             }
-            .navigationTitle(host.hostname)
             .sheet(isPresented: $showCertificateSetup) {
                 CertificateSetupView(host: host) {
                     showCertificateSetup = false
@@ -122,14 +120,6 @@ private struct HostScreen: View {
                     reload += 1
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Hosts", systemImage: "network", action: showHosts)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Reload", systemImage: "arrow.clockwise") { error = nil; reload += 1 }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
     }
 }
