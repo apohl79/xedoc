@@ -448,6 +448,19 @@
     menuKind = null;
   }
 
+  function positionMenu() {
+    if (menu.hidden || !menuKind) return;
+    const viewport = window.visualViewport;
+    const left = viewport?.offsetLeft || 0;
+    const top = viewport?.offsetTop || 0;
+    const width = viewport?.width || innerWidth;
+    const height = viewport?.height || innerHeight;
+    menu.style.maxHeight = `${Math.max(0, Math.min(height / 2, height - 24))}px`;
+    const bounds = document.getElementById(menuKind).getBoundingClientRect();
+    menu.style.left = `${Math.max(left + 12, Math.min(bounds.right - menu.offsetWidth, left + width - menu.offsetWidth - 12))}px`;
+    menu.style.top = `${Math.max(top + 12, Math.min(bounds.top - menu.offsetHeight - 8, top + height - menu.offsetHeight - 12))}px`;
+  }
+
   function submit() {
     submitPending = true;
     dirty = editorText() !== composerState?.text;
@@ -523,16 +536,16 @@
       search.type = "search";
       search.placeholder = "Search models…";
       search.setAttribute("aria-label", "Search models");
-      search.addEventListener("input", () => draw(search.value));
+      search.addEventListener("input", () => { draw(search.value); positionMenu(); });
       menu.append(search);
     }
     draw();
     menu.append(list);
     menu.hidden = false;
-    const bounds = button.getBoundingClientRect();
-    menu.style.left = `${Math.max(12, Math.min(bounds.right - menu.offsetWidth, innerWidth - menu.offsetWidth - 12))}px`;
-    menu.style.top = `${Math.max(12, bounds.top - menu.offsetHeight - 8)}px`;
-    (search || list.querySelector("button"))?.focus();
+    positionMenu();
+    if (!search || !matchMedia("(pointer: coarse)").matches) {
+      (search || list.querySelector("button"))?.focus({ preventScroll: true });
+    }
   }
 
   function renderComposer(state) {
@@ -547,12 +560,14 @@
     const modelsChanged = composerState && JSON.stringify(composerState.models) !== JSON.stringify(state.models);
     composerState = { ...state, threadId: activeThread };
     if (!threadChanged && menuKind === "model" && modelsChanged) {
+      const focused = document.activeElement === menu.querySelector("input");
       const filter = menu.querySelector("input").value;
       closeMenu();
       openMenu("model", { refresh: false });
       const search = menu.querySelector("input");
       search.value = filter;
       search.dispatchEvent(new Event("input"));
+      if (focused) search.focus({ preventScroll: true });
     }
     if (menuKind === "routerTable" && tablesChanged) {
       closeMenu();
@@ -1297,8 +1312,10 @@
   window.addEventListener("resize", () => {
     quoteSelection.hidden = true;
     clearLinkTargetPreview();
-    closeMenu();
+    positionMenu();
   });
+  window.visualViewport?.addEventListener("resize", positionMenu);
+  window.visualViewport?.addEventListener("scroll", positionMenu);
   function clearLinkTargetPreview() {
     if (linkPreviewTimeout !== null) clearTimeout(linkPreviewTimeout);
     linkPreviewTimeout = null;

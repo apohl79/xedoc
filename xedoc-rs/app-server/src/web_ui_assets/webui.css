@@ -219,6 +219,9 @@ a { color: #8fc4e7; }
 .attachment button { position: absolute; right: 3px; top: 3px; border-radius: 50%; width: 22px; height: 22px; color: #e1e7eb; background: #192229e6; }
 #menu { position: fixed; z-index: 10; width: min(360px, calc(100vw - 24px)); max-height: 50dvh; padding: 6px; overflow-y: auto; border: 1px solid #485d6b; border-radius: 8px; background: #26333d; box-shadow: 0 12px 36px #0006; }
 #menu input { width: 100%; padding: 8px 10px; margin-bottom: 5px; background: #19252d; border: 1px solid var(--border); border-radius: 5px; color: inherit; outline: none; }
+@media (pointer: coarse) {
+  #menu input { font-size: 16px; }
+}
 #menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; font-size: 13px; }
 #menu button[aria-checked="true"] { color: #c9b3eb; background: #364250; }
 #link-target-preview { position: fixed; z-index: 10000; max-width: min(720px, calc(100vw - 32px)); padding: 7px 10px; border: 1px solid #485d6b; border-radius: 7px; background: #26333d; color: #a8bac9; box-shadow: 0 8px 26px #0007; font-family: var(--mono); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; pointer-events: none; }
