@@ -9,8 +9,16 @@
       "version": "46.0.5"
     },
     {
+      "name": "ifaddr",
+      "version": "0.2.0"
+    },
+    {
       "name": "pycparser",
       "version": "2.23"
+    },
+    {
+      "name": "zeroconf",
+      "version": "0.148.0"
     }
   ],
   "lockVersion": 1,
@@ -32,11 +40,25 @@
         "version": "46.0.5"
       },
       {
+        "filename": "ifaddr-0.2.0-py3-none-any.whl",
+        "name": "ifaddr",
+        "sha256": "085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748",
+        "url": "https://files.pythonhosted.org/packages/9c/1f/19ebc343cc71a7ffa78f17018535adc5cbdd87afb31d7c34874680148b32/ifaddr-0.2.0-py3-none-any.whl",
+        "version": "0.2.0"
+      },
+      {
         "filename": "pycparser-2.23-py3-none-any.whl",
         "name": "pycparser",
         "sha256": "e5c6e8d3fbad53479cab09ac03729e0a9faf2bee3db8208a550daf5af81a5934",
         "url": "https://files.pythonhosted.org/packages/a0/e3/59cd50310fc9b59512193629e1984c1f95e5c8ae6e5d8c69532ccc65a7fe/pycparser-2.23-py3-none-any.whl",
         "version": "2.23"
+      },
+      {
+        "filename": "zeroconf-0.148.0-cp312-cp312-macosx_11_0_arm64.whl",
+        "name": "zeroconf",
+        "sha256": "9097e7010b9f9a64e5f2084493e9973d446bd85c7a7cbef5032b2b0a2ecc5a12",
+        "url": "https://files.pythonhosted.org/packages/cb/37/6b91c4a4258863e485602e6b1eb098fe406142a653112e8719c49b69afc4/zeroconf-0.148.0-cp312-cp312-macosx_11_0_arm64.whl",
+        "version": "0.148.0"
       }
     ],
     "aarch64-unknown-linux-gnu": [
@@ -55,11 +77,25 @@
         "version": "46.0.5"
       },
       {
+        "filename": "ifaddr-0.2.0-py3-none-any.whl",
+        "name": "ifaddr",
+        "sha256": "085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748",
+        "url": "https://files.pythonhosted.org/packages/9c/1f/19ebc343cc71a7ffa78f17018535adc5cbdd87afb31d7c34874680148b32/ifaddr-0.2.0-py3-none-any.whl",
+        "version": "0.2.0"
+      },
+      {
         "filename": "pycparser-2.23-py3-none-any.whl",
         "name": "pycparser",
         "sha256": "e5c6e8d3fbad53479cab09ac03729e0a9faf2bee3db8208a550daf5af81a5934",
         "url": "https://files.pythonhosted.org/packages/a0/e3/59cd50310fc9b59512193629e1984c1f95e5c8ae6e5d8c69532ccc65a7fe/pycparser-2.23-py3-none-any.whl",
         "version": "2.23"
+      },
+      {
+        "filename": "zeroconf-0.148.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+        "name": "zeroconf",
+        "sha256": "cdc566c387260fb7bf89f91d00460d0c9b9373dfddcf1fcc980ab3f7270154f9",
+        "url": "https://files.pythonhosted.org/packages/c6/78/5eaaf66d39b3bccc17b52187eebb2dde93f761f4ee8b6c83b8fe764273f5/zeroconf-0.148.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl",
+        "version": "0.148.0"
       }
     ],
     "x86_64-apple-darwin": [
@@ -78,11 +114,25 @@
         "version": "46.0.5"
       },
       {
+        "filename": "ifaddr-0.2.0-py3-none-any.whl",
+        "name": "ifaddr",
+        "sha256": "085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748",
+        "url": "https://files.pythonhosted.org/packages/9c/1f/19ebc343cc71a7ffa78f17018535adc5cbdd87afb31d7c34874680148b32/ifaddr-0.2.0-py3-none-any.whl",
+        "version": "0.2.0"
+      },
+      {
         "filename": "pycparser-2.23-py3-none-any.whl",
         "name": "pycparser",
         "sha256": "e5c6e8d3fbad53479cab09ac03729e0a9faf2bee3db8208a550daf5af81a5934",
         "url": "https://files.pythonhosted.org/packages/a0/e3/59cd50310fc9b59512193629e1984c1f95e5c8ae6e5d8c69532ccc65a7fe/pycparser-2.23-py3-none-any.whl",
         "version": "2.23"
+      },
+      {
+        "filename": "zeroconf-0.148.0-cp312-cp312-macosx_10_13_x86_64.whl",
+        "name": "zeroconf",
+        "sha256": "aef8699ea47cd47c9219e3f110a35ad50c13c34c7c6db992f3c9f75feec6ef8f",
+        "url": "https://files.pythonhosted.org/packages/00/b3/6c08ccbda1e78c8f538d8add49fac2fe49ef85ee34b62877df4154715583/zeroconf-0.148.0-cp312-cp312-macosx_10_13_x86_64.whl",
+        "version": "0.148.0"
       }
     ],
     "x86_64-pc-windows-msvc": [
@@ -101,11 +151,25 @@
         "version": "46.0.5"
       },
       {
+        "filename": "ifaddr-0.2.0-py3-none-any.whl",
+        "name": "ifaddr",
+        "sha256": "085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748",
+        "url": "https://files.pythonhosted.org/packages/9c/1f/19ebc343cc71a7ffa78f17018535adc5cbdd87afb31d7c34874680148b32/ifaddr-0.2.0-py3-none-any.whl",
+        "version": "0.2.0"
+      },
+      {
         "filename": "pycparser-2.23-py3-none-any.whl",
         "name": "pycparser",
         "sha256": "e5c6e8d3fbad53479cab09ac03729e0a9faf2bee3db8208a550daf5af81a5934",
         "url": "https://files.pythonhosted.org/packages/a0/e3/59cd50310fc9b59512193629e1984c1f95e5c8ae6e5d8c69532ccc65a7fe/pycparser-2.23-py3-none-any.whl",
         "version": "2.23"
+      },
+      {
+        "filename": "zeroconf-0.148.0-cp312-cp312-win_amd64.whl",
+        "name": "zeroconf",
+        "sha256": "cec84ae7028db4a3addcc18628d12456cf39a9e973abee4a41e3b94d0db7df4c",
+        "url": "https://files.pythonhosted.org/packages/8e/42/a2d61df82086ddd32b9a5870ac683e8e5038cae38e2433c4fa03fe044235/zeroconf-0.148.0-cp312-cp312-win_amd64.whl",
+        "version": "0.148.0"
       }
     ],
     "x86_64-unknown-linux-gnu": [
@@ -124,11 +188,25 @@
         "version": "46.0.5"
       },
       {
+        "filename": "ifaddr-0.2.0-py3-none-any.whl",
+        "name": "ifaddr",
+        "sha256": "085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748",
+        "url": "https://files.pythonhosted.org/packages/9c/1f/19ebc343cc71a7ffa78f17018535adc5cbdd87afb31d7c34874680148b32/ifaddr-0.2.0-py3-none-any.whl",
+        "version": "0.2.0"
+      },
+      {
         "filename": "pycparser-2.23-py3-none-any.whl",
         "name": "pycparser",
         "sha256": "e5c6e8d3fbad53479cab09ac03729e0a9faf2bee3db8208a550daf5af81a5934",
         "url": "https://files.pythonhosted.org/packages/a0/e3/59cd50310fc9b59512193629e1984c1f95e5c8ae6e5d8c69532ccc65a7fe/pycparser-2.23-py3-none-any.whl",
         "version": "2.23"
+      },
+      {
+        "filename": "zeroconf-0.148.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+        "name": "zeroconf",
+        "sha256": "dde01541e6a45c4d1b6e6d97b532ea241abc32c183745a74021b134d867388d8",
+        "url": "https://files.pythonhosted.org/packages/e1/16/7f7c5cee5279afe2a6a8b9657de9a587ccb34168d7c99acc6d2b40b9d87e/zeroconf-0.148.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+        "version": "0.148.0"
       }
     ]
   }

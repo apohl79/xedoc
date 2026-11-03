@@ -25,6 +25,7 @@ from .host_ca import (
     join_discovered_authority,
 )
 from .host_ca_discovery import HostCADiscovery, discover_shared_cas
+from .host_gui_bonjour import HostGuiBonjour
 from .host_gui_discovery import HostGuiDiscovery, discover_host_guis
 from .host_gui_config import HostGuiConfig
 from .host_workspace import HostWorkspaces
@@ -74,6 +75,7 @@ class HostServer(ThreadingHTTPServer):
         self.panel_broker = PanelBroker(self.plugin_panels)
         self.ca_discovery: HostCADiscovery | None = None
         self.host_discovery: HostGuiDiscovery | None = None
+        self.bonjour: HostGuiBonjour | None = None
         tls_config = HostGuiConfig.load(home)
         ca_certificate = self.ca.directory / "server-cert.pem"
         ca_key = self.ca.directory / "server-key.pem"
@@ -96,6 +98,8 @@ class HostServer(ThreadingHTTPServer):
             except (OSError, ValueError):
                 logging.warning("Host GUI CA LAN discovery is unavailable")
         if self.secure:
+            self.bonjour = HostGuiBonjour(self.hostname, self.origin)
+            self.bonjour.start()
             discovery = HostGuiDiscovery(self.hostname, self.origin)
             if discovery.start():
                 self.host_discovery = discovery
@@ -107,6 +111,9 @@ class HostServer(ThreadingHTTPServer):
         return f"{scheme}://{authority}"
 
     def server_close(self):
+        if self.bonjour is not None:
+            self.bonjour.stop()
+            self.bonjour = None
         if self.host_discovery is not None:
             self.host_discovery.stop()
             self.host_discovery = None
