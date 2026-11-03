@@ -1,10 +1,24 @@
 import SwiftUI
 import WebKit
 
+enum HostLoadError {
+    case certificate
+    case connection(String)
+
+    var message: String {
+        switch self {
+        case .certificate:
+            return "This host’s certificate is not trusted. Set up its verified Xedoc CA, then retry."
+        case .connection(let message):
+            return message
+        }
+    }
+}
+
 struct HostWebView: UIViewRepresentable {
     let url: URL
     let reload: Int
-    @Binding var error: String?
+    @Binding var error: HostLoadError?
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -20,7 +34,7 @@ struct HostWebView: UIViewRepresentable {
                 ))
             }
         } catch {
-            DispatchQueue.main.async { self.error = "Could not load mobile controls: \(error.localizedDescription)" }
+            DispatchQueue.main.async { self.error = .connection("Could not load mobile controls: \(error.localizedDescription)") }
         }
         let view = MobileWebView(frame: .zero, configuration: configuration)
         view.navigationDelegate = context.coordinator
@@ -66,9 +80,9 @@ struct HostWebView: UIViewRepresentable {
             guard code != NSURLErrorCancelled else { return }
             if [NSURLErrorServerCertificateUntrusted, NSURLErrorServerCertificateHasBadDate,
                 NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorServerCertificateNotYetValid].contains(code) {
-                parent.error = "This host’s certificate is not trusted. Install its verified Xedoc CA and enable full trust in Settings, then retry."
+                parent.error = .certificate
             } else {
-                parent.error = error.localizedDescription
+                parent.error = .connection(error.localizedDescription)
             }
         }
 
