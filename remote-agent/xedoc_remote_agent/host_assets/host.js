@@ -109,19 +109,22 @@
   });
   document.addEventListener("visibilitychange", refreshVisibleActivity);
   window.addEventListener("focus", refreshVisibleActivity);
-  window.addEventListener("pagehide", () => {
+  function saveView() {
     if (!state) return;
     try {
-      sessionStorage.setItem(savedViewKey, JSON.stringify({
+      const view = JSON.stringify({
         username: state.account.username,
         workspaceId: selectedWorkspace,
         projectName: selectedProject,
         threadId: activeThread,
-      }));
+      });
+      localStorage.setItem(`${savedViewKey}:${state.account.username}`, view);
+      sessionStorage.setItem(savedViewKey, view);
     } catch {
-      // Do not block navigation when session storage is unavailable.
+      // Keep navigation usable when browser storage is unavailable.
     }
-  });
+  }
+  window.addEventListener("pagehide", saveView);
 
   function projectPins() {
     try {
@@ -354,10 +357,14 @@
   }
 
   async function refresh() {
+    const restore = state === null;
     state = await api("state");
-    const restoredView = pendingView;
+    let restoredView = pendingView;
     pendingView = null;
     try {
+      if (restore && restoredView?.username !== state.account.username) {
+        restoredView = JSON.parse(localStorage.getItem(`${savedViewKey}:${state.account.username}`) || "null");
+      }
       sessionStorage.removeItem(savedViewKey);
     } catch {
       // Keep the current view usable when browser storage is unavailable.
@@ -548,6 +555,7 @@
   }
 
   async function renderWorkspace() {
+    saveView();
     byId("session-menu").hidePopover();
     projectViewRequest++;
     sessionFrames.forEach((frame) => { frame.hidden = true; });
@@ -676,6 +684,7 @@
   }
 
   async function renderProject(project) {
+    saveView();
     byId("session-menu").hidePopover();
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
@@ -768,6 +777,7 @@
     if (!sessions.some((session) => session.threadId === activeThread)) {
       activeThread = sessions[0]?.threadId || null;
     }
+    saveView();
     return activeThread;
   }
 
@@ -817,6 +827,7 @@
     const cachedFrame = sessionFrames.get(threadId);
     if (cachedFrame && openedSessions.has(threadId)) {
       activeThread = threadId;
+      saveView();
       byId("session-view").hidden = false;
       byId("session-loading").hidden = true;
       sessionFrames.forEach((frame) => { frame.hidden = frame !== cachedFrame; });
@@ -839,6 +850,7 @@
       });
       if (request !== sessionRequest || workspaceId !== selectedWorkspace || projectName !== selectedProject) return;
       activeThread = threadId;
+      saveView();
       openedSessions.set(threadId, { ...openedSession, workspaceId, projectName, threadId });
       const existingTab = [...byId("sessions").children].find(
         (tab) => tab.dataset.threadId === threadId,
