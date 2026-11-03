@@ -32,7 +32,7 @@ def wired_devices():
             and device["connectionProperties"].get("pairingState") == "paired"
             and device.get("hardwareProperties", {}).get("deviceType")
             in ("iPhone", "iPad")
-            and device["hardwareProperties"].get("reality") == "physical"
+            and device["hardwareProperties"].get("reality", "physical") == "physical"
         ),
         key=lambda device: device["deviceProperties"]["name"].casefold(),
     )
