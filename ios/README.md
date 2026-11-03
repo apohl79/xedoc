@@ -29,9 +29,14 @@ Network access when prompted. Older hosts can be opened by their HTTPS origin.
 Simulator discovery does not prove physical-device Local Network permission.
 
 WebKit uses normal system TLS validation, including for session WebSockets.
-Install the host's **verified** Xedoc CA using its existing `/trust` flow and
-enable certificate trust in Settings before connecting. Discovery never grants
-trust to certificates.
+On a certificate error, choose **Set Up Certificate**, then **Open Certificate
+Setup in Safari** to access the host's `/trust` page and Apple profile download.
+Verify the CA fingerprint with the administrator through a separate trusted
+channel before installing it. The setup sheet explains profile installation
+and enabling full trust in Settings; return to it and choose **Retry**
+afterward. If Safari cannot reach the page, obtain the public CA profile and
+fingerprint directly from the administrator. Discovery never grants trust to
+certificates.
 
 For personal devices, use development signing and a profile covering the device:
 

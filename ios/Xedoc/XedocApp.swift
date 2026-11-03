@@ -91,7 +91,8 @@ private struct HostScreen: View {
     let host: DiscoveredHost
     let showHosts: () -> Void
     @State private var reload = 0
-    @State private var error: String?
+    @State private var error: HostLoadError?
+    @State private var showCertificateSetup = false
 
     var body: some View {
         HostWebView(url: host.url, reload: reload, error: $error)
@@ -99,7 +100,13 @@ private struct HostScreen: View {
                 if let error {
                     VStack(spacing: 16) {
                         Image(systemName: "exclamationmark.triangle").font(.largeTitle)
-                        Text(error).multilineTextAlignment(.center)
+                        Text(error.message).multilineTextAlignment(.center)
+                        if case .certificate = error {
+                            Button("Set Up Certificate", systemImage: "checkmark.shield") {
+                                showCertificateSetup = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
                         Button("Retry") { self.error = nil; reload += 1 }
                     }
                     .padding(24)
@@ -108,6 +115,13 @@ private struct HostScreen: View {
                 }
             }
             .navigationTitle(host.hostname)
+            .sheet(isPresented: $showCertificateSetup) {
+                CertificateSetupView(host: host) {
+                    showCertificateSetup = false
+                    error = nil
+                    reload += 1
+                }
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
