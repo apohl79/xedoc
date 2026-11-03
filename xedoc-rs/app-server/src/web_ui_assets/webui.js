@@ -3,6 +3,15 @@
 (() => {
   const history = document.getElementById("history");
   const active = document.getElementById("active");
+  function updateImagePreview(image) {
+    const trigger = image.closest(".history-image-trigger");
+    if (!trigger) return;
+    trigger.classList.toggle("is-truncated",
+      image.getBoundingClientRect().height > trigger.getBoundingClientRect().height);
+  }
+  history.addEventListener("load", (event) => {
+    if (event.target instanceof HTMLImageElement) updateImagePreview(event.target);
+  }, true);
   const imageViewer = document.createElement("dialog");
   imageViewer.className = "image-viewer";
   imageViewer.setAttribute("aria-label", "Image viewer");
@@ -1527,7 +1536,10 @@
     }
   });
   let previousWidth;
-  new ResizeObserver(syncBrowserTerminalWidth).observe(history);
+  new ResizeObserver(() => {
+    syncBrowserTerminalWidth();
+    history.querySelectorAll(".history-image-trigger img").forEach(updateImagePreview);
+  }).observe(history);
   window.addEventListener("resize", () => {
     if (liveOverlay) fitLiveFrame();
     syncBrowserTerminalWidth();
