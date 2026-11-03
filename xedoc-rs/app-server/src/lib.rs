@@ -455,6 +455,14 @@ pub async fn run_main_with_transport_options(
     auth: AppServerWebsocketAuthSettings,
     runtime_options: AppServerRuntimeOptions,
 ) -> IoResult<()> {
+    #[cfg(unix)]
+    if let Err(error) = xedoc_process_hardening::raise_file_descriptor_limit() {
+        let _ = std::io::Write::write_fmt(
+            &mut std::io::stderr(),
+            format_args!("Warning: failed to raise the file descriptor limit: {error}\n"),
+        );
+    }
+
     let loader_overrides = loader_overrides_with_test_user_config_file(
         loader_overrides,
         test_user_config_file_from_env(),

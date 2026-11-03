@@ -24,6 +24,39 @@ pub fn pre_main_hardening() {
     pre_main_hardening_windows();
 }
 
+/// Raise the soft file descriptor limit to 65,536 or the inherited hard limit,
+/// whichever is lower.
+///
+/// This gives long-lived servers room for many concurrent sessions without
+/// attempting to exceed the system or service-manager limit.
+///
+/// # Errors
+///
+/// Returns an error if the current limit cannot be read or raised.
+#[cfg(unix)]
+pub fn raise_file_descriptor_limit() -> std::io::Result<()> {
+    const TARGET_LIMIT: libc::rlim_t = 65_536;
+
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    // SAFETY: `limit` points to a writable `rlimit` for the duration of the call.
+    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let target = limit.rlim_max.min(TARGET_LIMIT);
+    if limit.rlim_cur >= target {
+        return Ok(());
+    }
+    limit.rlim_cur = target;
+    // SAFETY: `limit` contains the current hard limit and its reduced soft limit.
+    if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &limit) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 #[cfg(any(target_os = "linux", target_os = "android"))]
 const PRCTL_FAILED_EXIT_CODE: i32 = 5;
 

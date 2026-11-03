@@ -60,6 +60,7 @@ xedoc-hooks = { workspace = true }
 xedoc-http-client = { workspace = true }
 xedoc-otel = { workspace = true }
 xedoc-plugin = { workspace = true }
+xedoc-process-hardening = { workspace = true }
 xedoc-shell-command = { workspace = true }
 xedoc-skills = { workspace = true }
 xedoc-skills-extension = { workspace = true }
