@@ -48,3 +48,38 @@ xcodebuild -project Xedoc.xcodeproj -scheme Xedoc \
 
 Development builds do not use macOS notarization. iOS alternative-distribution
 notarization is a separate App Store Connect review, not `notarytool`.
+
+## Releases and cable installation
+
+The macOS release script builds a signed `xedoc-ios-VERSION.zip` alongside the
+desktop packages and uploads it to the same GitHub release. Use `--skip-ios` to
+omit it, or build only the iOS artifact:
+
+```sh
+python3 scripts/build_xedoc_release.py --ios-only
+```
+
+The release Mac needs Xcode, XcodeGen, an Apple Development signing identity,
+and access to the configured signing team. The app version follows the release
+version. These are development-signed apps, not App Store or notarized builds.
+Devices must be registered with the signing team and included in the embedded,
+unexpired provisioning profile. To add a device, register it and rebuild the
+release; the installer does not register devices or change signing accounts.
+
+On macOS, the CLI installer offers optional iPhone/iPad installation. To install
+only the mobile app without changing the desktop installation:
+
+```sh
+sh scripts/install/install.sh --ios-only
+# Or use a previously downloaded/built artifact:
+sh scripts/install/install.sh --ios-only --local-ios-zip /path/to/xedoc-ios-VERSION.zip
+```
+
+The installer verifies the GitHub download's SHA-256 digest before extracting it.
+With full Xcode and Python 3 installed, accept the prompt, connect and unlock a
+device by USB cable, trust the Mac, and enable Developer Mode when required.
+Choose a device from the numbered list. Only paired, physical iPhones and iPads
+reported as wired are listed, and the cable connection is checked again before
+installation. After each attempt, choose whether to install another device.
+Wi-Fi-only devices and simulators are excluded. Non-interactive installs skip
+device prompts and downloads. `--check` never installs a device.

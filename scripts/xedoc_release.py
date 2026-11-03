@@ -13,6 +13,7 @@ import sys
 import tempfile
 import textwrap
 
+from xedoc_ios_release import build_ios_release
 from xedoc_package.targets import TARGET_SPECS
 from xedoc_package.targets import TargetSpec
 from xedoc_package.archive import write_archive
@@ -250,6 +251,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Build the package without GitHub publication or macOS notarization.",
     )
+    ios_mode = parser.add_mutually_exclusive_group()
+    ios_mode.add_argument(
+        "--skip-ios",
+        action="store_true",
+        help="Skip the development-signed iPhone/iPad app built on macOS.",
+    )
+    ios_mode.add_argument(
+        "--ios-only",
+        action="store_true",
+        help="Build and publish only the iPhone/iPad cable-install archive.",
+    )
     parser.add_argument(
         "--allow-dirty",
         action="store_true",
@@ -334,7 +346,11 @@ def ensure_target_specific_paths_are_unambiguous(
 
 
 def build_release(args: argparse.Namespace) -> None:
-    targets = release_targets(args)
+    ios_only = getattr(args, "ios_only", False)
+    include_ios = not getattr(args, "skip_ios", False) and sys.platform == "darwin"
+    if ios_only and not include_ios:
+        raise RuntimeError("--ios-only requires macOS and Xcode.")
+    targets = [] if ios_only else release_targets(args)
     ensure_target_specific_paths_are_unambiguous(args, targets)
     if getattr(args, "allow_dirty", False) and not args.skip_github_release:
         raise RuntimeError(
@@ -373,16 +389,19 @@ def build_release(args: argparse.Namespace) -> None:
             env=github_env,
         )
 
-    repair_stale_release_lockfiles(
-        cargo=args.cargo,
-        source_root=source_root,
-        cargo_toml=cargo_toml,
-        cargo_lock=cargo_lock,
-        target=targets[0],
-    )
+    if targets:
+        repair_stale_release_lockfiles(
+            cargo=args.cargo,
+            source_root=source_root,
+            cargo_toml=cargo_toml,
+            cargo_lock=cargo_lock,
+            target=targets[0],
+        )
 
     build_system = getattr(args, "build_system", DEFAULT_BUILD_SYSTEM)
-    if build_system == "bazel":
+    if not targets:
+        release_binaries_by_target = {}
+    elif build_system == "bazel":
         built_binaries = build_bazel_release_binaries_for_targets(
             bazel=getattr(args, "bazel", "bazel"),
             bazel_build_jobs=getattr(args, "bazel_build_jobs", None),
@@ -427,6 +446,16 @@ def build_release(args: argparse.Namespace) -> None:
         )
         for target in targets
     ]
+    ios_archive = (
+        build_ios_release(
+            source_root=source_root,
+            output_dir=output_dir,
+            version=version,
+            force=args.force,
+        )
+        if include_ios
+        else None
+    )
 
     if not args.skip_github_release:
         for package in release_packages:
@@ -448,7 +477,8 @@ def build_release(args: argparse.Namespace) -> None:
                 archive_output
                 for package in release_packages
                 for archive_output in package.archive_outputs
-            ],
+            ]
+            + ([ios_archive] if ios_archive is not None else []),
             env=github_env,
             notes=generate_release_notes(
                 release_tag,
@@ -463,6 +493,8 @@ def build_release(args: argparse.Namespace) -> None:
     print(f"Built Xedoc release {version}")
     if not args.skip_github_release:
         print(f"GitHub release: {release_tag}")
+    if ios_archive is not None:
+        print(f"Archive (iOS/iPadOS, development-signed): {ios_archive}")
     for package in release_packages:
         print(f"Package directory ({package.target}): {package.package_dir}")
         for archive_output in package.archive_outputs:
