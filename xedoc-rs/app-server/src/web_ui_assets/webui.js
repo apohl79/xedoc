@@ -19,6 +19,7 @@
   imageViewer.append(imageViewerClose, imageViewerFigure);
   document.body.append(imageViewer);
   let imageViewerTrigger = null;
+  let imageViewerRequestId = null;
   history.addEventListener("click", (event) => {
     if (!(event.target instanceof Element)) return;
     const trigger = event.target.closest(".history-image-trigger");
@@ -30,6 +31,16 @@
     imageViewerTrigger = trigger;
     imageViewer.showModal();
     imageViewerClose.focus({ preventScroll: true });
+    const cellIndex = Number(trigger.dataset.imageCell);
+    const imageIndex = Number(trigger.dataset.imageIndex);
+    if (Number.isSafeInteger(cellIndex) && cellIndex >= 0
+        && Number.isSafeInteger(imageIndex) && imageIndex >= 0) {
+      const requestId = crypto.randomUUID();
+      imageViewerRequestId = requestId;
+      if (!send({ type: "imageRequest", requestId, cellIndex, imageIndex })) {
+        imageViewerRequestId = null;
+      }
+    }
   });
   imageViewerClose.addEventListener("click", () => imageViewer.close());
   imageViewer.addEventListener("click", (event) => {
@@ -40,6 +51,7 @@
     imageViewerTrigger?.isConnected
       && imageViewerTrigger.focus({ preventScroll: true });
     imageViewerTrigger = null;
+    imageViewerRequestId = null;
   });
   const favicon = document.getElementById("favicon");
   const staticFavicon = favicon.href;
@@ -667,6 +679,10 @@
 
   function render(frame) {
     setConnection("Live", "live");
+    if (frame.fullImage?.requestId === imageViewerRequestId) {
+      imageViewerImage.src = frame.fullImage.dataUrl;
+      imageViewerRequestId = null;
+    }
     setFaviconTurnActive(!!frame.turnActive);
     const hostActivity = {
       type: "xedoc-session-activity",

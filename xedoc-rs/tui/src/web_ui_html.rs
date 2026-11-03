@@ -61,7 +61,12 @@ pub(crate) fn history_cell_page_count(cell: &dyn HistoryCell) -> u16 {
     u16::try_from(pages).unwrap_or(u16::MAX)
 }
 
-pub(crate) fn history_cell_html(cell: &dyn HistoryCell, page_start: u16, page_end: u16) -> String {
+pub(crate) fn history_cell_html(
+    cell: &dyn HistoryCell,
+    page_start: u16,
+    page_end: u16,
+    cell_index: Option<usize>,
+) -> String {
     if let Some(images) = cell.as_any().downcast_ref::<ImageOutputCell>() {
         let mut html = String::new();
         if page_start == 0 && page_end > 0 {
@@ -70,13 +75,18 @@ pub(crate) fn history_cell_html(cell: &dyn HistoryCell, page_start: u16, page_en
                 &images.fallback.display_lines(u16::MAX),
             ));
         }
-        for source in images
+        for (image_index, source) in images
             .images
             .iter()
+            .enumerate()
             .skip(usize::from(page_start.saturating_sub(1)))
             .take(usize::from(page_end.saturating_sub(page_start.max(1))))
         {
-            html.push_str(&crate::web_ui_images::image_html(source));
+            html.push_str(&crate::web_ui_images::image_html(
+                source,
+                cell_index,
+                image_index,
+            ));
         }
         return html;
     }

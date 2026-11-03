@@ -28,6 +28,7 @@ use crate::render::renderable::Renderable;
 use crate::tui::Tui;
 use crate::web_ui::BrowserInput;
 use crate::web_ui::CachedHistoryCell;
+use crate::web_ui::FullImageResponse;
 use crate::web_ui::WebUiSession;
 use crate::web_ui_html::buffer_html;
 
@@ -267,6 +268,28 @@ impl App {
                 }
                 self.publish_web_ui(tui);
             }
+            Ok(BrowserInput::ImageRequest {
+                request_id,
+                cell_index,
+                image_index,
+            }) if !request_id.is_empty() && request_id.len() <= 64 => {
+                let data_url = self
+                    .transcript_cells
+                    .get(cell_index)
+                    .and_then(|cell| {
+                        cell.as_any()
+                            .downcast_ref::<crate::history_cell::ImageOutputCell>()
+                    })
+                    .and_then(|images| images.images.get(image_index))
+                    .and_then(|source| crate::web_ui_images::full_image_data_url(source));
+                if let (Some(data_url), Some(session)) = (data_url, tui.web_ui.as_mut()) {
+                    session.full_image_response = Some(FullImageResponse {
+                        request_id,
+                        data_url,
+                    });
+                    session.last_publish = None;
+                }
+            }
             Ok(BrowserInput::Image { data_url, cursor }) => {
                 if tui
                     .web_ui
@@ -446,8 +469,12 @@ impl App {
                 let mut rows = row_end.min(400);
                 loop {
                     let row_start = row_end.saturating_sub(rows);
-                    let html =
-                        crate::web_ui_html::history_cell_html(cell.as_ref(), row_start, row_end);
+                    let html = crate::web_ui_html::history_cell_html(
+                        cell.as_ref(),
+                        row_start,
+                        row_end,
+                        Some(index),
+                    );
                     if json!(&html).to_string().len() <= HISTORY_BYTES / 2 || rows <= 1 {
                         break CachedHistoryCell {
                             cell: cell.clone(),
@@ -620,7 +647,12 @@ impl App {
             .then(|| {
                 self.chat_widget.browser_active_cell().map(|cell| {
                     let pages = crate::web_ui_html::history_cell_page_count(cell);
-                    crate::web_ui_html::history_cell_html(cell, pages.saturating_sub(400), pages)
+                    crate::web_ui_html::history_cell_html(
+                        cell,
+                        pages.saturating_sub(400),
+                        pages,
+                        None,
+                    )
                 })
             })
             .flatten();
@@ -628,7 +660,7 @@ impl App {
             .then(|| {
                 self.chat_widget
                     .browser_tool_summary()
-                    .map(|cell| crate::web_ui_html::history_cell_html(cell, 0, 1))
+                    .map(|cell| crate::web_ui_html::history_cell_html(cell, 0, 1, None))
             })
             .flatten();
         let renderable = if self.overlay.is_some() {
@@ -641,6 +673,12 @@ impl App {
         } else {
             renderable.desired_height(width).min(400)
         };
+        let full_image = session.full_image_response.take().map(|response| {
+            json!({
+                "requestId": response.request_id,
+                "dataUrl": response.data_url,
+            })
+        });
         let area = Rect::new(0, 0, width, height.max(1));
         let mut buffer = Buffer::empty(area);
         let cursor = if let Some(overlay) = &mut self.overlay {
@@ -674,6 +712,7 @@ impl App {
         };
         let frame = json!({
             "type": "frame", "threadId": session.thread_id.to_string(),
+            "fullImage": full_image,
             "activeThreadId": active_thread.map(|id| id.to_string()),
             "title": self.chat_widget.thread_name(), "width": width,
             "turnActive": self.chat_widget.browser_turn_active(),

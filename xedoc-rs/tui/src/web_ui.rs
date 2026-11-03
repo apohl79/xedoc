@@ -45,6 +45,14 @@ pub(crate) enum BrowserInput {
         #[serde(default)]
         cursor: Option<usize>,
     },
+    ImageRequest {
+        #[serde(rename = "requestId")]
+        request_id: String,
+        #[serde(rename = "cellIndex")]
+        cell_index: usize,
+        #[serde(rename = "imageIndex")]
+        image_index: usize,
+    },
     File {
         name: String,
         #[serde(rename = "dataUrl")]
@@ -102,6 +110,7 @@ impl BrowserInput {
             | Self::RecallQueuedPrompt
             | Self::RefreshModels
             | Self::Image { .. }
+            | Self::ImageRequest { .. }
             | Self::File { .. }
             | Self::History { .. }
             | Self::Draft { .. }
@@ -121,6 +130,7 @@ pub(crate) struct WebUiSession {
     pub(crate) task: JoinHandle<()>,
     pub(crate) images: Vec<tempfile::NamedTempFile>,
     pub(crate) documents: Vec<crate::web_ui_files::UploadedDocument>,
+    pub(crate) full_image_response: Option<FullImageResponse>,
     pub(crate) history: HashMap<usize, CachedHistoryCell>,
     pub(crate) browser_stream_kind: Option<String>,
     pub(crate) browser_stream_source_len: usize,
@@ -145,6 +155,11 @@ pub(crate) struct CachedHistoryCell {
     pub(crate) row_start: u16,
     pub(crate) row_end: u16,
     pub(crate) row_total: u16,
+}
+
+pub(crate) struct FullImageResponse {
+    pub(crate) request_id: String,
+    pub(crate) data_url: String,
 }
 
 impl WebUiSession {
@@ -182,6 +197,7 @@ impl WebUiSession {
             task,
             images: Vec::new(),
             documents: Vec::new(),
+            full_image_response: None,
             history: HashMap::new(),
             browser_stream_kind: None,
             browser_stream_source_len: 0,

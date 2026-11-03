@@ -38,7 +38,7 @@ use xedoc_protocol::ThreadId;
 use crate::error_code::internal_error;
 use crate::error_code::invalid_request;
 
-const FRAME_LIMIT: usize = 2 * 1024 * 1024;
+const FRAME_LIMIT: usize = 16 * 1024 * 1024;
 const INPUT_LIMIT: usize = 16 * 1024 * 1024;
 const SEND_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 5);
 
@@ -307,7 +307,7 @@ async fn browser_socket(mut socket: WebSocket, state: Arc<SessionState>) {
                 match input {
                     Some(Ok(Message::Text(text))) => {
                         let valid = serde_json::from_str::<serde_json::Value>(&text)
-                            .is_ok_and(|input| matches!(input["type"].as_str(), Some("key" | "paste" | "image" | "file" | "history" | "draft" | "removeImage" | "settings" | "routingTable" | "refreshModels" | "question" | "resize" | "recallScheduledPrompt" | "recallQueuedPrompt")));
+                            .is_ok_and(|input| matches!(input["type"].as_str(), Some("key" | "paste" | "image" | "imageRequest" | "file" | "history" | "draft" | "removeImage" | "settings" | "routingTable" | "refreshModels" | "question" | "resize" | "recallScheduledPrompt" | "recallQueuedPrompt")));
                         if !valid || !state.producer_connected.load(Ordering::SeqCst) { break; }
                         if !matches!(timeout(SEND_TIMEOUT, state.inputs.send(text.to_string())).await, Ok(Ok(()))) { break; }
                     }
