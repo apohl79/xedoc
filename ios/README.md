@@ -71,9 +71,13 @@ omit it, or build only the iOS artifact:
 python3 scripts/build_xedoc_release.py --ios-only
 ```
 
-The release Mac needs Xcode, XcodeGen, an Apple Development signing identity,
-and access to the configured signing team. The app version follows the release
-version. These are development-signed apps, not App Store or notarized builds.
+The release Mac needs Xcode, XcodeGen, and access to the configured signing team.
+The script archives the app, then exports it using Xcode's `release-testing`
+(Ad Hoc) distribution method. Automatic signing needs access to an Apple
+Distribution certificate and an Ad Hoc provisioning profile; Xcode can create
+these when the signed-in account has permission. It never falls back to a
+development-signed release. The app version follows the release version.
+These are distribution-signed apps, not App Store or notarized builds.
 Devices must be registered with the signing team and included in the embedded,
 unexpired provisioning profile. To add a device, register it and rebuild the
 release; the installer does not register devices or change signing accounts.

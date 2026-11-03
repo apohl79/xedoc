@@ -255,7 +255,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ios_mode.add_argument(
         "--skip-ios",
         action="store_true",
-        help="Skip the development-signed iPhone/iPad app built on macOS.",
+        help="Skip the Ad Hoc distribution-signed iPhone/iPad app built on macOS.",
     )
     ios_mode.add_argument(
         "--ios-only",
@@ -494,7 +494,7 @@ def build_release(args: argparse.Namespace) -> None:
     if not args.skip_github_release:
         print(f"GitHub release: {release_tag}")
     if ios_archive is not None:
-        print(f"Archive (iOS/iPadOS, development-signed): {ios_archive}")
+        print(f"Archive (iOS/iPadOS, Ad Hoc distribution-signed): {ios_archive}")
     for package in release_packages:
         print(f"Package directory ({package.target}): {package.package_dir}")
         for archive_output in package.archive_outputs:
