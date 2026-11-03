@@ -22,6 +22,14 @@
     }
   };
   window.addEventListener("load", () => {
+    const scrollingStyle = document.createElement("style");
+    scrollingStyle.textContent = "* { touch-action: pan-y !important; }";
+    document.head.append(scrollingStyle);
+    if (window !== window.top) {
+      document.addEventListener("pointerdown", () => {
+        window.top.xedocMobileSidebar?.("hide");
+      }, true);
+    }
     document.querySelectorAll('input, select, textarea, [contenteditable]').forEach((input) => {
       input.style.setProperty("font-size", "16px", "important");
     });
@@ -44,7 +52,6 @@
       #sidebar-lock { display: none; }
       .login { width: min(100%, 360px); }
       input, select, textarea, [contenteditable="true"] { font-size: 16px !important; }
-      button, a, input, select, textarea, [contenteditable="true"] { touch-action: manipulation; }
     `;
     document.head.append(style);
     for (const id of ["add-workspace", "new-project", "session-menu-button"]) {
