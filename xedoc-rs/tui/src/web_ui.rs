@@ -85,8 +85,8 @@ pub(crate) enum BrowserInput {
         option: Option<usize>,
         text: Option<String>,
     },
-    Resize {
-        width: u16,
+    Viewports {
+        widths: Vec<u16>,
     },
     History {
         before: usize,
@@ -118,7 +118,7 @@ impl BrowserInput {
             | Self::Settings { .. }
             | Self::RoutingTable { .. }
             | Self::Question { .. }
-            | Self::Resize { .. } => None,
+            | Self::Viewports { .. } => None,
         }
     }
 }
@@ -141,7 +141,7 @@ pub(crate) struct WebUiSession {
     pub(crate) last_publish: Option<Instant>,
     pub(crate) history_end: Option<usize>,
     pub(crate) history_row_end: Option<u16>,
-    pub(crate) browser_width: Option<u16>,
+    pub(crate) browser_widths: Vec<u16>,
     pub(crate) draft_text: String,
     pub(crate) draft_revision: u64,
     pub(crate) draft_ack: u64,
@@ -208,7 +208,7 @@ impl WebUiSession {
             last_publish: None,
             history_end: None,
             history_row_end: None,
-            browser_width: None,
+            browser_widths: Vec::new(),
             draft_text: String::new(),
             draft_revision: 0,
             draft_ack: 0,

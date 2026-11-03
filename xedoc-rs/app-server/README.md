@@ -63,6 +63,8 @@ input and settings changes use the same TUI controller. The browser uses a
 native selectable editor, revision-checked draft synchronization, attachment
 previews, and searchable model controls. Conversation Markdown reflows at the
 browser width; terminal dialogs remain available as a compatibility fallback.
+Each connected browser keeps its own layout width for activity, popups, and
+terminal dialogs; resizing one viewer does not reflow other viewers.
 The TUI must remain running.
 Assistant images, image-generation results, and MCP/dynamic-tool image results
 render as raster previews in browser history, including after resume. Previews

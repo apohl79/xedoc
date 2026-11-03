@@ -200,6 +200,7 @@ mod thread_session_state;
 mod thread_settings;
 mod web_ui;
 mod web_ui_router;
+mod web_ui_viewport;
 pub(crate) use web_ui_router::RoutingTables;
 
 use self::agent_navigation::AgentNavigationDirection;

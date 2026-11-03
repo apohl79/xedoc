@@ -1127,10 +1127,22 @@
     setConnection("Connecting…", "connecting");
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     socket = new WebSocket(`${protocol}//${location.host}/session/${encodeURIComponent(capability)}`);
+    socket.addEventListener("open", () => {
+      previousWidth = undefined;
+      syncBrowserTerminalWidth();
+    });
     socket.addEventListener("message", (event) => {
       let frame;
       try { frame = JSON.parse(event.data); } catch { return; }
       if (frame.type === "frame") {
+        if (frame.viewports) {
+          const viewport = frame.viewports[browserTerminalWidth()];
+          if (!viewport) {
+            syncBrowserTerminalWidth();
+          } else {
+            frame = { ...frame, ...viewport };
+          }
+        }
         reconnectDelay = 500;
         render(frame);
       } else if (frame.type === "disconnected") {

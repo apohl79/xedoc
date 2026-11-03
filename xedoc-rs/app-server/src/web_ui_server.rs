@@ -63,6 +63,7 @@ struct SessionState {
     browser_token: String,
     producer_token: String,
     frame: watch::Sender<Option<String>>,
+    browser_widths: Mutex<HashMap<Uuid, u16>>,
     inputs: mpsc::Sender<String>,
     input_receiver: Mutex<Option<mpsc::Receiver<String>>>,
     producer_connected: AtomicBool,
@@ -136,6 +137,7 @@ impl WebUiServer {
                 browser_token: browser_token.clone(),
                 producer_token: producer_token.clone(),
                 frame,
+                browser_widths: Mutex::new(HashMap::new()),
                 inputs,
                 input_receiver: Mutex::new(Some(input_receiver)),
                 producer_connected: AtomicBool::new(false),
@@ -258,6 +260,13 @@ async fn producer_socket(mut socket: WebSocket, state: Arc<SessionState>) {
         return;
     };
     while inputs.try_recv().is_ok() {}
+    let widths = state.browser_widths.lock().await;
+    if !send(&mut socket, viewport_input(&widths)).await {
+        *state.input_receiver.lock().await = Some(inputs);
+        state.producer_connected.store(false, Ordering::SeqCst);
+        return;
+    }
+    drop(widths);
     loop {
         tokio::select! {
             _ = state.shutdown.cancelled() => break,
@@ -285,6 +294,7 @@ async fn producer_socket(mut socket: WebSocket, state: Arc<SessionState>) {
 }
 
 async fn browser_socket(mut socket: WebSocket, state: Arc<SessionState>) {
+    let browser_id = Uuid::new_v4();
     let mut frames = state.frame.subscribe();
     let initial = frames.borrow_and_update().clone();
     if !send(
@@ -306,9 +316,16 @@ async fn browser_socket(mut socket: WebSocket, state: Arc<SessionState>) {
             input = socket.recv() => {
                 match input {
                     Some(Ok(Message::Text(text))) => {
-                        let valid = serde_json::from_str::<serde_json::Value>(&text)
-                            .is_ok_and(|input| matches!(input["type"].as_str(), Some("key" | "paste" | "image" | "imageRequest" | "file" | "history" | "draft" | "removeImage" | "settings" | "routingTable" | "refreshModels" | "question" | "resize" | "recallScheduledPrompt" | "recallQueuedPrompt")));
+                        let Ok(input) = serde_json::from_str::<serde_json::Value>(&text) else { break };
+                        let valid = matches!(input["type"].as_str(), Some("key" | "paste" | "image" | "imageRequest" | "file" | "history" | "draft" | "removeImage" | "settings" | "routingTable" | "refreshModels" | "question" | "resize" | "recallScheduledPrompt" | "recallQueuedPrompt"));
                         if !valid || !state.producer_connected.load(Ordering::SeqCst) { break; }
+                        if input["type"] == "resize" {
+                            let Some(width) = input["width"].as_u64() else { break };
+                            let mut widths = state.browser_widths.lock().await;
+                            widths.insert(browser_id, width.clamp(20, 400) as u16);
+                            if !matches!(timeout(SEND_TIMEOUT, state.inputs.send(viewport_input(&widths))).await, Ok(Ok(()))) { break; }
+                            continue;
+                        }
                         if !matches!(timeout(SEND_TIMEOUT, state.inputs.send(text.to_string())).await, Ok(Ok(()))) { break; }
                     }
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
@@ -317,6 +334,17 @@ async fn browser_socket(mut socket: WebSocket, state: Arc<SessionState>) {
             }
         }
     }
+    let mut widths = state.browser_widths.lock().await;
+    if widths.remove(&browser_id).is_some() {
+        let _ = timeout(SEND_TIMEOUT, state.inputs.send(viewport_input(&widths))).await;
+    }
+}
+
+fn viewport_input(widths: &HashMap<Uuid, u16>) -> String {
+    let mut widths: Vec<_> = widths.values().copied().collect();
+    widths.sort_unstable();
+    widths.dedup();
+    serde_json::json!({"type": "viewports", "widths": widths}).to_string()
 }
 
 async fn send(socket: &mut WebSocket, text: String) -> bool {

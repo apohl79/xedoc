@@ -7,10 +7,6 @@ use std::time::Duration;
 use std::time::Instant;
 
 use base64::Engine;
-use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
-use ratatui::widgets::Paragraph;
-use ratatui::widgets::Widget;
 use serde_json::json;
 use xedoc_app_server_protocol::ClientRequest;
 use xedoc_app_server_protocol::RequestId;
@@ -24,13 +20,11 @@ use crate::app_event::AppEvent;
 use crate::app_event::WebUiOpenMode;
 use crate::app_server_session::AppServerSession;
 use crate::chatwidget::BrowserStreamContent;
-use crate::render::renderable::Renderable;
 use crate::tui::Tui;
 use crate::web_ui::BrowserInput;
 use crate::web_ui::CachedHistoryCell;
 use crate::web_ui::FullImageResponse;
 use crate::web_ui::WebUiSession;
-use crate::web_ui_html::buffer_html;
 
 const FRAME_INTERVAL: Duration = Duration::from_millis(/*millis*/ 80);
 const HISTORY_BYTES: usize = 1_000_000;
@@ -151,9 +145,13 @@ impl App {
                     text.as_deref(),
                 );
             }
-            Ok(BrowserInput::Resize { width }) => {
+            Ok(BrowserInput::Viewports { widths }) => {
                 if let Some(session) = &mut tui.web_ui {
-                    session.browser_width = Some(width.clamp(20, 400));
+                    session.browser_widths = widths
+                        .into_iter()
+                        .take(8)
+                        .map(|width| width.clamp(20, 400))
+                        .collect();
                     session.last_publish = None;
                 }
             }
@@ -396,7 +394,7 @@ impl App {
             return;
         }
         let size = tui.terminal.last_known_screen_size;
-        let width = session.browser_width.unwrap_or(size.width).clamp(1, 400);
+        let width = size.width.clamp(1, 400);
         let active_thread = self.chat_widget.thread_id();
         if session.width != width || session.active_thread != active_thread {
             session.history.clear();
@@ -550,34 +548,13 @@ impl App {
                 "availability": preset.availability,
                 "efforts": preset.supported_reasoning_efforts.iter().map(|effort| effort.effort.to_string()).collect::<Vec<_>>(),
             })).collect();
-        let (
-            composer_height,
-            popup_height,
-            dialog,
-            router,
-            timer,
-            status,
-            goal_status,
-            display_model,
-            display_effort,
-        ) = self.chat_widget.browser_composer_context(width);
+        let (_, _, dialog, router, timer, _, _, display_model, display_effort) =
+            self.chat_widget.browser_composer_context(width);
         let question = self
             .overlay
             .is_none()
             .then(|| self.chat_widget.browser_question())
             .flatten();
-        let [status, goal_status] = [status, goal_status].map(|line| {
-            line.map(|line| {
-                let status_width = u16::try_from(line.width())
-                    .unwrap_or(u16::MAX)
-                    .min(width)
-                    .max(1);
-                let area = Rect::new(0, 0, status_width, 1);
-                let mut buffer = Buffer::empty(area);
-                Paragraph::new(line).render(area, &mut buffer);
-                buffer_html(&buffer, None)
-            })
-        });
         let stream_update = match stream_content.as_ref() {
             Some(BrowserStreamContent::Assistant(source)) => {
                 let kind = crate::web_ui_html::StreamHtmlKind::Assistant;
@@ -663,53 +640,32 @@ impl App {
                     .map(|cell| crate::web_ui_html::history_cell_html(cell, 0, 1, None))
             })
             .flatten();
-        let renderable = if self.overlay.is_some() {
-            self.chat_widget.as_renderable()
-        } else {
-            self.chat_widget.browser_renderable()
-        };
-        let height = if self.overlay.is_some() {
-            size.height
-        } else {
-            renderable.desired_height(width).min(400)
-        };
         let full_image = session.full_image_response.take().map(|response| {
             json!({
                 "requestId": response.request_id,
                 "dataUrl": response.data_url,
             })
         });
-        let area = Rect::new(0, 0, width, height.max(1));
-        let mut buffer = Buffer::empty(area);
-        let cursor = if let Some(overlay) = &mut self.overlay {
-            overlay.render(area, &mut buffer);
-            None
-        } else {
-            renderable.render(area, &mut buffer);
-            renderable.cursor_pos(area)
-        };
-        let activity_area = Rect::new(0, 0, width, height.saturating_sub(composer_height));
-        let activity_buffer = Buffer {
-            area: activity_area,
-            content: buffer
-                .content
-                .iter()
-                .take(usize::from(activity_area.width) * usize::from(activity_area.height))
-                .cloned()
-                .collect(),
-        };
-        let popup_start = height.saturating_sub(popup_height);
-        let popup_area = Rect::new(0, popup_start, width, height.saturating_sub(popup_start));
-        let popup_buffer = Buffer {
-            area: popup_area,
-            content: buffer
-                .content
-                .iter()
-                .skip(usize::from(popup_start) * usize::from(width))
-                .take(usize::from(popup_area.width) * usize::from(popup_area.height))
-                .cloned()
-                .collect(),
-        };
+        let mut widths = session.browser_widths.clone();
+        widths.push(width);
+        widths.sort_unstable();
+        widths.dedup();
+        let viewports: serde_json::Map<String, serde_json::Value> = widths
+            .into_iter()
+            .map(|width| {
+                (
+                    width.to_string(),
+                    super::web_ui_viewport::render(
+                        &self.chat_widget,
+                        self.overlay.as_mut(),
+                        width,
+                        size.height,
+                        question.is_some(),
+                    ),
+                )
+            })
+            .collect();
+        let default_viewport = &viewports[&width.to_string()];
         let frame = json!({
             "type": "frame", "threadId": session.thread_id.to_string(),
             "fullImage": full_image,
@@ -718,13 +674,14 @@ impl App {
             "turnActive": self.chat_widget.browser_turn_active(),
             "history": history, "historyStart": first, "historyEnd": end, "historyTotal": self.transcript_cells.len(),
             "historyRowEnd": session.history_row_end,
-            "live": if question.is_none() && (dialog || self.overlay.is_some()) { buffer_html(&buffer, cursor) } else { String::new() },
+            "viewports": viewports,
+            "live": default_viewport["live"],
             "question": question,
             "overlay": self.overlay.is_some(),
-            "active": active_html, "stream": stream_update, "toolSummary": tool_summary, "activity": if question.is_none() { buffer_html(&activity_buffer, None) } else { String::new() },
-            "popup": if popup_height > 0 { buffer_html(&popup_buffer, None) } else { String::new() },
-            "status": status,
-            "goalStatus": goal_status,
+            "active": active_html, "stream": stream_update, "toolSummary": tool_summary, "activity": default_viewport["activity"],
+            "popup": default_viewport["popup"],
+            "status": default_viewport["status"],
+            "goalStatus": default_viewport["goalStatus"],
             "composer": {
                 "text": draft.text, "revision": session.draft_revision, "ackRevision": session.draft_ack,
                 "attachments": attachments, "model": self.chat_widget.current_model(),
