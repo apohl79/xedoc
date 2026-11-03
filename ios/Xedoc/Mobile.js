@@ -22,6 +22,9 @@
     }
   };
   window.addEventListener("load", () => {
+    document.querySelectorAll('input, select, textarea, [contenteditable]').forEach((input) => {
+      input.style.setProperty("font-size", "16px", "important");
+    });
     hostView = document.getElementById("host-view");
     lock = document.getElementById("sidebar-lock");
     sidebar = document.getElementById("sidebar");
@@ -32,9 +35,16 @@
       #host-view { padding-left: 222px; }
       #host-view.sidebar-hidden { padding-left: 2px !important; }
       #sidebar { left: 2px; }
+      #sidebar, #sidebar h2, #sidebar .sidebar-brand strong { font-size: 16px; }
+      #sidebar #identity, #sidebar #host-name-button { font-size: 14px; }
+      #sidebar button.workspace, #sidebar button.project { min-height: 44px; }
+      #sidebar .workspace-remove, #sidebar .project-pin {
+        width: 34px; height: 44px; opacity: 1; pointer-events: auto;
+      }
       #sidebar-lock { display: none; }
       .login { width: min(100%, 360px); }
-      input, select, textarea { font-size: 16px; }
+      input, select, textarea, [contenteditable="true"] { font-size: 16px !important; }
+      button, a, input, select, textarea, [contenteditable="true"] { touch-action: manipulation; }
     `;
     document.head.append(style);
     for (const id of ["add-workspace", "new-project", "session-menu-button"]) {
@@ -47,6 +57,10 @@
     const toggle = document.getElementById("sidebar-toggle");
     toggle.addEventListener("pointerenter", (event) => event.stopImmediatePropagation(), true);
     sidebar.addEventListener("pointerleave", (event) => event.stopImmediatePropagation(), true);
+    sidebar.addEventListener("focusout", (event) => event.stopImmediatePropagation(), true);
+    sidebar.addEventListener("click", (event) => {
+      if (!docked && event.target.closest("button.project")) open(false);
+    });
     toggle.addEventListener("click", (event) => {
       event.stopImmediatePropagation();
       open(!hostView.classList.contains("sidebar-open"));

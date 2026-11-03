@@ -25,12 +25,12 @@ struct HostWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> MobileWebView {
         let configuration = WKWebViewConfiguration()
         do {
-            for (name, mainFrameOnly) in [("Mobile", true), ("TUIControls", false)] {
+            for name in ["Mobile", "TUIControls"] {
                 guard let scriptURL = Bundle.main.url(forResource: name, withExtension: "js")
                 else { throw CocoaError(.fileNoSuchFile) }
                 let script = try String(contentsOf: scriptURL, encoding: .utf8)
                 configuration.userContentController.addUserScript(WKUserScript(
-                    source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: mainFrameOnly
+                    source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: false
                 ))
             }
         } catch {
