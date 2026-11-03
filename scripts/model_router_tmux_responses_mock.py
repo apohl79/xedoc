@@ -245,6 +245,7 @@ class Handler(BaseHTTPRequestHandler):
     total_tokens: int
     request_sequence = 0
     request_sequence_lock = threading.Lock()
+    classifier_attempts: dict[str, int] = {}
 
     def do_POST(self) -> None:  # noqa: N802
         if self.path != "/v1/responses":
@@ -260,6 +261,24 @@ class Handler(BaseHTTPRequestHandler):
             type(self).request_sequence += 1
             sequence = type(self).request_sequence
         self.request_log.append(observation(request, sequence, self.path))
+        fault = next(
+            (
+                marker
+                for marker in (
+                    "ROUTER_E2E_RETRY_RECOVER",
+                    "ROUTER_E2E_RETRY_EXHAUST",
+                    "ROUTER_E2E_RETRY_CANCEL",
+                    "ROUTER_E2E_RETRY_FATAL",
+                )
+                if request_kind(request) == "model_router_classifier"
+                and contains_text(request, marker)
+            ),
+            None,
+        )
+        with self.request_sequence_lock:
+            attempt = self.classifier_attempts.get(fault, 0) + 1 if fault else 0
+            if fault:
+                self.classifier_attempts[fault] = attempt
         if contains_text(request, HOLD_RESPONSE_MARKER):
             for _ in range(600):
                 if self.hold_response_file.exists():
@@ -268,9 +287,29 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_error(504, "held response was not released")
                 return
+        events = events_for_request(request, sequence, self.total_tokens)
+        if fault and (fault != "ROUTER_E2E_RETRY_RECOVER" or attempt == 1):
+            events = [
+                response_created(f"interrupted-{sequence}"),
+                assistant_message(f"partial-{sequence}", "discard this partial output"),
+            ]
+        if fault in ("ROUTER_E2E_RETRY_FATAL", "ROUTER_E2E_RETRY_CANCEL"):
+            events.append(
+                {
+                    "type": "response.failed",
+                    "response": {
+                        "error": {
+                            "code": "invalid_prompt"
+                            if fault == "ROUTER_E2E_RETRY_FATAL"
+                            else "rate_limit_exceeded",
+                            "message": "Please try again in 10s.",
+                        }
+                    },
+                }
+            )
         body = "".join(
             f"event: {event['type']}\ndata: {json.dumps(event, separators=(',', ':'))}\n\n"
-            for event in events_for_request(request, sequence, self.total_tokens)
+            for event in events
         ).encode()
         self.send_response(200)
         self.send_header("content-type", "text/event-stream")

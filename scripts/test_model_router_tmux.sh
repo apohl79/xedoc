@@ -19,7 +19,11 @@ readonly source_embedder="$repo_root/scripts/model-router/reference-router-embed
 readonly source_semantic_policy="$repo_root/scripts/model-router/reference-router.semantic-policy.json"
 readonly source_catalog="$repo_root/xedoc-rs/models-manager/models.json"
 readonly mock_server="$script_dir/model_router_tmux_responses_mock.py"
-readonly initial_model="gpt-5.6-luna"
+initial_model="gpt-5.6-luna"
+if [[ "${XEDOC_TMUX_TEST_PHASE:-}" == "classifier-retry" ]]; then
+  initial_model="gpt-6-luna"
+fi
+readonly initial_model
 readonly initial_effort="low"
 readonly jev_api_key="${XEDOC_TMUX_JEV_API_KEY:-}"
 readonly keep_tmp_dir="${XEDOC_TMUX_TEST_KEEP_DIR:-0}"
@@ -166,7 +170,7 @@ wait_for_tui_ready() {
   local pane=""
   for _ in $(seq 1 400); do
     pane="$(capture_viewport)"
-    if [[ "$pane" == *"❯"* && "$pane" == *"$initial_model · $initial_effort"* ]]; then
+    if [[ "$pane" == *"❯"* && "$pane" == *"$initial_model"* && "$pane" == *"$initial_effort"* ]]; then
       return
     fi
     if [[ "$trust_confirmed" -eq 0 && "$pane" == *"Do you trust the contents of this directory?"* ]]; then
@@ -712,11 +716,11 @@ PY
 assert_classifier_requests() {
   local marker="$1"
   local expected_count="$2"
-  python3 - "$request_log" "$marker" "$expected_count" <<'PY'
+  python3 - "$request_log" "$marker" "$expected_count" "$initial_model" <<'PY'
 import json
 import sys
 
-path, marker, expected_count = sys.argv[1:]
+path, marker, expected_count, expected_model = sys.argv[1:]
 requests = [json.loads(line) for line in open(path, encoding="utf-8") if line.strip()]
 matching = [
     request
@@ -727,7 +731,7 @@ matching = [
 assert len(matching) == int(expected_count), (marker, len(matching), expected_count)
 for request in matching:
     route = (request.get("model"), (request.get("reasoning") or {}).get("effort"))
-    assert route == ("gpt-5.6-luna", "low"), route
+    assert route == (expected_model, "low"), route
 PY
 }
 
@@ -772,19 +776,20 @@ PY
 
 set_classifier_route() {
   local mode="$1"
-  python3 - "$policy_path" "$mode" <<'PY'
+  python3 - "$policy_path" "$mode" "$initial_model" <<'PY'
 import json
 import sys
 
 path = sys.argv[1]
 mode = sys.argv[2]
+model = sys.argv[3]
 policy = json.load(open(path, encoding="utf-8"))
 policy["mode"] = mode
 policy["approval"] = "off"
 policy["confidence"] = "permissive"
 policy["classifierRoute"] = {
     "providerId": "openai",
-    "model": "gpt-5.6-luna",
+    "model": model,
     "reasoningEffort": "low",
 }
 policy["externalClassifier"] = {"backend": "xedoc-llm", "model": None}
@@ -1088,6 +1093,8 @@ prepare_package() {
   cp "$source_embedder" "$package_dir/xedoc-resources/model-router/reference-router-embedder.py"
   cp "$source_semantic_policy" "$package_dir/xedoc-resources/model-router/reference-router.semantic-policy.json"
   cp "$source_policy" "$package_dir/xedoc-resources/model-router/reference-router.policy.json"
+  cp "$repo_root/xedoc-rs/models-manager/catalog.json" \
+    "$package_dir/xedoc-resources/model-router/model-catalog.json"
   [[ ! -e "$policy_path" ]] || fail "router state unexpectedly exists before bootstrap"
   chmod +x \
     "$package_dir/bin/xedoc" \
@@ -2331,6 +2338,52 @@ run_classifier_mode_matrix() {
     "LLM classification and embedding work-type similarity reached full, shadow, and subagent routing"
 }
 
+run_classifier_retry() {
+  reset_policy
+  set_classifier_route full
+  start_tui
+  send_prompt "ROUTER_E2E_RETRY_RECOVER review workflow security"
+  wait_for_request_marker "ROUTER_E2E_RETRY_RECOVER"
+  await_turn
+  assert_classifier_requests "ROUTER_E2E_RETRY_RECOVER" 2
+  wait_for_pane_absent "LLM classifier unavailable"
+  assert_latest_hybrid_decision \
+    root full \
+    "group1: question, docs_analysis, packaging, operational, testing" \
+    high low none apply
+  record_scenario classifier-retry-recover \
+    "partial classifier output discarded; second attempt classified and routed"
+
+  start_tui
+  send_prompt "ROUTER_E2E_RETRY_EXHAUST review workflow security"
+  wait_for_request_marker "ROUTER_E2E_RETRY_EXHAUST"
+  await_turn
+  assert_classifier_requests "ROUTER_E2E_RETRY_EXHAUST" 6
+  wait_for_pane "Model router warning: router classifier invocation failed"
+  wait_for_pane "LLM classifier unavailable"
+  record_scenario classifier-retry-exhaust \
+    "five retries exhausted; warning and embedder fallback remain visible"
+
+  start_tui
+  send_prompt "ROUTER_E2E_RETRY_FATAL review workflow security"
+  wait_for_request_marker "ROUTER_E2E_RETRY_FATAL"
+  await_turn
+  assert_classifier_requests "ROUTER_E2E_RETRY_FATAL" 1
+  wait_for_pane "Model router warning: router classifier invocation failed"
+  record_scenario classifier-retry-fatal "invalid requests fail without retries"
+
+  start_tui
+  send_prompt "ROUTER_E2E_RETRY_CANCEL review workflow security"
+  wait_for_pane "Please try again in 10s."
+  tmux send-keys -t "$tmux_session":0.0 Escape
+  wait_for_pane_absent "Routing" 10
+  sleep 11
+  assert_classifier_requests "ROUTER_E2E_RETRY_CANCEL" 1
+  ! capture_pane | grep -Fq "router root completed" ||
+    fail "cancelled classifier started a regular model turn"
+  record_scenario classifier-retry-cancel "cancellation prevents further classifier requests"
+}
+
 run_session_mode_override() {
   reset_policy
   start_tui
@@ -2781,7 +2834,7 @@ main() {
   prepare_package
   write_runtime_config
   assert_reference_policy_contract
-  if [[ "$phase" != "report" && "$phase" != "review-decisions" && "$phase" != "routing-interrupt" && "$phase" != "noop-route-compaction" ]]; then
+  if [[ "$phase" != "report" && "$phase" != "review-decisions" && "$phase" != "routing-interrupt" && "$phase" != "noop-route-compaction" && "$phase" != "classifier-retry" ]]; then
     seed_legacy_policy
     assert_legacy_policy_migration
     assert_script_conflict_protocol
@@ -2799,6 +2852,11 @@ main() {
     run_classifier_mode_matrix
     assert_config_unchanged
     printf 'PASS: scripted model-router classifier tmux acceptance\n'
+    return
+  elif [[ "$phase" == "classifier-retry" ]]; then
+    run_classifier_retry
+    assert_config_unchanged
+    printf 'PASS: scripted model-router classifier retry tmux acceptance\n'
     return
   elif [[ "$phase" == "routing-interrupt" ]]; then
     run_routing_interrupt

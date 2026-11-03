@@ -18,6 +18,7 @@ use uuid::Uuid;
 use xedoc_async_utils::OrCancelExt;
 use xedoc_features::Feature;
 use xedoc_install_context::InstallContext;
+use xedoc_protocol::error::XedocErr;
 use xedoc_protocol::models::BaseInstructions;
 use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::ResponseItem;
@@ -359,22 +360,50 @@ impl ModelRouterScriptHost {
             .await;
         let mut retries = 0;
         let max_retries = classifier_turn.provider.info().stream_max_retries();
-        let mut stream = loop {
-            let stream = client_session
-                .stream(
-                    &prompt,
-                    &classifier_turn.model_info,
-                    &classifier_turn.session_telemetry,
-                    classifier_turn.reasoning_effort.clone(),
-                    classifier_turn.reasoning_summary,
-                    classifier_turn.config.service_tier.clone(),
-                    &responses_metadata,
-                )
-                .or_cancel(cancellation)
-                .await
-                .map_err(|_| ModelRouterScriptFailure::ClassifierCancelled)?;
-            match stream {
-                Ok(stream) => break stream,
+        loop {
+            let attempt = async {
+                let mut stream = client_session
+                    .stream(
+                        &prompt,
+                        &classifier_turn.model_info,
+                        &classifier_turn.session_telemetry,
+                        classifier_turn.reasoning_effort.clone(),
+                        classifier_turn.reasoning_summary,
+                        classifier_turn.config.service_tier.clone(),
+                        &responses_metadata,
+                    )
+                    .await?;
+                let mut output = String::new();
+                while let Some(event) = stream.next().await {
+                    let event = event?;
+                    append_classifier_event_text(&mut output, &event);
+                    if let ResponseEvent::Completed {
+                        response_id,
+                        token_usage,
+                        ..
+                    } = event
+                    {
+                        session
+                            .record_auxiliary_token_usage(
+                                &classifier_turn,
+                                Some(response_id.as_str()),
+                                token_usage.as_ref(),
+                                "model_router_classifier",
+                            )
+                            .await;
+                        return Ok(output);
+                    }
+                }
+                Err(XedocErr::Stream(
+                    "classifier stream ended before completion".to_string(),
+                    None,
+                ))
+            }
+            .or_cancel(cancellation)
+            .await
+            .map_err(|_| ModelRouterScriptFailure::ClassifierCancelled)?;
+            match attempt {
+                Ok(output) => return Ok(output),
                 Err(error) if error.is_retryable() => {
                     handle_retryable_response_stream_error(
                         &mut retries,
@@ -385,44 +414,14 @@ impl ModelRouterScriptHost {
                         &classifier_turn,
                         ResponsesStreamRequest::Sampling,
                     )
+                    .or_cancel(cancellation)
                     .await
+                    .map_err(|_| ModelRouterScriptFailure::ClassifierCancelled)?
                     .map_err(|error| classifier_invocation_failure(error.to_string()))?;
                 }
                 Err(error) => return Err(classifier_invocation_failure(error.to_string())),
             }
-        };
-        let mut output = String::new();
-        loop {
-            let event = stream
-                .next()
-                .or_cancel(cancellation)
-                .await
-                .map_err(|_| ModelRouterScriptFailure::ClassifierCancelled)?;
-            let Some(event) = event else {
-                break;
-            };
-            let event = event.map_err(|error| classifier_invocation_failure(error.to_string()))?;
-            append_classifier_event_text(&mut output, &event);
-            if let ResponseEvent::Completed {
-                response_id,
-                token_usage,
-                ..
-            } = event
-            {
-                session
-                    .record_auxiliary_token_usage(
-                        &classifier_turn,
-                        Some(response_id.as_str()),
-                        token_usage.as_ref(),
-                        "model_router_classifier",
-                    )
-                    .await;
-                return Ok(output);
-            }
         }
-        Err(classifier_invocation_failure(
-            "classifier stream ended before completion".to_string(),
-        ))
     }
 
     /// Opens the script-owned model-router settings surface.
