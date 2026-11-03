@@ -77,7 +77,7 @@ a { color: #8fc4e7; }
 .history-user > :first-child { margin-top: 0; }
 .history-user > :last-child { margin-bottom: 0; }
 .line { display: block; min-height: 1lh; white-space: pre-wrap; overflow-wrap: anywhere; }
-.history-terminal .line, #live .line { white-space: pre; }
+.history-terminal .line, #live .line, #activity > .line { white-space: pre; overflow-wrap: normal; }
 .history-lines { white-space: normal; overflow-wrap: anywhere; }
 .history-lines > div { min-height: 1.4em; white-space: pre-wrap; overflow-wrap: anywhere; }
 .history-tool, .history-tool-slice { padding: 0 8px; }
