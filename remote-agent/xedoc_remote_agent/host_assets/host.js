@@ -472,6 +472,7 @@
     projectActivityRefreshAt.set(key, Date.now());
     activity.observeProjects(projects, workspaceId);
     if (workspaceId !== selectedWorkspace) return;
+    markActiveSessionVisited();
     if (changed) {
       void renderWorkspace().catch((error) => notice(error.message));
       return;
