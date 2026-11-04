@@ -443,7 +443,7 @@
     while (pendingActions.length) send(pendingActions.shift());
     if (submitPending) {
       submitPending = false;
-      send({ type: "key", key: "Enter" });
+      if (send({ type: "key", key: "Enter" })) history.scrollTop = history.scrollHeight;
     }
   }
 
