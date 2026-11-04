@@ -85,6 +85,7 @@ const MAX_MODEL_ROUTE_REASONING_EFFORTS: usize = 16;
 const MAX_CLASSIFIER_CONTINUATION_BYTES: usize = 8_192;
 const MAX_CLASSIFIER_INPUT_BYTES: usize = 8_192;
 const MAX_CLASSIFIER_OUTPUT_BYTES: usize = 4_096;
+const CLASSIFIER_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_ROUTER_STATE_IDENTIFIER_BYTES: usize = 128;
 const MAX_ROUTER_STATE_REVISION_BYTES: usize = 128;
 const MAX_REPORT_INPUT_BYTES: usize = 512 * 1024;
@@ -361,7 +362,7 @@ impl ModelRouterScriptHost {
         let mut retries = 0;
         let max_retries = classifier_turn.provider.info().stream_max_retries();
         loop {
-            let attempt = async {
+            let attempt = tokio::time::timeout(CLASSIFIER_REQUEST_TIMEOUT, async {
                 let mut stream = client_session
                     .stream(
                         &prompt,
@@ -398,10 +399,16 @@ impl ModelRouterScriptHost {
                     "classifier stream ended before completion".to_string(),
                     None,
                 ))
-            }
+            })
             .or_cancel(cancellation)
             .await
-            .map_err(|_| ModelRouterScriptFailure::ClassifierCancelled)?;
+            .map_err(|_| ModelRouterScriptFailure::ClassifierCancelled)?
+            .unwrap_or_else(|_| {
+                Err(XedocErr::Stream(
+                    "router classifier request timed out after 10 seconds".to_string(),
+                    None,
+                ))
+            });
             match attempt {
                 Ok(output) => return Ok(output),
                 Err(error) if error.is_retryable() => {

@@ -20,7 +20,7 @@ readonly source_semantic_policy="$repo_root/scripts/model-router/reference-route
 readonly source_catalog="$repo_root/xedoc-rs/models-manager/models.json"
 readonly mock_server="$script_dir/model_router_tmux_responses_mock.py"
 initial_model="gpt-5.6-luna"
-if [[ "${XEDOC_TMUX_TEST_PHASE:-}" == "classifier-retry" ]]; then
+if [[ "${XEDOC_TMUX_TEST_PHASE:-}" == "classifier-retry" || "${XEDOC_TMUX_TEST_PHASE:-}" == "classifier-timeout" ]]; then
   initial_model="gpt-6-luna"
 fi
 readonly initial_model
@@ -2384,6 +2384,49 @@ run_classifier_retry() {
   record_scenario classifier-retry-cancel "cancellation prevents further classifier requests"
 }
 
+run_classifier_timeout() {
+  local started elapsed
+  reset_policy
+  set_classifier_route full
+  start_tui
+  send_prompt "ROUTER_E2E_TIMEOUT_RECOVER review workflow security"
+  wait_for_request_marker "ROUTER_E2E_TIMEOUT_RECOVER"
+  started="$(date +%s)"
+  await_turn
+  elapsed="$(($(date +%s) - started))"
+  ((elapsed >= 9 && elapsed < 20)) || fail "classifier timeout recovery took ${elapsed}s"
+  assert_classifier_requests "ROUTER_E2E_TIMEOUT_RECOVER" 2
+  wait_for_pane_absent "LLM classifier unavailable"
+  assert_latest_hybrid_decision \
+    root full \
+    "group1: question, docs_analysis, packaging, operational, testing" \
+    high low none apply
+  record_scenario classifier-timeout-recover \
+    "active stream timed out; partial output discarded; retry classified and routed in ${elapsed}s"
+
+  start_tui
+  send_prompt "ROUTER_E2E_TIMEOUT_EXHAUST review workflow security"
+  wait_for_request_marker "ROUTER_E2E_TIMEOUT_EXHAUST"
+  wait_for_pane "router root completed" 1000
+  assert_classifier_requests "ROUTER_E2E_TIMEOUT_EXHAUST" 6
+  wait_for_pane "Model router warning: router classifier invocation failed"
+  wait_for_pane "LLM classifier unavailable"
+  record_scenario classifier-timeout-exhaust \
+    "six active stream attempts timed out; warning and embedder fallback remain visible"
+
+  start_tui
+  send_prompt "ROUTER_E2E_TIMEOUT_CANCEL review workflow security"
+  wait_for_request_marker "ROUTER_E2E_TIMEOUT_CANCEL"
+  tmux send-keys -t "$tmux_session":0.0 Escape
+  wait_for_pane_absent "Routing" 10
+  sleep 11
+  assert_classifier_requests "ROUTER_E2E_TIMEOUT_CANCEL" 1
+  ! capture_pane | grep -Fq "router root completed" ||
+    fail "cancelled classifier started a regular model turn"
+  record_scenario classifier-timeout-cancel \
+    "cancellation of an active classifier stream prevents retry and regular inference"
+}
+
 run_session_mode_override() {
   reset_policy
   start_tui
@@ -2834,7 +2877,7 @@ main() {
   prepare_package
   write_runtime_config
   assert_reference_policy_contract
-  if [[ "$phase" != "report" && "$phase" != "review-decisions" && "$phase" != "routing-interrupt" && "$phase" != "noop-route-compaction" && "$phase" != "classifier-retry" ]]; then
+  if [[ "$phase" != "report" && "$phase" != "review-decisions" && "$phase" != "routing-interrupt" && "$phase" != "noop-route-compaction" && "$phase" != "classifier-retry" && "$phase" != "classifier-timeout" ]]; then
     seed_legacy_policy
     assert_legacy_policy_migration
     assert_script_conflict_protocol
@@ -2857,6 +2900,11 @@ main() {
     run_classifier_retry
     assert_config_unchanged
     printf 'PASS: scripted model-router classifier retry tmux acceptance\n'
+    return
+  elif [[ "$phase" == "classifier-timeout" ]]; then
+    run_classifier_timeout
+    assert_config_unchanged
+    printf 'PASS: scripted model-router classifier timeout tmux acceptance\n'
     return
   elif [[ "$phase" == "routing-interrupt" ]]; then
     run_routing_interrupt

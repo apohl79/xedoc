@@ -269,6 +269,9 @@ class Handler(BaseHTTPRequestHandler):
                     "ROUTER_E2E_RETRY_EXHAUST",
                     "ROUTER_E2E_RETRY_CANCEL",
                     "ROUTER_E2E_RETRY_FATAL",
+                    "ROUTER_E2E_TIMEOUT_RECOVER",
+                    "ROUTER_E2E_TIMEOUT_EXHAUST",
+                    "ROUTER_E2E_TIMEOUT_CANCEL",
                 )
                 if request_kind(request) == "model_router_classifier"
                 and contains_text(request, marker)
@@ -288,7 +291,23 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(504, "held response was not released")
                 return
         events = events_for_request(request, sequence, self.total_tokens)
-        if fault and (fault != "ROUTER_E2E_RETRY_RECOVER" or attempt == 1):
+        timeout_fault = (
+            fault is not None
+            and fault.startswith("ROUTER_E2E_TIMEOUT_")
+            and (fault != "ROUTER_E2E_TIMEOUT_RECOVER" or attempt == 1)
+        )
+        if timeout_fault:
+            events[1:1] = [
+                {
+                    "type": "response.output_text.delta",
+                    "delta": "discard this partial output",
+                }
+            ] * 7
+        if (
+            fault is not None
+            and fault.startswith("ROUTER_E2E_RETRY_")
+            and (fault != "ROUTER_E2E_RETRY_RECOVER" or attempt == 1)
+        ):
             events = [
                 response_created(f"interrupted-{sequence}"),
                 assistant_message(f"partial-{sequence}", "discard this partial output"),
@@ -316,7 +335,19 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("cache-control", "no-cache")
         self.send_header("content-length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            if timeout_fault:
+                for event in events:
+                    self.wfile.write(
+                        f"event: {event['type']}\ndata: {json.dumps(event, separators=(',', ':'))}\n\n".encode()
+                    )
+                    self.wfile.flush()
+                    if event["type"] == "response.output_text.delta":
+                        time.sleep(3)
+            else:
+                self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            return
         with self.completion_log.open("a", encoding="utf-8") as completion_log:
             completion_log.write(f"{sequence}\n")
 

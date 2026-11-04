@@ -300,16 +300,20 @@ impl ResponsesWebsocketConnection {
                         return;
                     };
 
-                    run_websocket_response_stream(
-                        ws_stream,
-                        tx_event.clone(),
-                        request_text,
-                        idle_timeout,
-                        telemetry,
-                        turn_state.as_deref(),
-                        &timing_log_context,
-                    )
-                    .await
+                    tokio::select! {
+                        _ = tx_event.closed() => Err(ApiError::Stream(
+                            "response event consumer dropped".to_string(),
+                        )),
+                        result = run_websocket_response_stream(
+                            ws_stream,
+                            tx_event.clone(),
+                            request_text,
+                            idle_timeout,
+                            telemetry,
+                            turn_state.as_deref(),
+                            &timing_log_context,
+                        ) => result,
+                    }
                 };
 
                 if let Err(err) = result {
