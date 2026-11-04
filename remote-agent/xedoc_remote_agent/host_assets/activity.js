@@ -26,9 +26,13 @@ window.XedocHostActivity = class {
   observe(session, workspaceId, projectName, source = "snapshot") {
     const previous = this.sessions.get(session.threadId);
     const saved = this.saved[session.threadId];
-    const updatedAt = session.updatedAt ?? previous?.updatedAt ?? 0;
     const needsInput = Boolean(session.needsInput);
     const active = session.status === "active" || needsInput;
+    const updatedAt = Math.max(
+      session.updatedAt ?? 0,
+      previous?.updatedAt ?? 0,
+      source === "live" && previous?.active && !active ? Date.now() / 1000 : 0,
+    );
     if (source !== "live" && previous?.liveActive && !active) return;
     const completed = !active && Boolean(
       previous?.completed
@@ -147,6 +151,7 @@ window.XedocHostActivity = class {
   }
 
   paint() {
+    const cutoff = Date.now() / 1000 - 48 * 3600;
     for (const group of document.querySelectorAll(".session-state")) {
       const sessions = [...this.sessions.values()].filter((session) =>
         session.workspaceId === group.dataset.workspace
@@ -159,7 +164,8 @@ window.XedocHostActivity = class {
         running: sessions.some((session) => session.active && !session.needsInput),
         waiting: sessions.some((session) => session.needsInput),
         completed: !selectedTab
-          && sessions.some((session) => session.completed && !session.active),
+          && sessions.some((session) =>
+            session.completed && !session.active && session.updatedAt >= cutoff),
       };
       group.hidden = !Object.values(states).some(Boolean);
       for (const marker of group.children) marker.hidden = !states[marker.dataset.kind];
