@@ -56,6 +56,7 @@
     if (event.target === imageViewer) imageViewer.close();
   });
   imageViewer.addEventListener("close", () => {
+    if (imageViewer.open) return;
     imageViewerImage.removeAttribute("src");
     imageViewerTrigger?.isConnected
       && imageViewerTrigger.focus({ preventScroll: true });
@@ -651,10 +652,28 @@
         const image = /^data:image\/(?:png|jpeg|gif|webp);base64,/.test(item.dataUrl || "");
         const pdf = item.mimeType === "application/pdf";
         if (image) {
+          const trigger = document.createElement("button");
+          trigger.type = "button";
+          trigger.className = "attachment-image-trigger";
+          trigger.setAttribute("aria-label", `View ${item.anchor} at full size`);
           const preview = document.createElement("img");
           preview.src = item.dataUrl;
           preview.alt = item.anchor;
-          figure.append(preview);
+          trigger.append(preview);
+          trigger.addEventListener("click", () => {
+            imageViewerImage.src = preview.src;
+            imageViewerImage.alt = preview.alt;
+            imageViewerCaption.textContent = item.anchor;
+            imageViewerTrigger = trigger;
+            imageViewer.showModal();
+            imageViewerClose.focus({ preventScroll: true });
+            const requestId = crypto.randomUUID();
+            imageViewerRequestId = requestId;
+            if (!send({ type: "attachmentImageRequest", requestId, anchor: item.anchor })) {
+              imageViewerRequestId = null;
+            }
+          });
+          figure.append(trigger);
         } else {
           figure.classList.add("document-attachment");
           if (pdf && !pdfPreviews.has(item.anchor)) {

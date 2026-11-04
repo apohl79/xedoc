@@ -288,6 +288,35 @@ impl App {
                     session.last_publish = None;
                 }
             }
+            Ok(BrowserInput::AttachmentImageRequest { request_id, anchor })
+                if !request_id.is_empty() && request_id.len() <= 64 =>
+            {
+                let data_url = self
+                    .chat_widget
+                    .browser_draft()
+                    .local_images
+                    .iter()
+                    .find(|image| image.placeholder == anchor)
+                    .and_then(|image| {
+                        use std::io::Read;
+
+                        let file = std::fs::File::open(&image.path).ok()?;
+                        let mut bytes = Vec::new();
+                        file.take(8 * 1024 * 1024 + 1)
+                            .read_to_end(&mut bytes)
+                            .ok()?;
+                        crate::web_ui_images::full_image_data_url(
+                            &base64::engine::general_purpose::STANDARD.encode(bytes),
+                        )
+                    });
+                if let (Some(data_url), Some(session)) = (data_url, tui.web_ui.as_mut()) {
+                    session.full_image_response = Some(FullImageResponse {
+                        request_id,
+                        data_url,
+                    });
+                    session.last_publish = None;
+                }
+            }
             Ok(BrowserInput::Image { data_url, cursor }) => {
                 if tui
                     .web_ui
@@ -757,7 +786,7 @@ fn image_preview(path: &std::path::Path) -> Option<String> {
     limits.max_image_height = Some(8192);
     limits.max_alloc = Some(64 * 1024 * 1024);
     reader.limits(limits);
-    let preview = reader.decode().ok()?.thumbnail(96, 96).to_rgb8();
+    let preview = reader.decode().ok()?.thumbnail(384, 384).to_rgb8();
     let mut bytes = Cursor::new(Vec::new());
     preview
         .write_to(&mut bytes, image::ImageFormat::Jpeg)

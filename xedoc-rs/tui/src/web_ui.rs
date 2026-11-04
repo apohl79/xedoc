@@ -53,6 +53,11 @@ pub(crate) enum BrowserInput {
         #[serde(rename = "imageIndex")]
         image_index: usize,
     },
+    AttachmentImageRequest {
+        #[serde(rename = "requestId")]
+        request_id: String,
+        anchor: String,
+    },
     File {
         name: String,
         #[serde(rename = "dataUrl")]
@@ -111,6 +116,7 @@ impl BrowserInput {
             | Self::RefreshModels
             | Self::Image { .. }
             | Self::ImageRequest { .. }
+            | Self::AttachmentImageRequest { .. }
             | Self::File { .. }
             | Self::History { .. }
             | Self::Draft { .. }

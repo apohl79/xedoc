@@ -220,6 +220,7 @@ a { color: #8fc4e7; }
 .document-attachment object { display: block; width: 100%; height: 180px; margin-bottom: 6px; }
 .attachment-filename { overflow-wrap: anywhere; padding-right: 20px; font-size: 12px; }
 .attachment button { position: absolute; right: 3px; top: 3px; border-radius: 50%; width: 22px; height: 22px; color: #e1e7eb; background: #192229e6; }
+.attachment .attachment-image-trigger { position: static; display: block; width: 90px; height: 68px; padding: 0; border: 0; border-radius: 5px; background: none; cursor: zoom-in; }
 #menu { position: fixed; z-index: 10; width: min(360px, calc(100vw - 24px)); max-height: 50dvh; padding: 6px; overflow-y: auto; border: 1px solid #485d6b; border-radius: 8px; background: #26333d; box-shadow: 0 12px 36px #0006; }
 #menu input { width: 100%; padding: 8px 10px; margin-bottom: 5px; background: #19252d; border: 1px solid var(--border); border-radius: 5px; color: inherit; outline: none; }
 @media (pointer: coarse) {

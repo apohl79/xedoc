@@ -332,7 +332,7 @@ async fn browser_socket(mut socket: WebSocket, state: Arc<SessionState>) {
                             if !send(&mut socket, serde_json::json!({"type": "fileSearch", "requestId": request_id, "matches": matches}).to_string()).await { break; }
                             continue;
                         }
-                        let valid = matches!(input["type"].as_str(), Some("key" | "paste" | "image" | "imageRequest" | "file" | "history" | "draft" | "removeImage" | "settings" | "routingTable" | "refreshModels" | "question" | "resize" | "recallScheduledPrompt" | "recallQueuedPrompt"));
+                        let valid = matches!(input["type"].as_str(), Some("key" | "paste" | "image" | "imageRequest" | "attachmentImageRequest" | "file" | "history" | "draft" | "removeImage" | "settings" | "routingTable" | "refreshModels" | "question" | "resize" | "recallScheduledPrompt" | "recallQueuedPrompt"));
                         if !valid || !state.producer_connected.load(Ordering::SeqCst) { break; }
                         if input["type"] == "resize" {
                             let Some(width) = input["width"].as_u64() else { break };
