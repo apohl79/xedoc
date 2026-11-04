@@ -534,6 +534,11 @@ current_release_tag() {
     return
   fi
 
+  if [ "$IOS_ONLY" = true ]; then
+    latest_release_tag
+    return
+  fi
+
   tag=""
   if command -v git >/dev/null 2>&1 && [ -d "$repo_root/.git" ]; then
     tag="$(
@@ -1220,7 +1225,8 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
     for entry in archive.infolist():
         path = PurePosixPath(entry.filename)
         if (path.is_absolute() or ".." in path.parts or "\\" in entry.filename
-                or not path.parts or path.parts[0] not in ("Xedoc.app", "install-ios.py")
+                or not path.parts
+                or path.parts[0] not in ("Xedoc.app", "install-ios.py", "ios-project")
                 or stat.S_ISLNK(entry.external_attr >> 16)):
             sys.exit("Unsafe member in iOS release ZIP: " + entry.filename)
     if "install-ios.py" not in archive.namelist():

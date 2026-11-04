@@ -79,8 +79,14 @@ these when the signed-in account has permission. It never falls back to a
 development-signed release. The app version follows the release version.
 These are distribution-signed apps, not App Store or notarized builds.
 Devices must be registered with the signing team and included in the embedded,
-unexpired provisioning profile. To add a device, register it and rebuild the
-release; the installer does not register devices or change signing accounts.
+unexpired provisioning profile. The ZIP includes a small Xcode project for new
+devices. If the selected device is missing from the profile, the installer uses
+Xcode automatic signing to register it with the app's original signing team,
+build the bundled source for that device, then archive and export a fresh
+Ad Hoc build before installing.
+Sign in to that team in Xcode Settings → Accounts first. No XcodeGen is needed
+on the installing Mac. The installer never changes signing teams or bypasses
+Apple's account permissions, device quotas, or registration processing delays.
 
 On macOS, the CLI installer offers optional iPhone/iPad installation. To install
 only the mobile app without changing the desktop installation:
@@ -91,11 +97,17 @@ sh scripts/install/install.sh --ios-only
 sh scripts/install/install.sh --ios-only --local-ios-zip /path/to/xedoc-ios-VERSION.zip
 ```
 
+`--ios-only` defaults to the latest published release, including from a checkout
+with an unreleased version. Use `--tag VERSION` to select a specific release.
+
 The installer verifies the GitHub download's SHA-256 digest before extracting it.
 With full Xcode and Python 3 installed, accept the prompt, connect and unlock a
 device by USB cable, trust the Mac, and enable Developer Mode when required.
+If Developer Mode is disabled, the installer explains the on-device setup and
+waits for you to restart, unlock, and confirm it before continuing.
 Choose a device from the numbered list. Only paired, physical iPhones and iPads
 reported as wired are listed, and the cable connection is checked again before
-installation. After each attempt, choose whether to install another device.
+installation, including after a provisioning build. After each attempt, choose
+whether to install another device. Failed attempts return a nonzero exit status.
 Wi-Fi-only devices and simulators are excluded. Non-interactive installs skip
 device prompts and downloads. `--check` never installs a device.

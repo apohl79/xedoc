@@ -112,6 +112,13 @@ def build_ios_release(
         staging.mkdir()
         run(["ditto", "--norsrc", "--noextattr", str(app), str(staging / app.name)])
         shutil.copy2(installer, staging / "install-ios.py")
+        project = staging / "ios-project"
+        shutil.copytree(ios_root / "Xedoc", project / "Xedoc")
+        shutil.copytree(
+            ios_root / "Xedoc.xcodeproj",
+            project / "Xedoc.xcodeproj",
+            ignore=shutil.ignore_patterns("xcuserdata", "project.xcworkspace"),
+        )
         temporary_archive = Path(temp_dir) / archive_output.name
         run(
             [
