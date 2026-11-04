@@ -85,7 +85,11 @@
   const attachments = document.getElementById("attachments");
   const menu = document.getElementById("menu");
   const quoteSelection = document.getElementById("quote-selection");
-  const question = new window.XedocQuestion(document.getElementById("question"), send);
+  const question = new window.XedocQuestion(document.getElementById("question"), send, {
+    text: editorText,
+    selection: editorSelection,
+    render: renderEditor,
+  });
   let selectedQuote = "";
   let linkPreviewTimeout = null;
   let linkPreviewAnchor = null;
@@ -333,12 +337,12 @@
     return isBlock(node.lastChild) ? text.replace(/\n$/, "") : text;
   }
 
-  function editorSelection() {
+  function editorSelection(root = input) {
     const selection = window.getSelection();
-    if (!selection?.rangeCount || !input.contains(selection.anchorNode)) return null;
+    if (!selection?.rangeCount || !root.contains(selection.anchorNode)) return null;
     const offset = (node, position) => {
       const range = document.createRange();
-      range.selectNodeContents(input);
+      range.selectNodeContents(root);
       range.setEnd(node, position);
       return editorText(range.cloneContents()).length;
     };
@@ -346,10 +350,10 @@
       offset(selection.focusNode, selection.focusOffset)];
   }
 
-  function restoreSelection(offsets) {
+  function restoreSelection(offsets, root = input) {
     if (!offsets) return;
     const locate = (offset) => {
-      for (const line of input.querySelectorAll(".editor-line")) {
+      for (const line of root.querySelectorAll(".editor-line")) {
         const length = line.textContent.length;
         if (offset <= length) {
           const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
@@ -368,15 +372,15 @@
         }
         offset -= length + 1;
       }
-      return [input, input.childNodes.length];
+      return [root, root.childNodes.length];
     };
     window.getSelection()?.setBaseAndExtent(...locate(offsets[0]), ...locate(offsets[1]));
   }
 
-  function renderEditor(text, selection = null) {
+  function renderEditor(text, selection = null, root = input) {
     const content = window.XedocPromptMarkdown.render(text);
-    if (input.innerHTML !== content.innerHTML) input.replaceChildren(...content.childNodes);
-    restoreSelection(selection);
+    if (root.innerHTML !== content.innerHTML) root.replaceChildren(...content.childNodes);
+    restoreSelection(selection, root);
   }
 
   function insertText(text) {
@@ -1149,7 +1153,9 @@
     socket.addEventListener("message", (event) => {
       let frame;
       try { frame = JSON.parse(event.data); } catch { return; }
-      if (frame.type === "frame") {
+      if (frame.type === "fileSearch") {
+        question.searchResults(frame);
+      } else if (frame.type === "frame") {
         if (frame.viewports) {
           const viewport = frame.viewports[browserTerminalWidth()];
           if (!viewport) {

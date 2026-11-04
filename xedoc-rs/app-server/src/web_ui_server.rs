@@ -57,6 +57,7 @@ struct RunningSession {
 }
 
 struct SessionState {
+    thread: Arc<xedoc_core::XedocThread>,
     thread_id: String,
     host: String,
     origin: String,
@@ -131,6 +132,7 @@ impl WebUiServer {
             let (frame, _) = watch::channel(None);
             let (inputs, input_receiver) = mpsc::channel(/*buffer*/ 4);
             let state = Arc::new(SessionState {
+                thread,
                 thread_id: params.thread_id,
                 host: address.to_string(),
                 origin: format!("http://{address}"),
@@ -317,6 +319,19 @@ async fn browser_socket(mut socket: WebSocket, state: Arc<SessionState>) {
                 match input {
                     Some(Ok(Message::Text(text))) => {
                         let Ok(input) = serde_json::from_str::<serde_json::Value>(&text) else { break };
+                        if input["type"] == "fileSearch" {
+                            let (Some(query), Some(request_id)) = (input["query"].as_str(), input["requestId"].as_u64()) else { break };
+                            if query.len() > 1024 { break; }
+                            let cancellation = Arc::new(AtomicBool::new(false));
+                            let config = state.thread.config().await;
+                            let search = crate::fuzzy_file_search::run_fuzzy_file_search(
+                                query.to_owned(), vec![config.cwd.to_string_lossy().into_owned()], Arc::clone(&cancellation),
+                            );
+                            let matches = timeout(Duration::from_secs(/*secs*/ 2), search).await.unwrap_or_default();
+                            cancellation.store(true, Ordering::Relaxed);
+                            if !send(&mut socket, serde_json::json!({"type": "fileSearch", "requestId": request_id, "matches": matches}).to_string()).await { break; }
+                            continue;
+                        }
                         let valid = matches!(input["type"].as_str(), Some("key" | "paste" | "image" | "imageRequest" | "file" | "history" | "draft" | "removeImage" | "settings" | "routingTable" | "refreshModels" | "question" | "resize" | "recallScheduledPrompt" | "recallQueuedPrompt"));
                         if !valid || !state.producer_connected.load(Ordering::SeqCst) { break; }
                         if input["type"] == "resize" {
