@@ -1250,6 +1250,24 @@
 
   input.addEventListener("compositionstart", () => { composing = true; });
   input.addEventListener("beforeinput", (event) => {
+    if (!composing && event.inputType === "insertText" && event.data
+        && !/^\s/.test(event.data)) {
+      const text = editorText();
+      const selection = editorSelection();
+      if (selection && selection[0] === selection[1]) {
+        const cursor = selection[0];
+        const lineStart = text.lastIndexOf("\n", cursor - 1) + 1;
+        const lineIndex = text.slice(0, lineStart).split("\n").length - 1;
+        const item = window.XedocPromptMarkdown.lines(text)[lineIndex]?.item;
+        const supportedMarker = item
+          && (item.marker === "-" || item.ordered && item.marker.endsWith("."));
+        if (supportedMarker && cursor === lineStart + item.indent.length + item.marker.length) {
+          event.preventDefault();
+          insertText(` ${event.data}`);
+          return;
+        }
+      }
+    }
     if (!composing && ["insertParagraph", "insertLineBreak"].includes(event.inputType)) {
       event.preventDefault();
       if (!editList("Enter")) insertText("\n");
