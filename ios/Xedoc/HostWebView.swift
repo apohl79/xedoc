@@ -142,6 +142,10 @@ final class MobileWebView: WKWebView, UIGestureRecognizerDelegate {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        scrollView.pinchGestureRecognizer?.isEnabled = false
+        scrollView.bouncesZoom = false
+        scrollView.bounces = false
+        scrollView.alwaysBounceHorizontal = false
         let current = window?.windowScene?.interfaceOrientation.isLandscape ?? false
         if landscape != current { updateSidebar() }
     }

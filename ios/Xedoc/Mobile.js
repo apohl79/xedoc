@@ -22,9 +22,35 @@
     }
   };
   window.addEventListener("load", () => {
+    let viewport = document.querySelector('meta[name="viewport"]');
+    if (!viewport) {
+      viewport = document.createElement("meta");
+      viewport.name = "viewport";
+      document.head.append(viewport);
+    }
+    viewport.content = "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no";
     const scrollingStyle = document.createElement("style");
-    scrollingStyle.textContent = "* { touch-action: pan-y !important; }";
+    scrollingStyle.textContent = `
+      * { touch-action: pan-y !important; overscroll-behavior-x: none !important; }
+      html, body, #session, #activity, #live, .session-tabs,
+      .history-cell pre, .table-scroll { overflow-x: hidden !important; }
+      #earlier { display: none !important; }
+    `;
     document.head.append(scrollingStyle);
+    for (const type of ["gesturestart", "gesturechange"]) {
+      document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
+    }
+    const history = document.getElementById("history");
+    const earlier = document.getElementById("earlier");
+    if (history && earlier) {
+      const loadEarlier = () => {
+        if (history.scrollTop <= 1 && !earlier.hidden && !earlier.disabled) earlier.click();
+      };
+      history.addEventListener("scroll", loadEarlier, { passive: true });
+      new MutationObserver(loadEarlier).observe(earlier, {
+        attributes: true, attributeFilter: ["hidden", "disabled"],
+      });
+    }
     if (window !== window.top) {
       document.addEventListener("pointerdown", () => {
         window.top.xedocMobileSidebar?.("hide");
