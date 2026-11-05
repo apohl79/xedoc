@@ -954,11 +954,21 @@
     }
   }
 
+  function applyResumeFilter() {
+    const query = byId("resume-search").value.trim().toLowerCase();
+    const rows = [...byId("resume-sessions").querySelectorAll("button")];
+    for (const row of rows) row.hidden = !row.dataset.search.includes(query);
+    byId("resume-search-empty").hidden = !query || !rows.length || rows.some((row) => !row.hidden);
+  }
+
   async function showResumePicker() {
     byId("session-menu").hidePopover();
     byId("resume-project").textContent = selectedProject;
+    byId("resume-search").value = "";
+    byId("resume-search-empty").hidden = true;
     byId("resume-sessions").replaceChildren(text("p", "Loading sessions…", "loading"));
     byId("resume-dialog").showModal();
+    byId("resume-search").focus();
     let response;
     try {
       response = await api(query("project/sessions", {
@@ -974,6 +984,7 @@
     byId("resume-sessions").replaceChildren(...sessions.map((session) => {
       const element = document.createElement("button");
       element.type = "button";
+      element.dataset.search = `${session.title || ""} ${session.threadId}`.toLowerCase();
       element.append(text("span", session.title || session.threadId, "resume-session-title"), text("small",
         session.updatedAt ? new Date(session.updatedAt * 1000).toLocaleString() : ""));
       activity.observe(session, selectedWorkspace, selectedProject);
@@ -989,6 +1000,7 @@
       return element;
     }));
     activity.paint();
+    applyResumeFilter();
     if (!sessions.length) byId("resume-sessions").append(text("p", "No previous sessions in this project.", "muted"));
   }
 
@@ -1197,6 +1209,22 @@
   window.addEventListener("blur", () => byId("session-menu").hidePopover());
   byId("new-session").addEventListener("click", () => run(startNewSession));
   byId("resume-session").addEventListener("click", () => run(showResumePicker));
+  byId("resume-search").addEventListener("input", applyResumeFilter);
+  byId("resume-dialog").addEventListener("keydown", (event) => {
+    if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+    const rows = [...byId("resume-sessions").querySelectorAll("button")].filter((row) => !row.hidden);
+    if (event.key === "Enter" && event.target === byId("resume-search")) {
+      event.preventDefault();
+      rows[0]?.click();
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!rows.length) return;
+      const index = rows.indexOf(document.activeElement);
+      const next = event.key === "ArrowDown" ? (index + 1) % rows.length
+        : (index < 0 ? rows.length - 1 : (index - 1 + rows.length) % rows.length);
+      rows[next]?.focus();
+    }
+  });
   byId("host-name-button").addEventListener("click", () => showDiscoveredHosts());
   byId("hosts-dialog").addEventListener("close", () => {
     hostDiscoveryGeneration++;
