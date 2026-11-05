@@ -3,6 +3,10 @@
 (() => {
   const history = document.getElementById("history");
   const active = document.getElementById("active");
+  let followingHistory = true;
+  history.addEventListener("scroll", () => {
+    followingHistory = history.scrollHeight - history.scrollTop - history.clientHeight < 80;
+  });
   function updateImagePreview(image) {
     const trigger = image.closest(".history-image-trigger");
     if (!trigger) return;
@@ -10,7 +14,10 @@
       image.getBoundingClientRect().height > trigger.getBoundingClientRect().height);
   }
   history.addEventListener("load", (event) => {
-    if (event.target instanceof HTMLImageElement) updateImagePreview(event.target);
+    if (event.target instanceof HTMLImageElement) {
+      updateImagePreview(event.target);
+      if (followingHistory) history.scrollTop = history.scrollHeight;
+    }
   }, true);
   const imageViewer = document.createElement("dialog");
   imageViewer.className = "image-viewer";
@@ -746,7 +753,7 @@
     history.hidden = !!frame.overlay;
     const wasLiveOverlay = liveOverlay;
     liveOverlay = !!frame.overlay;
-    const following = history.scrollHeight - history.scrollTop - history.clientHeight < 80;
+    const following = followingHistory;
     if (activeThread !== frame.activeThreadId || activeWidth !== frame.width) {
       history.replaceChildren();
       history.append(active);
