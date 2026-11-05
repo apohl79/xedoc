@@ -48,7 +48,7 @@ class SessionCatalog:
             raise BrokerError.invalid_request()
         self.max_result_bytes = value
 
-    def workspace_list(self) -> tuple[dict[str, str], ...]:
+    def workspace_list(self) -> tuple[dict[str, Any], ...]:
         return self.workspaces.public_list()
 
     def list_sessions(
@@ -57,10 +57,11 @@ class SessionCatalog:
         page_size = _page_size(limit)
         cursor = _cursor(cursor)
         response = self._call_list(cursor, page_size)
+        workspaces = self.workspaces.snapshot()
         records = [
             session
             for raw in _records(response)
-            if (session := self._normalize_session(raw)) is not None
+            if (session := self._normalize_session(raw, workspaces)) is not None
         ]
         next_cursor = _next_cursor(response)
         return _fit_session_page(records, next_cursor, self.max_result_bytes)
@@ -79,11 +80,12 @@ class SessionCatalog:
         page_size = _page_size(limit)
         cursor = _cursor(cursor)
         response = self._call_search(search_term, cursor, page_size)
+        workspaces = self.workspaces.snapshot()
         results: list[SearchResult] = []
         for raw in _records(response):
             if not isinstance(raw, dict):
                 continue
-            session = self._normalize_session(raw.get("thread", raw))
+            session = self._normalize_session(raw.get("thread", raw), workspaces)
             if session is None:
                 continue
             snippet = raw.get("snippet", "")
@@ -130,20 +132,22 @@ class SessionCatalog:
 
             raise map_controller_error(error) from error
 
-    def _normalize_session(self, value: Any) -> SessionSummary | None:
+    def _normalize_session(
+        self, value: Any, workspaces: WorkspaceRegistry
+    ) -> SessionSummary | None:
         if not isinstance(value, dict):
             return None
         thread_id = value.get("id", value.get("threadId"))
         cwd = value.get("cwd")
         if not isinstance(thread_id, str) or not thread_id or len(thread_id) > MAX_ID_LENGTH:
             return None
-        if not isinstance(cwd, str) or not cwd or self.workspaces.workspace_for_path(cwd) is None:
+        if not isinstance(cwd, str) or not cwd or workspaces.workspace_for_path(cwd) is None:
             return None
         try:
             canonical_cwd = str(Path(cwd).resolve(strict=False))
         except (OSError, RuntimeError, ValueError):
             return None
-        if not self.workspaces.contains(canonical_cwd):
+        if not workspaces.contains(canonical_cwd):
             return None
         running = value.get("isRunning")
         if not isinstance(running, bool):

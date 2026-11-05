@@ -252,7 +252,7 @@
     },
     {
       "name": "remote_workspaces_list",
-      "description": "List workspace IDs approved on a host. Call this before remote_session_start and use one returned workspaceId there. Workspace IDs are opaque identifiers, not filesystem paths; host roots are intentionally not disclosed.",
+      "description": "List approved workspace IDs and their project directory names, matching the host GUI's configured workspaces. Use a returned workspaceId for remote_session_start and a projects entry as its relativePath (or an empty string for the workspace root). Other folders is GUI-only. Host filesystem roots are not disclosed.",
       "inputSchema": {
         "type": "object",
         "properties": {

@@ -1450,7 +1450,7 @@ class PeerService:
             cursor=params.get("cursor"),
             limit=params.get("limit"),
         ).to_dict()
-        return _project_session_page(page, self.catalog.workspaces, policy)
+        return _project_session_page(page, self.catalog.workspaces.snapshot(), policy)
 
     def _peer_sessions_search(
         self, policy: GrantPolicy, params: Mapping[str, Any]
@@ -1460,7 +1460,7 @@ class PeerService:
             cursor=params.get("cursor"),
             limit=params.get("limit"),
         ).to_dict()
-        return _project_search_page(page, self.catalog.workspaces, policy)
+        return _project_search_page(page, self.catalog.workspaces.snapshot(), policy)
 
     def _find_candidate(
         self,

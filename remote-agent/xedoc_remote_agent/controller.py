@@ -323,7 +323,12 @@ class BrokerController:
             raise BrokerError.invalid_request()
         self._connection = connection
         self.config = config
-        self.workspaces = WorkspaceRegistry(config.workspaces)
+        self.workspaces = WorkspaceRegistry(
+            config.workspaces,
+            source=lambda: load_broker_config(
+                self._connection._request("config/read", {})
+            ).workspaces,
+        )
         self.limits = config.limits
         self.host_id = host_id
         self._catalog = SessionCatalog(

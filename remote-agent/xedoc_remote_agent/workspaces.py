@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
 from .errors import BrokerError
@@ -125,9 +125,12 @@ def load_broker_config(response: Mapping[str, Any]) -> BrokerConfig:
 class WorkspaceRegistry:
     """Canonical workspace roots and safe relative-path resolution."""
 
-    def __init__(self, workspaces: tuple[Workspace, ...]) -> None:
-        if not workspaces:
-            raise BrokerError.invalid_request()
+    def __init__(
+        self,
+        workspaces: tuple[Workspace, ...],
+        *,
+        source: Callable[[], tuple[Workspace, ...]] | None = None,
+    ) -> None:
         ids: set[str] = set()
         roots: set[str] = set()
         for workspace in workspaces:
@@ -143,10 +146,15 @@ class WorkspaceRegistry:
             for workspace in workspaces
         )
         self._by_id = {workspace.workspace_id: workspace for workspace in self.workspaces}
+        self._source = source
+
+    def snapshot(self) -> "WorkspaceRegistry":
+        """Read current host authority once for a complete lookup or inventory page."""
+        return WorkspaceRegistry(self._source()) if self._source else self
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "WorkspaceRegistry":
-        if not isinstance(value, Mapping) or not value:
+        if not isinstance(value, Mapping) or len(value) > 128:
             raise BrokerError.invalid_request()
         workspaces: list[Workspace] = []
         for workspace_id, raw_root in value.items():
@@ -162,7 +170,7 @@ class WorkspaceRegistry:
     def get(self, workspace_id: str) -> Workspace:
         if not isinstance(workspace_id, str):
             raise BrokerError.invalid_request()
-        workspace = self._by_id.get(workspace_id)
+        workspace = self.snapshot()._by_id.get(workspace_id)
         if workspace is None:
             raise BrokerError.not_found()
         return workspace
@@ -182,7 +190,8 @@ class WorkspaceRegistry:
         return self.resolve_relative(workspace_id, relative_path)
 
     def resolve_relative(self, workspace_id: str, relative_path: str = "") -> Path:
-        workspace = self.get(workspace_id)
+        registry = self.snapshot()
+        workspace = registry.get(workspace_id)
         if not isinstance(relative_path, str):
             raise BrokerError.invalid_request()
         if len(relative_path.encode("utf-8")) > MAX_RELATIVE_PATH_BYTES:
@@ -200,7 +209,17 @@ class WorkspaceRegistry:
         except (OSError, RuntimeError, ValueError) as error:
             raise BrokerError.invalid_request() from error
         if not _is_within(candidate, workspace.root):
-            raise BrokerError.invalid_request()
+            projects = registry.projects(workspace_id)
+            project = next(
+                (
+                    entry
+                    for entry in projects
+                    if posix.parts and entry["name"] == posix.parts[0]
+                ),
+                None,
+            )
+            if project is None or not _is_within(candidate, Path(project["path"]).resolve()):
+                raise BrokerError.invalid_request()
         try:
             if candidate.exists() and not candidate.is_dir():
                 raise BrokerError.invalid_request()
@@ -215,22 +234,65 @@ class WorkspaceRegistry:
             candidate = Path(path).resolve(strict=False)
         except (OSError, RuntimeError, ValueError):
             return None
+        registry = self.snapshot()
         matches = [
             workspace
-            for workspace in self.workspaces
+            for workspace in registry.workspaces
             if _is_within(candidate, workspace.root)
         ]
-        if not matches:
-            return None
-        return max(matches, key=lambda workspace: len(workspace.root.parts))
+        if matches:
+            return max(matches, key=lambda workspace: len(workspace.root.parts))
+        for workspace in registry.workspaces:
+            for project in registry.projects(workspace.workspace_id):
+                try:
+                    root = Path(project["path"]).resolve(strict=True)
+                except (OSError, RuntimeError, ValueError):
+                    continue
+                if _is_within(candidate, root):
+                    return workspace
+        return None
 
     def contains(self, path: str | os.PathLike[str]) -> bool:
         return self.workspace_for_path(path) is not None
 
-    def public_list(self) -> tuple[dict[str, str], ...]:
-        """Return workspace IDs without exposing host filesystem roots."""
+    def projects(self, workspace_id: str) -> list[dict[str, str]]:
+        """List the same visible project directories for GUI and remote callers."""
+        workspace = self.snapshot().get(workspace_id)
+        try:
+            entries = []
+            with os.scandir(workspace.root) as children:
+                for child in children:
+                    if child.name.startswith("."):
+                        continue
+                    try:
+                        if child.is_dir():
+                            entries.append(
+                                {"name": child.name, "path": str(workspace.root / child.name)}
+                            )
+                    except OSError:
+                        continue
+                    if len(entries) > 500:
+                        raise BrokerError.limit_exceeded("Workspace has more than 500 projects")
+            return sorted(entries, key=lambda entry: entry["name"].casefold())
+        except OSError as error:
+            raise BrokerError.unavailable("Workspace cannot be read") from error
 
-        return tuple({"workspaceId": workspace.workspace_id} for workspace in self.workspaces)
+    def public_list(self) -> tuple[dict[str, Any], ...]:
+        """Return workspace IDs and project-relative names without host roots."""
+
+        registry = self.snapshot()
+        return tuple(
+            {
+                "workspaceId": workspace.workspace_id,
+                "projects": [
+                    project["name"]
+                    for project in registry.projects(workspace.workspace_id)
+                ],
+            }
+            for workspace in sorted(
+                registry.workspaces, key=lambda workspace: workspace.workspace_id
+            )
+        )
 
 
 def _xedoc_home(value: str | os.PathLike[str] | None) -> Path:

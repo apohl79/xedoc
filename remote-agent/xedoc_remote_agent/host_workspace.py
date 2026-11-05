@@ -15,7 +15,7 @@ from .controller import _LiveTurnItems, _default_client_factory
 from .errors import BrokerError, ErrorCode, map_controller_error
 from .host_outside_projects import OTHER_WORKSPACE, outside_directory, outside_projects
 from .work_admission import WorkAdmissionGate
-from .workspaces import _validate_workspace_id, load_bootstrap_descriptor
+from .workspaces import WorkspaceRegistry, _validate_workspace_id, load_bootstrap_descriptor
 
 
 _SESSION_ID_LIMIT = 128
@@ -317,6 +317,10 @@ class HostWorkspaces:
             _validate_workspace_id(workspace_id)
             if not isinstance(root, str) or not Path(root).is_absolute():
                 raise BrokerError.invalid_request("Invalid host workspace root")
+        roots = {
+            workspace.workspace_id: str(workspace.root)
+            for workspace in WorkspaceRegistry.from_mapping(roots).workspaces
+        }
         layers = response.get("layers") or []
         user = next(
             (
@@ -514,11 +518,7 @@ class HostWorkspaces:
             closed = set(self._closed_sessions.get(username, []))
             if workspace_id not in roots:
                 raise BrokerError.not_found()
-            projects = [
-                project
-                for project in self.browse(roots[workspace_id])["entries"]
-                if not project["name"].startswith(".")
-            ]
+            projects = WorkspaceRegistry.from_mapping(roots).projects(workspace_id)
         activity = {}
         session_activity = {}
         if activity_only:
@@ -797,14 +797,10 @@ class HostWorkspaces:
                 "A single project directory name is required"
             )
         roots, _ = self._config()
-        if workspace_id not in roots:
-            raise BrokerError.not_found()
         try:
-            root = Path(roots[workspace_id]).resolve(strict=True)
-            project = root / project_name
-            if project.parent != root:
-                raise BrokerError.invalid_request("Project directory is unavailable")
-            project = project.resolve(strict=True)
+            project = WorkspaceRegistry.from_mapping(roots).resolve_relative(
+                workspace_id, project_name
+            )
             if not project.is_dir():
                 raise BrokerError.invalid_request("Project directory is unavailable")
             return project
