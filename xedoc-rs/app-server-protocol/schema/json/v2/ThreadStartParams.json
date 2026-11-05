@@ -319,6 +319,13 @@
         "null"
       ]
     },
+    "creationId": {
+      "description": "Durable creation identity. Must be a fresh UUID; also becomes the thread ID.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "cwd": {
       "type": [
         "string",

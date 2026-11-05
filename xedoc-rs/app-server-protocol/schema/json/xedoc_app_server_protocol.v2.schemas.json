@@ -2176,6 +2176,30 @@
             },
             "method": {
               "enum": [
+                "inputDelivery/read"
+              ],
+              "title": "InputDelivery/readRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/InputDeliveryReadParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "InputDelivery/readRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
                 "turn/start"
               ],
               "title": "Turn/startRequestMethod",
@@ -7943,6 +7967,72 @@
       ],
       "title": "InitializeParams",
       "type": "object"
+    },
+    "InputDeliveryReadParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "clientUserMessageId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "clientUserMessageId",
+        "threadId"
+      ],
+      "title": "InputDeliveryReadParams",
+      "type": "object"
+    },
+    "InputDeliveryReadResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "status": {
+          "$ref": "#/definitions/InputDeliveryStatus"
+        },
+        "turnId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "InputDeliveryReadResponse",
+      "type": "object"
+    },
+    "InputDeliveryReceivedNotification": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "clientUserMessageId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "clientUserMessageId",
+        "threadId",
+        "turnId"
+      ],
+      "title": "InputDeliveryReceivedNotification",
+      "type": "object"
+    },
+    "InputDeliveryStatus": {
+      "enum": [
+        "pending",
+        "received",
+        "rejected",
+        "unknown"
+      ],
+      "type": "string"
     },
     "InputModality": {
       "description": "Canonical user-input modality tags advertised by a model.",
@@ -14790,6 +14880,26 @@
           "properties": {
             "method": {
               "enum": [
+                "inputDelivery/received"
+              ],
+              "title": "InputDelivery/receivedNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/InputDeliveryReceivedNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "InputDelivery/receivedNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
                 "item/agentMessage/delta"
               ],
               "title": "Item/agentMessage/deltaNotificationMethod",
@@ -20090,6 +20200,13 @@
           "additionalProperties": true,
           "type": [
             "object",
+            "null"
+          ]
+        },
+        "creationId": {
+          "description": "Durable creation identity. Must be a fresh UUID; also becomes the thread ID.",
+          "type": [
+            "string",
             "null"
           ]
         },

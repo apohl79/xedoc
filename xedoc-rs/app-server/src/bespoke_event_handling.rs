@@ -1307,6 +1307,19 @@ pub(crate) async fn apply_bespoke_event_handling(
             )
             .await;
         }
+        EventMsg::InputReceived {
+            client_user_message_id,
+        } => {
+            outgoing
+                .send_server_notification(ServerNotification::InputDeliveryReceived(
+                    xedoc_app_server_protocol::InputDeliveryReceivedNotification {
+                        thread_id: conversation_id.to_string(),
+                        turn_id: event_turn_id,
+                        client_user_message_id,
+                    },
+                ))
+                .await;
+        }
         EventMsg::RawResponseCompleted(raw_response_completed_event) => {
             let notification = RawResponseCompletedNotification {
                 thread_id: conversation_id.to_string(),

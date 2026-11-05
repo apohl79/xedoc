@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "definitions": {
+    "InputDeliveryStatus": {
+      "enum": [
+        "pending",
+        "received",
+        "rejected",
+        "unknown"
+      ],
+      "type": "string"
+    }
+  },
+  "properties": {
+    "status": {
+      "$ref": "#/definitions/InputDeliveryStatus"
+    },
+    "turnId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "status"
+  ],
+  "title": "InputDeliveryReadResponse",
+  "type": "object"
+}

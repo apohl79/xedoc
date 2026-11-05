@@ -142,6 +142,7 @@ fn authorize_session_script_request(
         {
             Ok(())
         }
+        ClientRequest::InputDeliveryRead { params, .. } if params.thread_id == thread_id => Ok(()),
         _ => Err(invalid_request(
             "a session-script connection may only use its registered script methods and granted input capability",
         )),
@@ -1393,6 +1394,9 @@ impl MessageProcessor {
                 self.catalog_processor
                     .mock_experimental_method(params)
                     .await
+            }
+            ClientRequest::InputDeliveryRead { params, .. } => {
+                self.turn_processor.input_delivery_read(params).await
             }
             ClientRequest::TurnStart { params, .. } => {
                 self.turn_processor

@@ -14,6 +14,9 @@ use xedoc_skills::system_cache_root_dir;
 use crate::image_url::REMOTE_IMAGE_URL_ERROR;
 use crate::image_url::is_remote_image_url;
 
+#[path = "input_delivery.rs"]
+mod input_delivery;
+
 const DIRECT_INPUT_TO_MULTI_AGENT_V2_SUBAGENT_ERROR: &str =
     "direct app-server input is not allowed for multi-agent v2 sub-agents";
 
@@ -194,17 +197,23 @@ impl TurnRequestProcessor {
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        validate_user_input_image_urls(&params.input)?;
-        if let Some(environment_variables) = params.environment_variables.as_ref() {
-            validate_environment_variables(environment_variables)?;
-        }
-        self.turn_start_inner(
-            request_id,
-            params,
-            app_server_client_name,
-            app_server_client_version,
-            /*supports_openai_form_elicitation*/ supports_openai_form_elicitation,
-        )
+        let thread_id = params.thread_id.clone();
+        let client_id = params.client_user_message_id.clone();
+        let payload = serde_json::json!({"method": "turn/start", "params": &params});
+        self.track_input(&thread_id, client_id.as_deref(), payload, async {
+            validate_user_input_image_urls(&params.input)?;
+            if let Some(environment_variables) = params.environment_variables.as_ref() {
+                validate_environment_variables(environment_variables)?;
+            }
+            self.turn_start_inner(
+                request_id,
+                params,
+                app_server_client_name,
+                app_server_client_version,
+                /*supports_openai_form_elicitation*/ supports_openai_form_elicitation,
+            )
+            .await
+        })
         .await
         .map(|response| Some(response.into()))
     }
@@ -233,10 +242,15 @@ impl TurnRequestProcessor {
         request_id: &ConnectionRequestId,
         params: TurnSteerParams,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
-        validate_user_input_image_urls(&params.input)?;
-        self.turn_steer_inner(request_id, params)
-            .await
-            .map(|response| Some(response.into()))
+        let thread_id = params.thread_id.clone();
+        let client_id = params.client_user_message_id.clone();
+        let payload = serde_json::json!({"method": "turn/steer", "params": &params});
+        self.track_input(&thread_id, client_id.as_deref(), payload, async {
+            validate_user_input_image_urls(&params.input)?;
+            self.turn_steer_inner(request_id, params).await
+        })
+        .await
+        .map(|response| Some(response.into()))
     }
 
     pub(crate) async fn turn_steer_cancel(
@@ -947,7 +961,7 @@ impl TurnRequestProcessor {
         request_id: &ConnectionRequestId,
         params: TurnSteerCancelParams,
     ) -> Result<TurnSteerCancelResponse, JSONRPCErrorError> {
-        let (_, thread) = self.load_thread(&params.thread_id).await?;
+        let (thread_id, thread) = self.load_thread(&params.thread_id).await?;
         self.ensure_direct_input_allowed(thread.as_ref()).await?;
         if params.client_user_message_id.is_empty() {
             return Err(invalid_request("clientUserMessageId must not be empty"));
@@ -962,6 +976,12 @@ impl TurnRequestProcessor {
             .cancel_pending_steer(&params.client_user_message_id, &params.expected_turn_id)
             .await
         {
+            xedoc_state::PromptDeliveryStore::open(&self.config.xedoc_home)
+                .await
+                .map_err(|err| internal_error(err.to_string()))?
+                .reject_canceled(&thread_id.to_string(), &params.client_user_message_id)
+                .await
+                .map_err(|err| internal_error(err.to_string()))?;
             TurnSteerCancelStatus::Canceled
         } else {
             TurnSteerCancelStatus::NotFound

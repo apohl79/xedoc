@@ -840,6 +840,11 @@ client_request_definitions! {
         serialization: global("config"),
         response: v2::PluginUninstallResponse,
     },
+    InputDeliveryRead => "inputDelivery/read" {
+        params: v2::InputDeliveryReadParams,
+        serialization: None,
+        response: v2::InputDeliveryReadResponse,
+    },
     TurnStart => "turn/start" {
         params: v2::TurnStartParams,
         inspect_params: true,
@@ -1677,6 +1682,7 @@ server_notification_definitions! {
     RawResponseItemCompleted => "rawResponseItem/completed" (v2::RawResponseItemCompletedNotification),
     /// This event is internal-only. Used by clients that need exact upstream usage.
     RawResponseCompleted => "rawResponse/completed" (v2::RawResponseCompletedNotification),
+    InputDeliveryReceived => "inputDelivery/received" (v2::InputDeliveryReceivedNotification),
     AgentMessageDelta => "item/agentMessage/delta" (v2::AgentMessageDeltaNotification),
     /// EXPERIMENTAL - proposed plan streaming deltas for plan items.
     PlanDelta => "item/plan/delta" (v2::PlanDeltaNotification),

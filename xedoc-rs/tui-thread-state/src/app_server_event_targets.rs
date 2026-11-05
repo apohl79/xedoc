@@ -102,6 +102,9 @@ pub fn server_notification_thread_target(
         ServerNotification::RawResponseCompleted(notification) => {
             Some(notification.thread_id.as_str())
         }
+        ServerNotification::InputDeliveryReceived(notification) => {
+            Some(notification.thread_id.as_str())
+        }
         ServerNotification::AgentMessageDelta(notification) => {
             Some(notification.thread_id.as_str())
         }

@@ -53,6 +53,92 @@ Backpressure behavior:
 
 ## Message Schema
 
+### Durable prompt delivery
+
+`turn/start` and `turn/steer` with a nonempty `clientUserMessageId` (at most 128
+UTF-8 bytes) reserve that ID durably within the thread before enqueueing input.
+Omitting the ID retains the existing untracked behavior. IDs are scoped to the
+host's fixed Xedoc home and thread, not a connection or `clientInfo`.
+
+An identical retry returns the original RPC outcome without appending input or
+starting another turn, even after reconnect/restart or turn completion.
+Reuse with different parsed parameters or a different method is rejected.
+Concurrent duplicates whose original outcome is not yet saved return an
+unresolved error; query rather than generating another ID.
+
+Query `inputDelivery/read` with
+`{"threadId":"…","clientUserMessageId":"…"}`. It returns
+`{"status":"pending|received|rejected|unknown","turnId":"…"}` (`turnId` may be null):
+
+- `pending`: reserved/queued, with no receipt. Never delivery success.
+- `received`: provider-generation evidence was durably recorded for an inference
+  containing the exact correlated user item and content. This is monotonic;
+  `turnId` identifies that inference's turn, even if an earlier turn was ambiguous.
+- `rejected`: rejected before enqueue, or atomically removed by
+  `turn/steer/cancel`; this submission cannot later be consumed.
+- `unknown`: missing evidence, another host process's unresolved reservation, or
+  dispatch without confirmed receipt. Missing records are also `unknown`, never
+  evidence of non-delivery.
+
+Subscribed clients receive `inputDelivery/received` with `threadId`, `turnId`,
+and `clientUserMessageId` **after** receipt persistence. Install a notification
+handler before submitting; after connecting, initialize, resume the thread to
+subscribe, and query outstanding IDs. Notifications can be lost; queries are
+authoritative. Do not wait for `turn/completed`. Subsequent tools, cancellation,
+stream errors, and task/turn failure do not undo a receipt.
+
+The receipt boundary is the first nonempty provider text, reasoning, or tool
+argument delta, or a completed generated function/custom-tool call, on the
+specific main sampling stream. The host snapshots exact included user items
+before dispatch; an earlier inference cannot acknowledge newly queued steer.
+Compacted/replaced/modified items do not qualify. Queue insertion, request
+construction, HTTP headers, socket writes, `response.created`, router/compaction
+inference, and completion-only/empty responses do not qualify.
+
+Responses HTTP/WebSocket (including Bedrock Mantle and compatible endpoints),
+native Anthropic/DeepSeek, and native Gemini share this boundary. Empty,
+blocked, image-only, or otherwise unsupported output can remain unresolved.
+This trusts the configured provider's generation protocol; it is not an
+independent acknowledgment from an upstream model behind a proxy. There is no
+explicit per-input provider acknowledgment, and no exactly-once model-consumption
+guarantee. Existing provider/stream retries can repeat inference. A connection
+loss or crash before receipt persistence remains ambiguous; never blindly
+resubmit with a new ID.
+
+Keyed submission errors include `data.inputDelivery` with `status`, `retrySafe`,
+and `retryable` when known. Only `retrySafe: true` or a queried `rejected`
+guarantees that the reserved submission cannot be consumed later. `retryable`
+distinguishes transient pre-enqueue failure (for example an unloaded thread)
+from permanent validation rejection. Correct the cause and use a fresh attempt
+ID only for definite rejection; the old ID remains a tombstone and replays its
+original outcome. Generic errors/timeouts, overload, and cancellation
+`notFound` alone do not authorize a new attempt. The Python session-script SDK
+currently discards structured error data: preserve it in the runner's RPC layer
+or reconcile through this query instead of inferring retry safety from its
+exception text.
+
+For new-session occurrences, experimental `thread/start.creationId` accepts a
+fresh caller-generated UUID, which also becomes the thread ID. Initialize with
+`experimentalApi: true`. Repeating the same creation parameters returns the
+original creation response, without creating another session. Different
+parameters conflict. Empty sessions are persisted before success; `ephemeral`
+is forbidden. A crash during creation may return an unresolved error: reconcile
+the reserved ID using `thread/resume`; do not allocate a replacement identity.
+Replayed creation responses are historical and do not subscribe the connection
+or change current settings; resume separately.
+
+The dedicated `$XEDOC_HOME/prompt_delivery_1.sqlite` ledger is not a rebuildable
+metadata cache: it has no automatic corruption replacement, expiry, or
+thread-deletion cleanup. Preserve it with session data. It stores request
+fingerprints, not raw environment/settings payloads. Its SQLite WAL/NORMAL
+durability covers process restart, not storage loss or guaranteed power-loss
+recovery. Deleting/replacing the ledger invalidates idempotency guarantees.
+Clients must not treat that data loss as permission to resend.
+
+These APIs require a binary built with this change; the older `1.79.2` installed
+protocol has no receipt API. Feature-detect `inputDelivery/read` and require the
+experimental creation field; version text alone is insufficient before release.
+
 ### Local session browser
 
 The experimental `thread/webUi/open` request takes `{ "threadId": "..." }` for a

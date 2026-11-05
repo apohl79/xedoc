@@ -1286,6 +1286,25 @@
       ],
       "type": "string"
     },
+    "InputDeliveryReceivedNotification": {
+      "properties": {
+        "clientUserMessageId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "clientUserMessageId",
+        "threadId",
+        "turnId"
+      ],
+      "type": "object"
+    },
     "ItemCompletedNotification": {
       "properties": {
         "completedAtMs": {
@@ -5925,6 +5944,26 @@
         "params"
       ],
       "title": "Item/completedNotification",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "method": {
+          "enum": [
+            "inputDelivery/received"
+          ],
+          "title": "InputDelivery/receivedNotificationMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/InputDeliveryReceivedNotification"
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "title": "InputDelivery/receivedNotification",
       "type": "object"
     },
     {

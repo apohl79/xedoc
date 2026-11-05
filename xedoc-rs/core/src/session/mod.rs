@@ -191,6 +191,7 @@ mod config_lock;
 pub(crate) mod context_window;
 mod handlers;
 mod inject;
+mod input_delivery;
 mod input_queue;
 mod mcp;
 mod mcp_runtime;
@@ -4050,7 +4051,27 @@ impl Session {
         // Persist the user message to history, but emit the turn item from `UserInput` so
         // UI-only `text_elements` are preserved. `ResponseItem::Message` does not carry
         // those spans, and `record_response_item_and_emit_turn_item` would drop them.
-        let response_item = self.response_item_from_user_input(input.to_vec());
+        let mut response_item = self.response_item_from_user_input(input.to_vec());
+        if let Some(client_id) = client_id.as_deref() {
+            Self::assign_missing_response_item_id(&mut response_item);
+            if let Some(item_id) = input_delivery::input_identity(&response_item) {
+                let association = async {
+                    xedoc_state::PromptDeliveryStore::open(&turn_context.config.xedoc_home)
+                        .await?
+                        .associate(
+                            &self.thread_id.to_string(),
+                            client_id,
+                            &item_id,
+                            &turn_context.sub_id,
+                        )
+                        .await
+                }
+                .await;
+                if let Err(error) = association {
+                    warn!(%error, "input delivery correlation unavailable; receipt remains unknown");
+                }
+            }
+        }
         self.record_conversation_items(turn_context, std::slice::from_ref(&response_item))
             .await;
         let mut user_message_item = UserMessageItem::new(input);

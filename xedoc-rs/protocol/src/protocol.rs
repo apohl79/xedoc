@@ -1223,6 +1223,10 @@ pub enum EventMsg {
 
     RawResponseItem(RawResponseItemEvent),
     RawResponseCompleted(RawResponseCompletedEvent),
+    /// Persisted provider-generation evidence for one correlated user input.
+    InputReceived {
+        client_user_message_id: String,
+    },
 
     ItemStarted(ItemStartedEvent),
     ItemCompleted(ItemCompletedEvent),

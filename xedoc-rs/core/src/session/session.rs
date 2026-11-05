@@ -659,9 +659,10 @@ impl Session {
         let initial_multi_agent_version = multi_agent_version.get().copied();
 
         let thread_id = match &initial_history {
-            InitialHistory::New | InitialHistory::Cleared | InitialHistory::Forked(_) => {
-                ThreadId::default()
-            }
+            InitialHistory::New | InitialHistory::Cleared => thread_extension_init
+                .get::<crate::thread_manager::ThreadCreationId>()
+                .map_or_else(ThreadId::default, |identity| identity.0),
+            InitialHistory::Forked(_) => ThreadId::default(),
             InitialHistory::Resumed(resumed_history) => resumed_history.conversation_id,
         };
         let resumed_session_id = match &initial_history {

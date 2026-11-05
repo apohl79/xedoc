@@ -15,6 +15,7 @@ pub mod log_db;
 mod migrations;
 mod model;
 mod paths;
+mod prompt_delivery;
 mod runtime;
 mod sqlite;
 mod telemetry;
@@ -26,6 +27,8 @@ pub use model::ModelRouterAbOutcomeRecord;
 pub use model::ModelRouterDailyRecord;
 pub use model::ModelRouterDecisionRecord;
 pub use model::ModelRouterInvocationRecord;
+pub use prompt_delivery::DeliveryRecord;
+pub use prompt_delivery::PromptDeliveryStore;
 /// Preferred entrypoint: owns configuration and metrics.
 pub use runtime::StateRuntime;
 pub use runtime::ToolOutputReductionBreakdown;

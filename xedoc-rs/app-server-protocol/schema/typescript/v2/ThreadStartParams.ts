@@ -14,7 +14,11 @@ import type { ThreadSource } from "./ThreadSource";
 import type { ThreadStartSource } from "./ThreadStartSource";
 import type { TurnEnvironmentParams } from "./TurnEnvironmentParams";
 
-export type ThreadStartParams = { model?: string | null, modelProvider?: string | null,
+export type ThreadStartParams = {
+/**
+ * Durable creation identity. Must be a fresh UUID; also becomes the thread ID.
+ */
+creationId?: string | null, model?: string | null, modelProvider?: string | null,
 /**
  * Allow a provider with an authoritative static model catalog to replace an unavailable
  * requested model with its default.

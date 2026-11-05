@@ -1808,6 +1808,30 @@
             },
             "method": {
               "enum": [
+                "inputDelivery/read"
+              ],
+              "title": "InputDelivery/readRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/InputDeliveryReadParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "InputDelivery/readRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/v2/RequestId"
+            },
+            "method": {
+              "enum": [
                 "turn/start"
               ],
               "title": "Turn/startRequestMethod",
@@ -6148,6 +6172,26 @@
             "params"
           ],
           "title": "Item/completedNotification",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "enum": [
+                "inputDelivery/received"
+              ],
+              "title": "InputDelivery/receivedNotificationMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/v2/InputDeliveryReceivedNotification"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "title": "InputDelivery/receivedNotification",
           "type": "object"
         },
         {
@@ -12007,6 +12051,72 @@
           "low",
           "high",
           "original"
+        ],
+        "type": "string"
+      },
+      "InputDeliveryReadParams": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "clientUserMessageId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientUserMessageId",
+          "threadId"
+        ],
+        "title": "InputDeliveryReadParams",
+        "type": "object"
+      },
+      "InputDeliveryReadResponse": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "status": {
+            "$ref": "#/definitions/v2/InputDeliveryStatus"
+          },
+          "turnId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "InputDeliveryReadResponse",
+        "type": "object"
+      },
+      "InputDeliveryReceivedNotification": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "clientUserMessageId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "turnId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientUserMessageId",
+          "threadId",
+          "turnId"
+        ],
+        "title": "InputDeliveryReceivedNotification",
+        "type": "object"
+      },
+      "InputDeliveryStatus": {
+        "enum": [
+          "pending",
+          "received",
+          "rejected",
+          "unknown"
         ],
         "type": "string"
       },
@@ -22875,6 +22985,13 @@
             "additionalProperties": true,
             "type": [
               "object",
+              "null"
+            ]
+          },
+          "creationId": {
+            "description": "Durable creation identity. Must be a fresh UUID; also becomes the thread ID.",
+            "type": [
+              "string",
               "null"
             ]
           },

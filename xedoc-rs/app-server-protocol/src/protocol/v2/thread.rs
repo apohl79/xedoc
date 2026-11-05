@@ -54,6 +54,10 @@ pub enum ThreadStartSource {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "v2/")]
 pub struct ThreadStartParams {
+    /// Durable creation identity. Must be a fresh UUID; also becomes the thread ID.
+    #[experimental("thread/start.creationId")]
+    #[ts(optional = nullable)]
+    pub creation_id: Option<String>,
     #[ts(optional = nullable)]
     pub model: Option<String>,
     #[ts(optional = nullable)]

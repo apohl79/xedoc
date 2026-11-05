@@ -106,6 +106,7 @@ mod thread_manager;
 pub use thread_manager::ForkSnapshot;
 pub use thread_manager::NewThread;
 pub use thread_manager::StartThreadOptions;
+pub use thread_manager::ThreadCreationId;
 pub use thread_manager::ThreadManager;
 pub use thread_manager::ThreadShutdownReport;
 pub use thread_manager::build_models_manager;

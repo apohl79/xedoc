@@ -192,6 +192,10 @@ pub struct ThreadManager {
     _test_xedoc_home_guard: Option<TempXedocHomeGuard>,
 }
 
+/// Host-reserved identity for durable, idempotent creation of a fresh thread.
+/// Supplied through `StartThreadOptions::thread_extension_init`; never used on resume or fork.
+pub struct ThreadCreationId(pub ThreadId);
+
 pub struct StartThreadOptions {
     pub config: Config,
     pub allow_provider_model_fallback: bool,

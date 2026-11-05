@@ -229,6 +229,7 @@ impl ChatWidget {
             | ServerNotification::RemoteSessionUpdated(_)
             | ServerNotification::RawResponseItemCompleted(_)
             | ServerNotification::RawResponseCompleted(_)
+            | ServerNotification::InputDeliveryReceived(_)
             | ServerNotification::CommandExecOutputDelta(_)
             | ServerNotification::ProcessOutputDelta(_)
             | ServerNotification::ProcessExited(_)

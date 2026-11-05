@@ -356,6 +356,7 @@ async fn run_xedoc_tool_session_inner(
                     | EventMsg::ViewImageToolCall(_)
                     | EventMsg::RawResponseItem(_)
                     | EventMsg::RawResponseCompleted(_)
+                    | EventMsg::InputReceived { .. }
                     | EventMsg::EnteredReviewMode(_)
                     | EventMsg::ItemStarted(_)
                     | EventMsg::ItemCompleted(_)

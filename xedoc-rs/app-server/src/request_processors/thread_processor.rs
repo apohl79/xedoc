@@ -15,6 +15,9 @@ const XEDOC_TUI_CLIENT_NAME: &str = "xedoc-tui";
 const THREAD_ROLLBACK_DEPRECATION_SUMMARY: &str =
     "thread/rollback is deprecated and will be removed soon";
 
+#[path = "thread_creation.rs"]
+mod thread_creation;
+
 struct ThreadListFilters {
     model_providers: Option<Vec<String>>,
     source_kinds: Option<Vec<ThreadSourceKind>>,
@@ -571,12 +574,20 @@ impl ThreadRequestProcessor {
     pub(crate) async fn thread_start(
         &self,
         request_id: ConnectionRequestId,
-        params: ThreadStartParams,
+        mut params: ThreadStartParams,
         app_server_client_name: Option<String>,
         app_server_client_version: Option<String>,
         supports_openai_form_elicitation: bool,
         request_context: RequestContext,
     ) -> Result<Option<ClientResponsePayload>, JSONRPCErrorError> {
+        if let Some(key) = params.creation_id.as_mut() {
+            *key = ThreadId::from_string(key)
+                .map_err(|err| invalid_request(format!("creationId must be a UUID: {err}")))?
+                .to_string();
+        }
+        if let Some(response) = self.reserve_creation(&params).await? {
+            return Ok(Some(response.into()));
+        }
         self.thread_start_inner(
             request_id,
             params,
@@ -1083,6 +1094,7 @@ impl ThreadRequestProcessor {
         request_context: RequestContext,
     ) -> Result<(), JSONRPCErrorError> {
         let ThreadStartParams {
+            creation_id,
             model,
             model_provider,
             allow_provider_model_fallback,
@@ -1180,6 +1192,7 @@ impl ThreadRequestProcessor {
                 experimental_raw_events,
                 request_trace,
                 initial_config_warnings,
+                creation_id,
             )
             .await
             {
@@ -1258,6 +1271,7 @@ impl ThreadRequestProcessor {
         experimental_raw_events: bool,
         request_trace: Option<W3cTraceContext>,
         initial_config_warnings: Arc<Vec<ConfigWarningNotification>>,
+        creation_id: Option<String>,
     ) -> Result<(), JSONRPCErrorError> {
         let thread_start_started_at = std::time::Instant::now();
         let requested_cwd = typesafe_overrides.cwd.clone();
@@ -1265,6 +1279,9 @@ impl ThreadRequestProcessor {
             .load_with_overrides(config_overrides.clone(), typesafe_overrides.clone())
             .await
             .map_err(|err| config_load_error(&err))?;
+        if creation_id.is_some() && config.ephemeral {
+            return Err(invalid_request("creationId requires a persistent thread"));
+        }
         // The user may have requested WorkspaceWrite or DangerFullAccess via
         // the command line, though in the process of deriving the Config, it
         // could be downgraded to ReadOnly (perhaps there is no sandbox
@@ -1366,6 +1383,11 @@ impl ThreadRequestProcessor {
             })
             .sum();
         let mut thread_extension_init = ExtensionDataInit::new();
+        if let Some(key) = creation_id.as_deref() {
+            let thread_id =
+                ThreadId::from_string(key).map_err(|err| invalid_request(err.to_string()))?;
+            thread_extension_init.insert(xedoc_core::ThreadCreationId(thread_id));
+        }
         if !selected_capability_roots.is_empty() {
             thread_extension_init.insert(selected_capability_roots);
         }
@@ -1422,6 +1444,16 @@ impl ThreadRequestProcessor {
         .await?;
 
         let instruction_sources = thread.legacy_instruction_sources().await;
+        if creation_id.is_some() {
+            thread
+                .try_ensure_rollout_materialized()
+                .await
+                .map_err(|err| internal_error(err.to_string()))?;
+            thread
+                .flush_rollout()
+                .await
+                .map_err(|err| internal_error(err.to_string()))?;
+        }
         let config_snapshot = thread
             .config_snapshot()
             .instrument(tracing::info_span!(
@@ -1497,6 +1529,22 @@ impl ThreadRequestProcessor {
             multi_agent_mode: MultiAgentMode::ExplicitRequestOnly,
         };
         let notif = thread_started_notification(thread);
+        if let Some(key) = creation_id.as_deref() {
+            let cached: Result<&ThreadStartResponse, &JSONRPCErrorError> = Ok(&response);
+            xedoc_state::PromptDeliveryStore::open(&listener_task_context.xedoc_home)
+                .await
+                .map_err(|err| internal_error(err.to_string()))?
+                .finish(
+                    "$creation",
+                    key,
+                    &serde_json::to_string(&cached)
+                        .map_err(|err| internal_error(err.to_string()))?,
+                    Some(key),
+                    Some("created"),
+                )
+                .await
+                .map_err(|err| internal_error(err.to_string()))?;
+        }
         listener_task_context
             .outgoing
             .send_response(request_id, response)

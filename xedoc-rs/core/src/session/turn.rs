@@ -1754,6 +1754,13 @@ async fn try_run_sampling_request(
         .features
         .enabled(Feature::ConcurrentReasoningSummaries)
         && turn_context.provider.info().is_openai();
+    let mut delivery = sess
+        .input_delivery_for_request(&turn_context, &prompt.input)
+        .await
+        .unwrap_or_else(|error| {
+            warn!(%error, "input delivery evidence unavailable");
+            None
+        });
     let mut stream = client_session
         .stream(
             prompt,
@@ -1831,6 +1838,14 @@ async fn try_run_sampling_request(
             .record_responses(&handle_responses, &event);
         record_turn_ttft_metric(&turn_context, &event).await;
 
+        if super::input_delivery::is_generation_evidence(&event)
+            && let Some((store, ids)) = delivery.take()
+            && let Err(error) = sess
+                .confirm_input_delivery(&turn_context, &store, &ids)
+                .await
+        {
+            warn!(%error, "could not persist input receipt; delivery remains unresolved");
+        }
         match event {
             ResponseEvent::Created => {}
             ResponseEvent::OutputItemDone(mut item) => {
