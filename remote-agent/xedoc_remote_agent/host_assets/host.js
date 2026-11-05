@@ -8,6 +8,7 @@
   let chooseDirectory = null;
   let activeThread = null;
   const savedViewKey = "xedoc-host-view-v1";
+  const workspaceViews = new Map();
   let pendingView = (() => {
     try {
       const view = JSON.parse(sessionStorage.getItem(savedViewKey) || "null");
@@ -111,18 +112,34 @@
   window.addEventListener("focus", refreshVisibleActivity);
   function saveView() {
     if (!state) return;
+    const view = {
+      username: state.account.username,
+      workspaceId: selectedWorkspace,
+      projectName: selectedProject,
+      threadId: activeThread,
+    };
+    const workspaceKey = projectCacheKey(selectedWorkspace);
+    if (selectedWorkspace) workspaceViews.set(workspaceKey, view);
     try {
-      const view = JSON.stringify({
-        username: state.account.username,
-        workspaceId: selectedWorkspace,
-        projectName: selectedProject,
-        threadId: activeThread,
-      });
-      localStorage.setItem(`${savedViewKey}:${state.account.username}`, view);
-      sessionStorage.setItem(savedViewKey, view);
+      const encoded = JSON.stringify(view);
+      if (selectedWorkspace) localStorage.setItem(`${savedViewKey}:workspace:${workspaceKey}`, encoded);
+      localStorage.setItem(`${savedViewKey}:${state.account.username}`, encoded);
+      sessionStorage.setItem(savedViewKey, encoded);
     } catch {
       // Keep navigation usable when browser storage is unavailable.
     }
+  }
+  function workspaceView(workspaceId) {
+    const workspaceKey = projectCacheKey(workspaceId);
+    let view = workspaceViews.get(workspaceKey);
+    try {
+      view ||= JSON.parse(localStorage.getItem(`${savedViewKey}:workspace:${workspaceKey}`) || "null");
+    } catch {
+      // The in-memory view remains available when browser storage is unavailable.
+    }
+    return view?.username === state.account.username && view.workspaceId === workspaceId
+      && (view.projectName === null || typeof view.projectName === "string")
+      && (view.threadId === null || typeof view.threadId === "string") ? view : null;
   }
   window.addEventListener("pagehide", saveView);
 
@@ -296,6 +313,7 @@
     openedSessions.clear();
     projectCache.clear();
     sessionCache.clear();
+    workspaceViews.clear();
     projectActivityLoaded.clear();
     projectActivityRefreshAt.clear();
     byId("session-frames").replaceChildren();
@@ -399,9 +417,11 @@
     byId("workspaces").replaceChildren(...state.workspaces.map((entry) => {
       const row = text("div", "", "workspace-row");
       const element = button("", async () => {
+        saveView();
+        const view = workspaceView(entry.workspaceId);
         selectedWorkspace = entry.workspaceId;
-        selectedProject = null;
-        activeThread = null;
+        selectedProject = view?.projectName || null;
+        activeThread = view?.threadId || null;
         sessionRequest++;
         await renderWorkspace();
       });
