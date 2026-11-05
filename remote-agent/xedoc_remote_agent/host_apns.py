@@ -94,7 +94,7 @@ class HostAPNs:
                 material = stream.read(16 * 1024 + 1)
         private_key = serialization.load_pem_private_key(material, password=None)
         if not isinstance(private_key, ec.EllipticCurvePrivateKey) or not isinstance(
-            private_key.curve, ec.SECP256R1
+            private_key.curve, ec.SECP256R1  # gitleaks:allow -- P-256 curve check, not key material.
         ):
             raise ValueError("APNs requires a P-256 signing key")
         header = {"alg": "ES256", "kid": key["keyId"]}
