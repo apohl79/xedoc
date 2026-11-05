@@ -98,6 +98,7 @@
   let pluginActions = [];
   let pluginRequest = 0;
   const pluginPending = new Map();
+  const pluginChecks = new Map();
   const cells = new Map();
   const htmlById = new Map();
   const imageTypes = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
@@ -1383,9 +1384,39 @@
       || local && (action.extensions || []).some((value) => path.toLowerCase().endsWith(value.toLowerCase())));
     return { target, actions };
   }
+  function checkedLinkActions(anchor) {
+    const { target, actions } = actionsForLink(anchor);
+    if (!actions.length || window.parent === window) return Promise.resolve([]);
+    let check = pluginChecks.get(target);
+    if (!check) {
+      if (pluginChecks.size >= 8) {
+        return Promise.race([...pluginChecks.values()].map((pending) => pending.promise))
+          .then(() => checkedLinkActions(anchor));
+      }
+      const requestId = String(++pluginRequest);
+      let finish;
+      const promise = new Promise((resolve) => { finish = resolve; });
+      const timer = setTimeout(() => check.finish([]), 10000);
+      check = {
+        requestId, promise,
+        finish(result) {
+          clearTimeout(timer);
+          pluginChecks.delete(target);
+          finish(result);
+        },
+      };
+      pluginChecks.set(target, check);
+      window.parent.postMessage({ type: "xedoc-plugin-check", requestId, target }, location.origin);
+    }
+    return check.promise.then((accepted) => actions.filter((action) => accepted.some((item) =>
+      item.pluginId === action.pluginId && item.panelId === action.panelId
+      && item.handlerId === action.handlerId)));
+  }
   function decorateFileReferences(root) {
     for (const anchor of root.querySelectorAll("a.plugin-file-reference")) {
-      if (!actionsForLink(anchor).actions.length) anchor.replaceWith(...anchor.childNodes);
+      checkedLinkActions(anchor).then((actions) => {
+        if (anchor.isConnected && !actions.length) anchor.replaceWith(...anchor.childNodes);
+      });
     }
     if (!pluginActions.length) return;
     for (const code of root.querySelectorAll("code:not(pre code):not(a code)")) {
@@ -1396,8 +1427,11 @@
       if (!actionsForLink(anchor).actions.length) continue;
       anchor.href = "";
       anchor.className = "plugin-file-reference";
-      code.replaceWith(anchor);
-      anchor.append(code);
+      checkedLinkActions(anchor).then((actions) => {
+        if (!actions.length || !code.isConnected || code.closest("a, pre")) return;
+        code.replaceWith(anchor);
+        anchor.append(code);
+      });
     }
   }
   function refreshLinkActionButtons() {
@@ -1405,11 +1439,25 @@
       button.disabled = [...pluginPending.values()].some((pending) => pending.key === button.dataset.pluginKey);
     }
   }
-  function showLinkActions(anchor) {
+  function showLinkActions(anchor, { focus = false } = {}) {
     const { target, actions } = actionsForLink(anchor);
     if (!actions.length) return false;
     clearLinkTargetPreview();
     linkPreviewAnchor = anchor;
+    checkedLinkActions(anchor).then((accepted) => {
+      if (linkPreviewAnchor !== anchor || !anchor.isConnected) return;
+      if (!accepted.length) {
+        clearLinkTargetPreview();
+        if (anchor.classList.contains("plugin-file-reference")) anchor.replaceWith(...anchor.childNodes);
+        return;
+      }
+      renderLinkActions(anchor, target, accepted);
+      if (focus) linkPreviewElement?.querySelector("button")?.focus();
+    });
+    return true;
+  }
+  function renderLinkActions(anchor, target, actions) {
+    linkPreviewElement?.remove();
     const preview = document.createElement("div");
     preview.id = "link-target-preview";
     preview.className = "link-actions";
@@ -1462,16 +1510,22 @@
     preview.style.top = `${Math.max(8, Math.min(bounds.bottom + 4, innerHeight - height - 8))}px`;
     linkPreviewElement = preview;
     refreshLinkActionButtons();
-    return true;
   }
   window.addEventListener("message", (event) => {
     if (window.parent === window || event.origin !== location.origin || event.source !== window.parent) return;
     if (event.data?.type === "xedoc-plugin-actions") {
       const actions = Array.isArray(event.data.actions) ? event.data.actions : [];
       if (JSON.stringify(actions) !== JSON.stringify(pluginActions)) {
+        clearLinkTargetPreview();
+        for (const check of pluginChecks.values()) check.finish([]);
         pluginActions = actions;
         decorateFileReferences(history);
       }
+    }
+    if (event.data?.type === "xedoc-plugin-checked") {
+      const check = [...pluginChecks.values()].find((item) => item.requestId === event.data.requestId);
+      if (check) check.finish(Array.isArray(event.data.actions) ? event.data.actions : []);
+      if (event.data.error) console.warn("Plugin link validation failed:", event.data.error);
     }
     if (event.data?.type === "xedoc-plugin-result") {
       const pending = pluginPending.get(event.data.requestId);
@@ -1544,8 +1598,7 @@
       && (anchor.classList.contains("plugin-file-reference")
         || window.matchMedia("(hover: none)").matches)) {
       event.preventDefault();
-      showLinkActions(anchor);
-      linkPreviewElement?.querySelector("button")?.focus();
+      showLinkActions(anchor, { focus: true });
     } else clearLinkTargetPreview();
   });
   document.addEventListener("keydown", (event) => {

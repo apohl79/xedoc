@@ -518,6 +518,7 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/api/session/turn",
                 "/api/session/gui",
                 "/api/plugin/panels",
+                "/api/plugin/actions",
                 "/api/plugin/open",
                 "/api/plugin/close",
             ):
@@ -541,6 +542,10 @@ class HostHandler(BaseHTTPRequestHandler):
                     if self.command == "GET" and path == "/api/plugin/panels":
                         self.reply(200, panels.snapshot(
                             account, workspace_id, project_name, thread_id
+                        ))
+                    elif self.command == "POST" and path == "/api/plugin/actions":
+                        self.reply(200, panels.actions(
+                            account, workspace_id, project_name, thread_id, body.get("target")
                         ))
                     elif self.command == "POST" and path == "/api/plugin/open":
                         self.reply(200, panels.open(

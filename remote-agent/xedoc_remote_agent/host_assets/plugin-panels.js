@@ -59,6 +59,9 @@ window.XedocPluginPanels = class {
       if (event.data?.type === "xedoc-plugin-open") {
         this.run(() => this.open(current, event.data));
       }
+      if (event.data?.type === "xedoc-plugin-check") {
+        this.checkTarget(current, event.data);
+      }
     });
     setInterval(() => this.refresh(), 2000);
   }
@@ -90,6 +93,22 @@ window.XedocPluginPanels = class {
   publish(context) {
     context?.frame.contentWindow.postMessage({
       type: "xedoc-plugin-actions", actions: this.actions,
+    }, location.origin);
+  }
+
+  async checkTarget(current, data) {
+    if (typeof data.requestId !== "string" || data.requestId.length > 128
+      || typeof data.target !== "string" || !data.target || data.target.length > 4096) return;
+    const key = this.contextKey(current);
+    let result;
+    try {
+      result = await this.api("plugin/actions", { ...this.params(current), target: data.target });
+    } catch (error) {
+      result = { actions: [], error: error.message };
+    }
+    if (key !== this.contextKey(this.context())) return;
+    current.frame.contentWindow.postMessage({
+      type: "xedoc-plugin-checked", requestId: data.requestId, ...result,
     }, location.origin);
   }
 

@@ -29,6 +29,16 @@ Python) or `node` (from `PATH`); otherwise the entrypoint is executed directly.
 Launching an action runs trusted plugin code as the host user, without a shell.
 Hover and focus only discover actions; they never execute plugin code.
 
+Before offering a link action, the GUI calls `POST /api/plugin/actions` with
+`workspaceId`, `projectName`, `threadId`, and `target` for its open session.
+The response is `{"actions":[...]}`, containing only declared handlers that
+accept the target. The host resolves source-range references and checks file
+existence, canonical paths, and project access without launching a plugin.
+Missing files, directories, unsupported targets, and targets outside a restricted
+user's project produce no actions; catalog or infrastructure failures remain errors.
+`POST /api/plugin/open` repeats validation at launch because files or access
+may change after preflight. Plugins still validate their own input as needed.
+
 The host passes one bounded JSON line on stdin:
 
 ```json

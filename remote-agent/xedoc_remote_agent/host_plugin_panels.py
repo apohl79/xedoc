@@ -14,7 +14,7 @@ import threading
 import time
 from urllib.parse import unquote, urlsplit
 
-from .errors import BrokerError
+from .errors import BrokerError, ErrorCode
 from .workspaces import load_bootstrap_descriptor
 
 
@@ -158,6 +158,26 @@ class HostPluginPanels:
                 "panels": [self._public(token, entry) for token, entry in self.entries.items()
                            if entry["owner"] == owner],
             }
+
+    def actions(self, account, workspace, project_name, thread_id, target):
+        with self.lock:
+            session = self._session(account, workspace, project_name, thread_id)
+            panels = self.catalog(session["project"])
+            actions = []
+            for panel in panels.values():
+                for handler in panel["handlers"]:
+                    try:
+                        self._target(
+                            target, panel, session["project"], account, handler["handlerId"]
+                        )
+                    except BrokerError as error:
+                        if error.code not in {
+                            ErrorCode.INVALID_REQUEST, ErrorCode.NOT_FOUND, ErrorCode.UNAUTHORIZED
+                        }:
+                            raise
+                    else:
+                        actions.append(handler)
+            return {"actions": actions}
 
     @staticmethod
     def _target(raw, panel, project, account, handler_id):
