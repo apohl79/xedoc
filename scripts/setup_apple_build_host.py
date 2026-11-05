@@ -46,6 +46,13 @@ def main():
         help="Also validate an existing notarytool Keychain profile with Apple.",
     )
     args = parser.parse_args()
+    if sys.version_info < (3, 10):
+        raise RuntimeError(
+            "Python 3.10+ must be on PATH for release helpers; "
+            f"this interpreter is {sys.version.split()[0]}. "
+            'Run brew install python@3.12, then export PATH="$(brew --prefix python@3.12)/libexec/bin:$PATH" '
+            "in the release terminal and rerun this check."
+        )
     if sys.platform != "darwin":
         raise RuntimeError("This setup requires macOS.")
     for value in (args.team_id, args.production_key_id, args.sandbox_key_id):

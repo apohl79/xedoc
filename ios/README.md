@@ -164,8 +164,16 @@ notarization is a separate App Store Connect review, not `notarytool`.
    release tools:
 
    ```sh
-   brew install xcodegen bazelisk uv gh git rustup
+   brew install python@3.12 xcodegen bazelisk uv gh git rustup
+   export PATH="$(brew --prefix python@3.12)/libexec/bin:$PATH"
+   python3 --version
    ```
+
+   Keep Python 3.10+ on `PATH` in this release terminal. The
+   [Homebrew Python formula](https://formulae.brew.sh/formula/python@3.12)
+   places its unversioned `python3` link in `libexec/bin`.
+   The macOS system `python3` may be too old; `uv` fallback in the release
+   entry point does not fix other helpers using `#!/usr/bin/env python3`.
 
    Clone `apohl79/xedoc` and run subsequent commands from its root. Bazelisk
    selects the repository's pinned Bazel version. For the four-target release,
