@@ -1,12 +1,36 @@
 {
   "dependencies": [
     {
+      "name": "certifi",
+      "version": "2026.10.23"
+    },
+    {
       "name": "cffi",
       "version": "2.0.0"
     },
     {
       "name": "cryptography",
       "version": "46.0.5"
+    },
+    {
+      "name": "h11",
+      "version": "0.16.0"
+    },
+    {
+      "name": "h2",
+      "version": "4.4.1"
+    },
+    {
+      "name": "hpack",
+      "version": "4.2.0"
+    },
+    {
+      "name": "httpcore",
+      "version": "1.0.9"
+    },
+    {
+      "name": "hyperframe",
+      "version": "6.1.0"
     },
     {
       "name": "ifaddr",
@@ -25,6 +49,7 @@
   "pythonVersion": "3.12",
   "targets": {
     "aarch64-apple-darwin": [
+      {"filename": "certifi-2026.10.23-py3-none-any.whl", "name": "certifi", "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1", "url": "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl", "version": "2026.10.23"},
       {
         "filename": "cffi-2.0.0-cp312-cp312-macosx_11_0_arm64.whl",
         "name": "cffi",
@@ -39,6 +64,11 @@
         "url": "https://files.pythonhosted.org/packages/f7/81/b0bb27f2ba931a65409c6b8a8b358a7f03c0e46eceacddff55f7c84b1f3b/cryptography-46.0.5-cp311-abi3-macosx_10_9_universal2.whl",
         "version": "46.0.5"
       },
+      {"filename": "h11-0.16.0-py3-none-any.whl", "name": "h11", "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86", "url": "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl", "version": "0.16.0"},
+      {"filename": "h2-4.4.1-py3-none-any.whl", "name": "h2", "sha256": "0e25f1462b23c9cb82d9eb02e28bc706dac2a68cb457c6a0d74d63c8a2a5d0e6", "url": "https://files.pythonhosted.org/packages/7e/22/e85faf23bd72a92d1921e37d674ca56eb298a3c8be31fdecef0ff2b3aaac/h2-4.4.1-py3-none-any.whl", "version": "4.4.1"},
+      {"filename": "hpack-4.2.0-py3-none-any.whl", "name": "hpack", "sha256": "858ac0b02280fa582b5080d68db0899c62a80375e0e5413a74970c5e518b6986", "url": "https://files.pythonhosted.org/packages/71/b4/4a9fcfb2aef6ba44d9073ecd301443aa00b3dac95de5619f2a7de7ec8a91/hpack-4.2.0-py3-none-any.whl", "version": "4.2.0"},
+      {"filename": "httpcore-1.0.9-py3-none-any.whl", "name": "httpcore", "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55", "url": "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl", "version": "1.0.9"},
+      {"filename": "hyperframe-6.1.0-py3-none-any.whl", "name": "hyperframe", "sha256": "b03380493a519fce58ea5af42e4a42317bf9bd425596f7a0835ffce80f1a42e5", "url": "https://files.pythonhosted.org/packages/48/30/47d0bf6072f7252e6521f3447ccfa40b421b6824517f82854703d0f5a98b/hyperframe-6.1.0-py3-none-any.whl", "version": "6.1.0"},
       {
         "filename": "ifaddr-0.2.0-py3-none-any.whl",
         "name": "ifaddr",
@@ -62,6 +92,7 @@
       }
     ],
     "aarch64-unknown-linux-gnu": [
+      {"filename": "certifi-2026.10.23-py3-none-any.whl", "name": "certifi", "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1", "url": "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl", "version": "2026.10.23"},
       {
         "filename": "cffi-2.0.0-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
         "name": "cffi",
@@ -76,6 +107,11 @@
         "url": "https://files.pythonhosted.org/packages/ff/9e/6b4397a3e3d15123de3b1806ef342522393d50736c13b20ec4c9ea6693a6/cryptography-46.0.5-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
         "version": "46.0.5"
       },
+      {"filename": "h11-0.16.0-py3-none-any.whl", "name": "h11", "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86", "url": "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl", "version": "0.16.0"},
+      {"filename": "h2-4.4.1-py3-none-any.whl", "name": "h2", "sha256": "0e25f1462b23c9cb82d9eb02e28bc706dac2a68cb457c6a0d74d63c8a2a5d0e6", "url": "https://files.pythonhosted.org/packages/7e/22/e85faf23bd72a92d1921e37d674ca56eb298a3c8be31fdecef0ff2b3aaac/h2-4.4.1-py3-none-any.whl", "version": "4.4.1"},
+      {"filename": "hpack-4.2.0-py3-none-any.whl", "name": "hpack", "sha256": "858ac0b02280fa582b5080d68db0899c62a80375e0e5413a74970c5e518b6986", "url": "https://files.pythonhosted.org/packages/71/b4/4a9fcfb2aef6ba44d9073ecd301443aa00b3dac95de5619f2a7de7ec8a91/hpack-4.2.0-py3-none-any.whl", "version": "4.2.0"},
+      {"filename": "httpcore-1.0.9-py3-none-any.whl", "name": "httpcore", "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55", "url": "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl", "version": "1.0.9"},
+      {"filename": "hyperframe-6.1.0-py3-none-any.whl", "name": "hyperframe", "sha256": "b03380493a519fce58ea5af42e4a42317bf9bd425596f7a0835ffce80f1a42e5", "url": "https://files.pythonhosted.org/packages/48/30/47d0bf6072f7252e6521f3447ccfa40b421b6824517f82854703d0f5a98b/hyperframe-6.1.0-py3-none-any.whl", "version": "6.1.0"},
       {
         "filename": "ifaddr-0.2.0-py3-none-any.whl",
         "name": "ifaddr",
@@ -99,6 +135,7 @@
       }
     ],
     "x86_64-apple-darwin": [
+      {"filename": "certifi-2026.10.23-py3-none-any.whl", "name": "certifi", "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1", "url": "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl", "version": "2026.10.23"},
       {
         "filename": "cffi-2.0.0-cp312-cp312-macosx_10_13_x86_64.whl",
         "name": "cffi",
@@ -113,6 +150,11 @@
         "url": "https://files.pythonhosted.org/packages/f7/81/b0bb27f2ba931a65409c6b8a8b358a7f03c0e46eceacddff55f7c84b1f3b/cryptography-46.0.5-cp311-abi3-macosx_10_9_universal2.whl",
         "version": "46.0.5"
       },
+      {"filename": "h11-0.16.0-py3-none-any.whl", "name": "h11", "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86", "url": "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl", "version": "0.16.0"},
+      {"filename": "h2-4.4.1-py3-none-any.whl", "name": "h2", "sha256": "0e25f1462b23c9cb82d9eb02e28bc706dac2a68cb457c6a0d74d63c8a2a5d0e6", "url": "https://files.pythonhosted.org/packages/7e/22/e85faf23bd72a92d1921e37d674ca56eb298a3c8be31fdecef0ff2b3aaac/h2-4.4.1-py3-none-any.whl", "version": "4.4.1"},
+      {"filename": "hpack-4.2.0-py3-none-any.whl", "name": "hpack", "sha256": "858ac0b02280fa582b5080d68db0899c62a80375e0e5413a74970c5e518b6986", "url": "https://files.pythonhosted.org/packages/71/b4/4a9fcfb2aef6ba44d9073ecd301443aa00b3dac95de5619f2a7de7ec8a91/hpack-4.2.0-py3-none-any.whl", "version": "4.2.0"},
+      {"filename": "httpcore-1.0.9-py3-none-any.whl", "name": "httpcore", "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55", "url": "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl", "version": "1.0.9"},
+      {"filename": "hyperframe-6.1.0-py3-none-any.whl", "name": "hyperframe", "sha256": "b03380493a519fce58ea5af42e4a42317bf9bd425596f7a0835ffce80f1a42e5", "url": "https://files.pythonhosted.org/packages/48/30/47d0bf6072f7252e6521f3447ccfa40b421b6824517f82854703d0f5a98b/hyperframe-6.1.0-py3-none-any.whl", "version": "6.1.0"},
       {
         "filename": "ifaddr-0.2.0-py3-none-any.whl",
         "name": "ifaddr",
@@ -136,6 +178,7 @@
       }
     ],
     "x86_64-pc-windows-msvc": [
+      {"filename": "certifi-2026.10.23-py3-none-any.whl", "name": "certifi", "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1", "url": "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl", "version": "2026.10.23"},
       {
         "filename": "cffi-2.0.0-cp312-cp312-win_amd64.whl",
         "name": "cffi",
@@ -150,6 +193,11 @@
         "url": "https://files.pythonhosted.org/packages/e9/5a/ac0f49e48063ab4255d9e3b79f5def51697fce1a95ea1370f03dc9db76f6/cryptography-46.0.5-cp311-abi3-win_amd64.whl",
         "version": "46.0.5"
       },
+      {"filename": "h11-0.16.0-py3-none-any.whl", "name": "h11", "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86", "url": "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl", "version": "0.16.0"},
+      {"filename": "h2-4.4.1-py3-none-any.whl", "name": "h2", "sha256": "0e25f1462b23c9cb82d9eb02e28bc706dac2a68cb457c6a0d74d63c8a2a5d0e6", "url": "https://files.pythonhosted.org/packages/7e/22/e85faf23bd72a92d1921e37d674ca56eb298a3c8be31fdecef0ff2b3aaac/h2-4.4.1-py3-none-any.whl", "version": "4.4.1"},
+      {"filename": "hpack-4.2.0-py3-none-any.whl", "name": "hpack", "sha256": "858ac0b02280fa582b5080d68db0899c62a80375e0e5413a74970c5e518b6986", "url": "https://files.pythonhosted.org/packages/71/b4/4a9fcfb2aef6ba44d9073ecd301443aa00b3dac95de5619f2a7de7ec8a91/hpack-4.2.0-py3-none-any.whl", "version": "4.2.0"},
+      {"filename": "httpcore-1.0.9-py3-none-any.whl", "name": "httpcore", "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55", "url": "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl", "version": "1.0.9"},
+      {"filename": "hyperframe-6.1.0-py3-none-any.whl", "name": "hyperframe", "sha256": "b03380493a519fce58ea5af42e4a42317bf9bd425596f7a0835ffce80f1a42e5", "url": "https://files.pythonhosted.org/packages/48/30/47d0bf6072f7252e6521f3447ccfa40b421b6824517f82854703d0f5a98b/hyperframe-6.1.0-py3-none-any.whl", "version": "6.1.0"},
       {
         "filename": "ifaddr-0.2.0-py3-none-any.whl",
         "name": "ifaddr",
@@ -173,6 +221,7 @@
       }
     ],
     "x86_64-unknown-linux-gnu": [
+      {"filename": "certifi-2026.10.23-py3-none-any.whl", "name": "certifi", "sha256": "e9b54de76e530bb6cf0ccd036787103acb58fd42ba930ea8bf948ddbaa2f61d1", "url": "https://files.pythonhosted.org/packages/32/d1/a3652fe2c19134d0d15922177821d863cbd7e842d53a21bbe7e8e3a1b5ac/certifi-2026.10.23-py3-none-any.whl", "version": "2026.10.23"},
       {
         "filename": "cffi-2.0.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
         "name": "cffi",
@@ -187,6 +236,11 @@
         "url": "https://files.pythonhosted.org/packages/63/e7/471ab61099a3920b0c77852ea3f0ea611c9702f651600397ac567848b897/cryptography-46.0.5-cp311-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
         "version": "46.0.5"
       },
+      {"filename": "h11-0.16.0-py3-none-any.whl", "name": "h11", "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86", "url": "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl", "version": "0.16.0"},
+      {"filename": "h2-4.4.1-py3-none-any.whl", "name": "h2", "sha256": "0e25f1462b23c9cb82d9eb02e28bc706dac2a68cb457c6a0d74d63c8a2a5d0e6", "url": "https://files.pythonhosted.org/packages/7e/22/e85faf23bd72a92d1921e37d674ca56eb298a3c8be31fdecef0ff2b3aaac/h2-4.4.1-py3-none-any.whl", "version": "4.4.1"},
+      {"filename": "hpack-4.2.0-py3-none-any.whl", "name": "hpack", "sha256": "858ac0b02280fa582b5080d68db0899c62a80375e0e5413a74970c5e518b6986", "url": "https://files.pythonhosted.org/packages/71/b4/4a9fcfb2aef6ba44d9073ecd301443aa00b3dac95de5619f2a7de7ec8a91/hpack-4.2.0-py3-none-any.whl", "version": "4.2.0"},
+      {"filename": "httpcore-1.0.9-py3-none-any.whl", "name": "httpcore", "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55", "url": "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl", "version": "1.0.9"},
+      {"filename": "hyperframe-6.1.0-py3-none-any.whl", "name": "hyperframe", "sha256": "b03380493a519fce58ea5af42e4a42317bf9bd425596f7a0835ffce80f1a42e5", "url": "https://files.pythonhosted.org/packages/48/30/47d0bf6072f7252e6521f3447ccfa40b421b6824517f82854703d0f5a98b/hyperframe-6.1.0-py3-none-any.whl", "version": "6.1.0"},
       {
         "filename": "ifaddr-0.2.0-py3-none-any.whl",
         "name": "ifaddr",

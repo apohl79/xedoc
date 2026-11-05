@@ -23,10 +23,16 @@ const CONTRACT_VERSION: &str = "xedoc.remote-agent/v1";
 const PAYLOAD_VERSION: &str = "0.1.0";
 const PYTHON_VERSION: &str = "3.12.14";
 const DEPENDENCY_LOCK_SHA256: &str =
-    "b0bfc167dd5bccfb0894d7fc55f389db418afaab676dfdfe9a6912d41bdf0103";
+    "b936555fea8ba67e461bbd050d485f1ec95b3a9a17c2c122c68cd6e73829e5dc";
 const EXPECTED_DEPENDENCIES: &[&str] = &[
+    "certifi==2026.10.23",
     "cffi==2.0.0",
     "cryptography==46.0.5",
+    "h11==0.16.0",
+    "h2==4.4.1",
+    "hpack==4.2.0",
+    "httpcore==1.0.9",
+    "hyperframe==6.1.0",
     "ifaddr==0.2.0",
     "pycparser==2.23",
     "zeroconf==0.148.0",
