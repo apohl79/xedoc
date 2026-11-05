@@ -26,10 +26,97 @@ alerts when an observed turn finishes or starts waiting for input or approval.
 Alerts include the host and project name, not conversation content. Change
 permission later in iOS Settings → Notifications → Xedoc.
 
-These are connected-app alerts, not APNs push notifications. They work in the
-foreground and while the app can still process host events in the background.
-iOS suspension, disconnection, or closing the app stops new alerts. Opening a
-session does not generate alerts for its existing state.
+Configured hosts send APNs alerts even while iOS suspends the app. The selected
+host subscription remains active in the background, until disconnect, sign-out,
+or expiry of the host login. Hosts with no eligible device subscriptions do not
+contact APNs. Opening a session does not alert for its existing state.
+
+The sidebar host-name button returns to native host discovery. Switching hosts
+waits for the old host to confirm subscription removal; if it is unreachable,
+the switch stays blocked. Reconnect that host and retry. Notifications already
+accepted by Apple may arrive after removal. Unconfigured or older hosts retain
+open-app-only local alerts, with a notice explaining the limitation.
+
+### Host APNs credentials
+
+Enable Push Notifications for the app's explicit Apple App ID. Use separate
+topic-specific production and sandbox keys, and refresh provisioning profiles.
+The app reads its signed profile's APNs environment; Ad Hoc exports must use
+`production`. No signing key belongs in the mobile app or release archive.
+
+Store each private key in 1Password. On each trusted macOS host, authorize a
+1Password CLI session in one persistent terminal, then pipe the key into Keychain.
+Install the CLI with `brew install --cask 1password-cli` if needed.
+This workflow requires a reusable `OP_SESSION`. Desktop-app integration may
+authenticate without setting that variable. For this dedicated terminal only,
+[temporarily disable app integration](https://developer.1password.com/docs/cli/app-integration/):
+
+```sh
+export OP_BIOMETRIC_UNLOCK_ENABLED=false
+```
+
+If this CLI has no manually registered account, run `op account add` once and
+enter the account details, Secret Key, and password privately in its normal
+interactive prompts. See [manual sign-in](https://developer.1password.com/docs/cli/sign-in-manually/).
+Never put these values in arguments, logs, or chat. This does not change the
+desktop app's settings.
+
+Run the following whole block from the repository root in that same terminal.
+It clears any stale token and performs no secret reads unless sign-in creates
+a session. Each failed step stops the remaining imports and configuration:
+
+```sh
+set -o pipefail &&
+unset OP_SESSION &&
+eval "$(op signin)" &&
+test -n "${OP_SESSION:-}" &&
+op read 'op://Private/Xedoc APNs Production/credential' |
+  swift scripts/import_apns_key.swift 8277F92N2F &&
+op read 'op://Private/Xedoc APNs Sandbox/credential' |
+  swift scripts/import_apns_key.swift G68J93J939 &&
+python3 scripts/setup_apple_build_host.py --configure-apns &&
+python3 scripts/setup_apple_build_host.py --check --configure-apns
+```
+
+Close this dedicated terminal after finishing; its temporary integration override
+and session environment do not carry into other terminals.
+
+Do not pass private keys as command arguments. The importer refuses to overwrite
+existing keys. The setup script validates P-256 keys without printing them and
+creates owner-only `$XEDOC_HOME/host-gui/apns.json` (default `~/.xedoc`).
+Repeated setup leaves a matching file unchanged; conflicting files are rejected,
+not replaced. `--check` never creates configuration. Use `--xedoc-home PATH` for
+an isolated configuration. Defaults are the owner's team `62QZB3NCZR`, topic
+`org.e47.xedoc.mobile`, production key `8277F92N2F`, and sandbox key `G68J93J939`;
+override `--team-id`, `--topic`, `--production-key-id`, and `--sandbox-key-id`
+together with the corresponding vault records for another Apple team.
+The setup script does not change `ios/project.yml`; another team must also
+configure its `DEVELOPMENT_TEAM` and registered bundle identifier there.
+Confirm these identifiers against the Apple Developer portal: `.p8` key material
+does not encode its key ID, team, topic, or environment.
+
+Equivalent manual configuration:
+
+```json
+{
+  "teamId": "APPLE_TEAM_ID",
+  "topic": "org.e47.xedoc.mobile",
+  "keys": {
+    "production": {"keyId": "PRODUCTION_KEY_ID", "keychainService": "org.e47.xedoc.apns"},
+    "development": {"keyId": "SANDBOX_KEY_ID", "keychainService": "org.e47.xedoc.apns"}
+  }
+}
+```
+
+On Linux, replace `keychainService` with `privateKeyFile`, an absolute path to an
+owner-only (`0600`) `.p8` file retrieved from the same vault. Configure only the
+environments that host needs. APNs uses outbound HTTPS/HTTP2; no public inbound
+host endpoint is required. Credentials are read only when delivering a push.
+These are host-side APNs sending credentials, not app-signing certificates.
+A Mac that only builds releases does not need them. A host serving mobile
+clients needs them even if another Mac built the app. Keep both copies in the
+private vault and the sending host's Keychain; never commit `.p8` files, include
+them in artifacts, or copy them into the iOS application.
 
 ## Signing and host trust
 
@@ -62,6 +149,92 @@ Development builds do not use macOS notarization. iOS alternative-distribution
 notarization is a separate App Store Connect review, not `notarytool`.
 
 ## Releases and cable installation
+
+### Prepare another release Mac
+
+1. Install full Xcode (not just Command Line Tools), launch it once, accept its
+   license, and install iOS platform support. Select it:
+
+   ```sh
+   sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+   sudo xcodebuild -runFirstLaunch
+   ```
+
+2. Install Homebrew using its official installer if needed, then install the
+   release tools:
+
+   ```sh
+   brew install xcodegen bazelisk uv gh git rustup
+   ```
+
+   Clone `apohl79/xedoc` and run subsequent commands from its root. Bazelisk
+   selects the repository's pinned Bazel version. For the four-target release,
+   configure access to the existing BuildBuddy remote executors using
+   `BUILDBUDDY_API_KEY` in the release terminal; retrieve the key through the
+   authorized reusable 1Password session, not a literal in shell history.
+   Remote execution must support the macOS and Linux target toolchains.
+   This credential is separate from Apple's keys. Sign in using `gh auth login`
+   with an account allowed to publish releases to `apohl79/xedoc`; the release
+   wrapper defaults to the stored `apohl79` account (`--github-account NAME`
+   overrides it).
+
+3. In Xcode Settings → Accounts, sign in to the Apple Developer account and
+   select team `62QZB3NCZR`. Use **Manage Certificates** to create this Mac's
+   **Apple Development**, **Apple Distribution**, and **Developer ID Application**
+   identities as permitted by the account. Each identity must have its private
+   key in the local login Keychain. A certificate alone is insufficient.
+   Prefer Xcode-managed identities; do not export certificates or regenerate
+   the existing APNs keys merely to prepare another build host.
+   Confirm the explicit App ID `org.e47.xedoc.mobile` has Push Notifications
+   enabled. Xcode must refresh its development and Ad Hoc profiles after
+   enabling Push. Automatic signing needs account permission to manage profiles
+   and devices. Register intended devices or use the cable installer's
+   reprovisioning flow below.
+
+4. For desktop notarization, create an app-specific password in the Apple
+   account, save it in 1Password, then store a local notarytool profile:
+
+   ```sh
+   xcrun notarytool store-credentials xedoc-notary
+   ```
+
+   Answer its interactive Apple ID, team, and password prompts; never put the
+   password in command arguments or shell history. This stores credentials in
+   Keychain. Verify the profile and local signing prerequisites:
+
+   ```sh
+   python3 scripts/setup_apple_build_host.py --check --notary-profile xedoc-notary
+   # Build-only iOS Mac: no desktop identity or notarization required.
+   python3 scripts/setup_apple_build_host.py --check --ios-only
+   ```
+
+   Checks verify the selected iOS SDK and valid identities for the selected
+   team, but cannot prove portal provisioning permissions or device quotas.
+   `--notary-profile` authenticates with Apple; without it notarization
+   credentials are explicitly reported as unchecked. Apple signing/timestamp
+   and notarization services must be reachable during release creation.
+
+5. If this Mac also serves the host GUI, import the existing APNs keys and run
+   the opt-in setup under **Host APNs credentials** above. This does not enable
+   Push in Apple's portal, register devices, change provisioning profiles, or
+   replace signing identities.
+
+### Build and publish
+
+From a clean, committed `main` checkout with the intended release version:
+
+```sh
+scripts/build_xedoc_release.sh \
+  --target macos-arm64 --target macos-x86_64 \
+  --target linux-arm64 --target linux-x86_64 \
+  --notarytool-keychain-profile xedoc-notary
+```
+
+On macOS this builds and uploads all four desktop targets **and** the signed
+iOS archive. The desktop packages are notarized; the iOS archive uses Ad Hoc
+distribution signing with production APNs, not macOS notarization. iOS
+alternative-distribution notarization requires a separate App Store Connect
+workflow and is not performed by this script.
 
 The macOS release script builds a signed `xedoc-ios-VERSION.zip` alongside the
 desktop packages and uploads it to the same GitHub release. Use `--skip-ios` to
