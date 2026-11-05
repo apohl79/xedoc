@@ -19,6 +19,7 @@ struct HostWebView: UIViewRepresentable {
     let url: URL
     let reload: Int
     @Binding var error: HostLoadError?
+    let disconnect: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -74,7 +75,15 @@ struct HostWebView: UIViewRepresentable {
                   source.scheme == parent.url.scheme, source.host == parent.url.host,
                   (source.port ?? 443) == (parent.url.port ?? 443)
             else { return }
-            MobileNotifications.shared.receive(message.body, host: parent.url)
+            guard let body = message.body as? [String: Any] else { return }
+            switch body["kind"] as? String {
+            case "pushReady":
+                if let view = message.webView { PushSubscription.shared.ready(view) }
+            case "disconnect":
+                parent.disconnect()
+            default:
+                MobileNotifications.shared.receive(body, host: parent.url)
+            }
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

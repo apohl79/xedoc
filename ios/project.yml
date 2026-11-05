@@ -20,6 +20,11 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: org.e47.xedoc.mobile
         TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: NO
+        CODE_SIGN_ENTITLEMENTS: Xedoc/Xedoc.entitlements
+    attributes:
+      SystemCapabilities:
+        com.apple.Push:
+          enabled: 1
     info:
       path: Xedoc/Info.plist
       properties:

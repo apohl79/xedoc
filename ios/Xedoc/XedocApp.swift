@@ -2,18 +2,40 @@ import SwiftUI
 
 @main
 struct XedocApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var selectedHost: DiscoveredHost?
+    @State private var selectionError: String?
+    @State private var changingHost = false
 
     var body: some Scene {
         WindowGroup {
             NavigationStack {
                 if let host = selectedHost {
-                    HostScreen(host: host)
+                    HostScreen(host: host) { changeHost(nil) }
                 } else {
-                    HostSelector { selectedHost = $0 }
+                    HostSelector { changeHost($0) }
                 }
             }
+            .disabled(changingHost)
+            .overlay { if changingHost { ProgressView("Removing old push subscription…").padding().background(.regularMaterial) } }
+            .alert("Could not change hosts", isPresented: Binding(
+                get: { selectionError != nil }, set: { if !$0 { selectionError = nil } }
+            )) { Button("OK", role: .cancel) {} } message: { Text(selectionError ?? "") }
             .preferredColorScheme(.dark)
+        }
+    }
+
+    private func changeHost(_ host: DiscoveredHost?) {
+        guard !changingHost else { return }
+        changingHost = true
+        Task {
+            defer { changingHost = false }
+            do {
+                try await PushSubscription.shared.select(host?.url)
+                selectedHost = host
+            } catch {
+                selectionError = error.localizedDescription
+            }
         }
     }
 }
@@ -89,13 +111,24 @@ private struct HostSelector: View {
 
 private struct HostScreen: View {
     let host: DiscoveredHost
+    let disconnect: () -> Void
+    @ObservedObject private var push = PushSubscription.shared
+    @Environment(\.scenePhase) private var scenePhase
     @State private var reload = 0
     @State private var error: HostLoadError?
     @State private var showCertificateSetup = false
 
     var body: some View {
-        HostWebView(url: host.url, reload: reload, error: $error)
+        HostWebView(url: host.url, reload: reload, error: $error, disconnect: disconnect)
             .task { await MobileNotifications.shared.requestPermission() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await MobileNotifications.shared.requestPermission() } }
+            }
+            .safeAreaInset(edge: .bottom) {
+                if let notice = push.notice {
+                    Text(notice).font(.caption).padding(8).frame(maxWidth: .infinity).background(.regularMaterial)
+                }
+            }
             .overlay {
                 if let error {
                     VStack(spacing: 16) {
@@ -108,6 +141,7 @@ private struct HostScreen: View {
                             .buttonStyle(.borderedProminent)
                         }
                         Button("Retry") { self.error = nil; reload += 1 }
+                        Button("Hosts", action: disconnect)
                     }
                     .padding(24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

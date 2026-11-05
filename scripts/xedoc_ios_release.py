@@ -100,6 +100,18 @@ def build_ios_release(
             raise RuntimeError(
                 "The exported iOS app must use an Ad Hoc signing profile."
             )
+        if profile.get("Entitlements", {}).get("aps-environment") != "production":
+            raise RuntimeError("The exported iOS profile must support production APNs.")
+        entitlements = plistlib.loads(
+            subprocess.check_output(
+                ["codesign", "-d", "--entitlements", ":-", str(app)],
+                stderr=subprocess.DEVNULL,
+            )
+        )
+        if entitlements.get("aps-environment") != "production":
+            raise RuntimeError(
+                "The exported iOS app must have production APNs signing."
+            )
         if profile["ExpirationDate"].replace(tzinfo=timezone.utc) <= datetime.now(
             timezone.utc
         ):
