@@ -4,6 +4,8 @@ use crate::session_script_registry::SessionScriptRegistry;
 use crate::thread_state::MidTurnAutoSessionNameRequest;
 use crate::thread_state::ThreadState;
 use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 use tokio::sync::Mutex;
 use tokio::sync::Semaphore;
 use tracing::debug;
@@ -12,6 +14,7 @@ use tracing::warn;
 use xedoc_app_server_protocol::ServerNotification;
 use xedoc_app_server_protocol::ThreadNameUpdateSource;
 use xedoc_app_server_protocol::ThreadNameUpdatedNotification;
+use xedoc_app_server_protocol::TurnStatus;
 use xedoc_core::ThreadManager;
 use xedoc_core::XedocThread;
 use xedoc_protocol::ThreadId;
@@ -19,6 +22,8 @@ use xedoc_state::ThreadTitleSource;
 use xedoc_thread_store::ThreadMetadataPatch;
 
 const GENERATED_SESSION_NAME_REFRESH_TURN_INTERVAL: u64 = 4;
+const GENERATED_SESSION_NAME_MAX_ATTEMPTS: u64 = 3;
+const GENERATED_SESSION_NAME_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(crate) enum AutoSessionNameUpdate {
     TurnCompleted {
@@ -108,8 +113,9 @@ impl AutoSessionNameUpdate {
             } => state.completed_turn_count == *completed_turn_count,
             Self::MidTurn(request) => {
                 state.completed_turn_count == request.completed_turn_count
-                    && state.active_turn_id_if_explicit().as_deref()
-                        == Some(request.turn_id.as_str())
+                    && state.active_turn_snapshot().is_some_and(|turn| {
+                        turn.id == request.turn_id && turn.status == TurnStatus::InProgress
+                    })
             }
         }
     }
@@ -126,6 +132,8 @@ pub(crate) fn maybe_spawn_auto_session_name_update(
     thread_list_state_permit: Arc<Semaphore>,
     update: AutoSessionNameUpdate,
 ) {
+    let update_kind = update.kind();
+    let completed_turn_count = update.completed_turn_count();
     tokio::spawn(async move {
         if let Err(err) = maybe_update_auto_session_name(
             thread_id,
@@ -140,7 +148,13 @@ pub(crate) fn maybe_spawn_auto_session_name_update(
         )
         .await
         {
-            warn!("failed to update generated session name for thread {thread_id}: {err}");
+            error!(
+                %thread_id,
+                update_kind,
+                completed_turn_count,
+                error = %err,
+                "failed to update generated session name"
+            );
         }
     });
 }
@@ -208,17 +222,79 @@ async fn maybe_update_auto_session_name(
     }
 
     let current_name = (!current_title.trim().is_empty()).then_some(current_title.as_str());
-    let Some(generated_name) = thread
-        .generate_session_name_with_partial_response(current_name, update.partial_response())
-        .await?
-    else {
-        debug!(
-            thread_id = %thread_id,
-            update_kind = update_kind,
-            completed_turn_count = completed_turn_count,
-            "skipping generated session name: model returned no usable name"
+    let started = Instant::now();
+    let mut attempt = 0;
+    let generated_name = loop {
+        if !update.still_applies_to(&*thread_state.lock().await) {
+            debug!(
+                %thread_id,
+                update_kind,
+                attempt,
+                "stopping generated session name attempts: turn changed"
+            );
+            return Ok(());
+        }
+        if attempt > 0 {
+            let latest_config = thread.config().await;
+            if !latest_config.auto_session_name
+                || thread.config_snapshot().await.ephemeral
+                || read_title_state(&thread, thread_id)
+                    .await?
+                    .is_none_or(|(title, source)| title != current_title || source != title_source)
+            {
+                debug!(
+                    %thread_id,
+                    update_kind,
+                    attempt,
+                    "stopping generated session name attempts: settings or title changed"
+                );
+                return Ok(());
+            }
+        }
+        attempt += 1;
+        let failure = match tokio::time::timeout(
+            GENERATED_SESSION_NAME_ATTEMPT_TIMEOUT,
+            thread.generate_session_name_with_partial_response(
+                current_name,
+                update.partial_response(),
+            ),
+        )
+        .await
+        {
+            Ok(Ok(Some(name))) => break name,
+            Ok(Ok(None)) => "model returned no usable name".to_string(),
+            Ok(Err(err)) => err.to_string(),
+            Err(_) => "session name request timed out".to_string(),
+        };
+        if attempt == GENERATED_SESSION_NAME_MAX_ATTEMPTS {
+            error!(
+                %thread_id,
+                update_kind,
+                completed_turn_count,
+                provider = %config.model_provider_id,
+                session_model = ?config.model,
+                attempts = attempt,
+                timeout_ms = GENERATED_SESSION_NAME_ATTEMPT_TIMEOUT.as_millis(),
+                elapsed_ms = started.elapsed().as_millis(),
+                error = %failure,
+                "automatic session naming failed after all attempts"
+            );
+            return Ok(());
+        }
+        warn!(
+            %thread_id,
+            update_kind,
+            completed_turn_count,
+            provider = %config.model_provider_id,
+            session_model = ?config.model,
+            attempt,
+            max_attempts = GENERATED_SESSION_NAME_MAX_ATTEMPTS,
+            timeout_ms = GENERATED_SESSION_NAME_ATTEMPT_TIMEOUT.as_millis(),
+            elapsed_ms = started.elapsed().as_millis(),
+            error = %failure,
+            "generated session name attempt failed; retrying"
         );
-        return Ok(());
+        tokio::time::sleep(Duration::from_secs(attempt)).await;
     };
 
     let _permit = thread_list_state_permit
