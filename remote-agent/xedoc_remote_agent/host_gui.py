@@ -34,6 +34,7 @@ from .host_session_gui import HostSessionGuis, proxy_session_gui
 from .host_plugin_panels import HostPluginPanels
 from .host_panel_transport import PanelBroker, proxy_plugin_panel
 from .host_updates import HostUpdates
+from .host_push import HostPush
 from .work_admission import WorkAdmissionGate
 
 
@@ -73,6 +74,9 @@ class HostServer(ThreadingHTTPServer):
         self.tls_context = None
         super().__init__(address, HostHandler)
         self.panel_broker = PanelBroker(self.plugin_panels)
+        self.push = HostPush(
+            home, self.auth, self.workspaces, self.hostname, self.origin
+        )
         self.ca_discovery: HostCADiscovery | None = None
         self.host_discovery: HostGuiDiscovery | None = None
         self.bonjour: HostGuiBonjour | None = None
@@ -111,6 +115,7 @@ class HostServer(ThreadingHTTPServer):
         return f"{scheme}://{authority}"
 
     def server_close(self):
+        self.push.close()
         if self.bonjour is not None:
             self.bonjour.stop()
             self.bonjour = None
@@ -415,9 +420,22 @@ class HostHandler(BaseHTTPRequestHandler):
                 return
             cookies = SimpleCookie(self.headers.get("Cookie", ""))
             token = cookies["xedoc_host"].value if "xedoc_host" in cookies else ""
+            if self.command == "POST" and path == "/api/push/unregister":
+                self.server.push.unregister(body.get("subscriptionId"), token)
+                self.reply(200, {"registered": False})
+                return
             account = self.server.auth.account(token)
             admin = account["role"] == "admin"
             service = self.server.workspaces
+            if self.command == "GET" and path == "/api/push/status":
+                self.reply(200, self.server.push.status())
+                return
+            if self.command == "POST" and path == "/api/push/register":
+                self.server.push.register(
+                    body, token, account, self.server.origin_for_authority(authority)
+                )
+                self.reply(200, {"registered": True})
+                return
             if self.command == "GET" and path == "/api/hosts/discover":
                 try:
                     hosts = discover_host_guis(
