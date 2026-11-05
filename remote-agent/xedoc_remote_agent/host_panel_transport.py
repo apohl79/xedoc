@@ -102,7 +102,7 @@ def proxy_plugin_panel(handler, panels, path, query):
             f"connect-src {origin}{prefix}; img-src {origin}{prefix} data: blob:; "
             f"font-src {origin}{prefix} data:; base-uri {origin}{prefix}; "
             f"frame-ancestors {origin}; form-action 'none'; "
-            "sandbox allow-scripts allow-forms allow-downloads"
+            "sandbox allow-scripts allow-forms allow-downloads allow-top-navigation-to-custom-protocols"
         ))
 
     if handler.command == "OPTIONS":

@@ -261,6 +261,7 @@ class HostHandler(BaseHTTPRequestHandler):
                 "style-src-attr 'unsafe-inline'"
                 if session_frame
                 else "default-src 'self'; script-src 'self'; style-src 'self'; "
+                "frame-src 'self' slack:; "
                 "style-src-elem 'self' 'unsafe-inline'; "
                 "object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
             ),

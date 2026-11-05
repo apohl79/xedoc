@@ -153,7 +153,7 @@ window.XedocPluginPanels = class {
     const frame = document.createElement("iframe");
     frame.className = "plugin-panel-frame";
     frame.title = panel.title || "Plugin panel";
-    frame.setAttribute("sandbox", "allow-scripts allow-forms allow-downloads");
+    frame.setAttribute("sandbox", "allow-scripts allow-forms allow-downloads allow-top-navigation-to-custom-protocols");
     frame.src = panel.url;
     frame.hidden = true;
     this.entries.set(panel.panelId, { ...panel, key, frame });

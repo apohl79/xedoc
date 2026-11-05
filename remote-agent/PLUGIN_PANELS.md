@@ -71,6 +71,13 @@ process and stable private state directory.
 Panel iframes have an opaque origin: no `allow-same-origin`, host cookies, parent
 DOM, host API access, or trusted postMessage channel. The proxy adds restrictive
 CSP and `Access-Control-Allow-Origin: null` for the capability-scoped resource.
+Both sandbox policies allow `allow-top-navigation-to-custom-protocols` so native
+Slack links can reach the browser's external-protocol handler without navigating
+the panel away. The host page's `frame-src` also permits `slack:` alongside
+`'self'`; other external frame schemes remain blocked. Browser user-activation,
+confirmation, and installed handler requirements still apply; Xedoc does not
+launch external applications. This does not allow popups, ordinary top-level
+navigation, or same-origin access.
 Clients must support mounting below the prefix: the frame URL includes
 `xedocBase=/plugin-ui/<capability>/`; an HTML `<base href="/">` is replaced with
 the mount prefix. Use the prefix for requests, assets, navigation, and SSE.
