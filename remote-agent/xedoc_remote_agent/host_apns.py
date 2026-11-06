@@ -16,6 +16,8 @@ import httpcore
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, utils
 
+from .apns_credentials import credential_exists, default_configuration
+
 
 class HostAPNs:
     def __init__(self, home: Path) -> None:
@@ -24,11 +26,19 @@ class HostAPNs:
         self._pool = None
 
     def configuration(self) -> dict:
-        if not self.path.exists():
-            raise OSError("APNs is not configured")
-        if self.path.stat().st_size > 16 * 1024:
-            raise ValueError("APNs configuration exceeds size limit")
-        value = json.loads(self.path.read_text())
+        if not self.path.exists() and not self.path.is_symlink():
+            value = default_configuration(self.path.parent.parent)
+            value["keys"] = {
+                environment: key
+                for environment, key in value["keys"].items()
+                if credential_exists(key)
+            }
+            if not value["keys"]:
+                raise OSError("APNs signing credentials are unavailable")
+        else:
+            if self.path.stat().st_size > 16 * 1024:
+                raise ValueError("APNs configuration exceeds size limit")
+            value = json.loads(self.path.read_text())
         if (
             not isinstance(value, dict)
             or not re.fullmatch(r"[A-Z0-9]{10}", str(value.get("teamId", "")))
@@ -171,10 +181,12 @@ class HostAPNs:
         if not isinstance(reason, str) or not re.fullmatch(r"[A-Za-z]{1,64}", reason):
             reason = "Unknown"
         logging.warning(
-            "APNs rejected notification status=%s reason=%s id=%s",
-            status,
-            reason,
-            notification_id,
+            "APNs rejected notification",
+            extra={
+                "apnsStatus": status,
+                "apnsReason": reason,
+                "notificationId": notification_id,
+            },
         )
         if status == 410 or reason in ("BadDeviceToken", "DeviceTokenNotForTopic"):
             return "invalid"

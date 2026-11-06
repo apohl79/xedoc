@@ -1154,6 +1154,46 @@ configure_remote_agent() {
   fi
 }
 
+configure_host_push() (
+  set +x
+  push_release="$CURRENT_LINK"
+  [ "$EXPERIMENTAL" = false ] || push_release="$EXPERIMENTAL_LINK"
+  push_command="$push_release/bin/xedoc-remote-agentd"
+  [ -x "$push_command" ] || return 0
+  # Older/local packages may predate automatic APNs setup.
+  "$push_command" apns --help >/dev/null 2>&1 || return 0
+  if "$push_command" apns check --xedoc-home "$XEDOC_HOME_DIR" >/dev/null 2>&1; then
+    step "Host push credentials are ready"
+    return 0
+  else
+    push_status="$?"
+  fi
+  if [ "$push_status" -ne 2 ]; then
+    printf 'WARNING: Existing host push credentials could not be validated; leaving them unchanged without contacting 1Password.\n' >&2
+    return 0
+  fi
+  step "Provisioning missing host push credentials"
+  if ! command -v op >/dev/null 2>&1; then
+    printf 'WARNING: Host push is unavailable: 1Password CLI is not installed; signing keys cannot be retrieved.\n' >&2
+    return 0
+  fi
+  # Reuse a session, or establish one user-approved session for this install.
+  if [ -z "${OP_SESSION:-}" ]; then
+    if ! prompt_user_available; then
+      printf 'WARNING: Host push is unavailable: 1Password sign-in approval requires an interactive terminal.\n' >&2
+      return 0
+    fi
+    eval "$(op signin)"
+    if [ -z "${OP_SESSION:-}" ]; then
+      printf 'WARNING: Host push is unavailable: 1Password sign-in did not establish a reusable session.\n' >&2
+      return 0
+    fi
+  fi
+  if ! "$push_command" apns setup --xedoc-home "$XEDOC_HOME_DIR"; then
+    printf 'WARNING: Host push credential provisioning failed; no manual APNs configuration is needed, but signing-key access is required.\n' >&2
+  fi
+)
+
 cleanup() {
   if [ -n "$tmp_dir" ]; then
     rm -rf "$tmp_dir"
@@ -1409,6 +1449,7 @@ else
   configure_app_server_startup
 fi
 
+configure_host_push
 configure_remote_agent
 
 # Deploy statusline script

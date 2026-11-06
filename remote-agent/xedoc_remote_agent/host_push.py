@@ -33,6 +33,7 @@ class HostPush:
         self._wake = threading.Event()
         self._devices = {}
         self._revoked = set()
+        self._configuration_warning = False
         if self.path.exists():
             if self.path.stat().st_size > 512 * 1024:
                 raise ValueError("Push subscription store exceeds size limit")
@@ -114,8 +115,15 @@ class HostPush:
     def status(self) -> dict:
         try:
             self.apns.configuration()
+            self._configuration_warning = False
             return {"available": True}
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+            if not self._configuration_warning:
+                logging.warning(
+                    "APNs signing credentials unavailable; automatic provisioning requires signing-key access",
+                    exc_info=True,
+                )
+                self._configuration_warning = True
             return {"available": False}
 
     def register(self, body: dict, token: str, account: dict, origin: str) -> None:
@@ -260,10 +268,8 @@ class HostPush:
                         httpcore.NetworkError,
                         httpcore.ProtocolError,
                         httpcore.TimeoutException,
-                    ) as error:
-                        logging.warning(
-                            "APNs submission failed (%s)", type(error).__name__
-                        )
+                    ):
+                        logging.warning("APNs submission failed", exc_info=True)
                         result = "retry"
                     if result == "invalid":
                         self._save(
@@ -341,10 +347,8 @@ class HostPush:
                         self._deliver(thread_id, "turnFinished")
                 self._wake.wait(1)
                 self._wake.clear()
-            except Exception as error:
-                logging.warning(
-                    "Host push observer unavailable (%s)", type(error).__name__
-                )
+            except Exception:
+                logging.warning("Host push observer unavailable", exc_info=True)
                 if client is not None:
                     client.close()
                     client = None

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from pathlib import Path
 import subprocess
 import sys
@@ -27,6 +28,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from .host_gui import main as host_gui_main
 
         return host_gui_main(arguments[1:])
+    if arguments and arguments[0] == "apns":
+        from .apns_credentials import main as apns_main
+
+        return apns_main(arguments[1:])
     parser = _parser()
     args = parser.parse_args(argv)
     if args.command == "audit" and args.action != "export":
@@ -55,6 +60,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.peer_host_id is None:
             parser.error("enrollment unpair requires --peer-host-id")
     try:
+        if args.command == "serve":
+            from .runtime import configure_runtime
+
+            configure_runtime(args.xedoc_home, service="broker")
         if args.command == "doctor":
             report = RemoteAgentDaemon.doctor(
                 xedoc_home=args.xedoc_home,
@@ -110,6 +119,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return daemon.serve()
     except BrokerError as error:
+        if args.command == "serve":
+            logging.error("Remote-agent startup or service failed", exc_info=True)
         print(
             json.dumps(
                 {

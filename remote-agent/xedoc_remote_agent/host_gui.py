@@ -13,6 +13,7 @@ from pathlib import Path
 import socket
 import ssl
 import threading
+import time
 from typing import Callable
 from urllib.parse import parse_qs, urlsplit
 
@@ -72,6 +73,7 @@ class HostServer(ThreadingHTTPServer):
         self.plugin_panels = HostPluginPanels(home, self.workspaces, self.auth)
         self.slots = threading.BoundedSemaphore(48)
         self.tls_context = None
+        self._last_accept_error = 0.0
         super().__init__(address, HostHandler)
         self.panel_broker = PanelBroker(self.plugin_panels)
         self.push = HostPush(
@@ -140,6 +142,19 @@ class HostServer(ThreadingHTTPServer):
             self.slots.release()
             raise
 
+    def get_request(self):
+        try:
+            return super().get_request()
+        except OSError:
+            now = time.monotonic()
+            if now - self._last_accept_error >= 5:
+                self._last_accept_error = now
+                logging.warning("Host GUI connection accept failed", exc_info=True)
+            raise
+
+    def handle_error(self, request, client_address):
+        logging.error("Host GUI connection handler failed", exc_info=True)
+
     def process_request_thread(self, request, client_address):
         try:
             request.settimeout(15)
@@ -147,6 +162,7 @@ class HostServer(ThreadingHTTPServer):
                 request = self.tls_context.wrap_socket(request, server_side=True)
             super().process_request_thread(request, client_address)
         except OSError:
+            logging.warning("Host GUI TLS connection failed", exc_info=True)
             self.shutdown_request(request)
         finally:
             self.slots.release()
@@ -817,6 +833,7 @@ class HostHandler(BaseHTTPRequestHandler):
             }[error.code]
             self.reply(status, {"error": error.message})
         except OSError:
+            logging.warning("Host GUI request unavailable", exc_info=True)
             self.reply(
                 503,
                 {
@@ -843,6 +860,10 @@ def main(argv=None) -> int:
     parser.add_argument("--tls-key")
     parser.add_argument("--allow-insecure-http", action="store_true")
     args = parser.parse_args(argv)
+    if args.action == "serve":
+        from .runtime import configure_runtime
+
+        configure_runtime(args.xedoc_home, service="host-gui")
     if args.action == "invite":
         try:
             config = HostGuiConfig.load(args.xedoc_home)
