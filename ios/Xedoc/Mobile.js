@@ -35,8 +35,16 @@
       html, body, #session, #activity, #live, .session-tabs,
       .history-cell pre, .table-scroll { overflow-x: hidden !important; }
       #earlier { display: none !important; }
+      .entry-footer { min-height: 44px; }
+      #quote-selection {
+        position: static !important; inset: auto !important;
+        flex-shrink: 0; min-height: 44px; font-size: 16px; box-shadow: none;
+      }
     `;
     document.head.append(scrollingStyle);
+    const quote = document.getElementById("quote-selection");
+    const attach = document.querySelector(".entry-footer #attach");
+    if (quote && attach) attach.after(quote);
     for (const type of ["gesturestart", "gesturechange"]) {
       document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
     }
