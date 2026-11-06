@@ -745,6 +745,7 @@
       needsInput: !!frame.question,
       title: frame.title || "",
     };
+    window.dispatchEvent(new CustomEvent("xedoc-session-activity", { detail: hostActivity }));
     const activityKey = JSON.stringify(hostActivity);
     if (window.parent !== window && activityKey !== hostActivityKey) {
       hostActivityKey = activityKey;

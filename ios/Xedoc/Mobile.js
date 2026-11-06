@@ -70,6 +70,25 @@
     const send = document.getElementById("send");
     const input = document.getElementById("input");
     if (send && input) {
+      const interrupt = document.createElement("button");
+      interrupt.id = "mobile-interrupt";
+      interrupt.type = "button";
+      interrupt.textContent = "■";
+      interrupt.setAttribute("aria-label", "Interrupt turn");
+      interrupt.title = "Interrupt turn";
+      interrupt.hidden = true;
+      interrupt.style.cssText = "flex-shrink:0;min-width:44px;min-height:44px;"
+        + "font-size:20px;background:var(--bg-prompt)";
+      interrupt.addEventListener("pointerdown", (event) => event.preventDefault());
+      interrupt.addEventListener("click", () => {
+        input.dispatchEvent(new KeyboardEvent("keydown", {
+          key: "Escape", bubbles: true, cancelable: true,
+        }));
+      });
+      window.addEventListener("xedoc-session-activity", (event) => {
+        interrupt.hidden = !event.detail.turnActive;
+      });
+      send.before(interrupt);
       const menu = document.createElement("div");
       menu.id = "mobile-send-menu";
       menu.popover = "manual";
