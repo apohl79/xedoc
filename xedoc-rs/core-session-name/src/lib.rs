@@ -1,9 +1,7 @@
 //! Session-title generation policy.
 
-use xedoc_model_provider_info::OPENAI_PROVIDER_ID;
 use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::ResponseItem;
-use xedoc_protocol::openai_models::ModelPreset;
 
 const MAX_SESSION_NAME_CHARS: usize = 32;
 const MIN_SESSION_NAME_WORDS: usize = 2;
@@ -12,7 +10,6 @@ const MAX_TRANSCRIPT_CHARS: usize = 6_000;
 const MAX_TRANSCRIPT_MESSAGES: usize = 48;
 const MAX_GENERATED_TITLE_RESPONSE_CHARS: usize = 4 * MAX_SESSION_NAME_CHARS;
 const SENSITIVE_SESSION_NAME_FALLBACK: &str = "Sensitive Session";
-const OPENAI_SESSION_NAME_MODEL_KEYWORD: &str = "mini";
 
 /// The model selected for a session-title request.
 pub struct SessionNameModelSelection<'a> {
@@ -25,7 +22,6 @@ pub struct SessionNameModelSelection<'a> {
 /// Reason the session-title model was selected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SessionNameModelSelectionReason {
-    OpenAiMini,
     ConfiguredFastModel,
     DefaultModel,
 }
@@ -34,7 +30,6 @@ impl SessionNameModelSelectionReason {
     /// Returns the stable telemetry label.
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::OpenAiMini => "openai_mini",
             Self::ConfiguredFastModel => "configured_fast_model",
             Self::DefaultModel => "default_model",
         }
@@ -43,26 +38,9 @@ impl SessionNameModelSelectionReason {
 
 /// Selects the model used for an automatically generated session title.
 pub fn select_session_name_model<'a>(
-    provider_id: &str,
     model_fast: Option<&'a str>,
     default_model: &'a str,
-    available_models: &'a [ModelPreset],
 ) -> SessionNameModelSelection<'a> {
-    if provider_id.eq_ignore_ascii_case(OPENAI_PROVIDER_ID) {
-        let Some(model) =
-            first_available_model_matching(available_models, OPENAI_SESSION_NAME_MODEL_KEYWORD)
-        else {
-            return SessionNameModelSelection {
-                model: default_model,
-                reason: SessionNameModelSelectionReason::DefaultModel,
-            };
-        };
-        return SessionNameModelSelection {
-            model,
-            reason: SessionNameModelSelectionReason::OpenAiMini,
-        };
-    }
-
     if let Some(model) = model_fast.map(str::trim).filter(|model| !model.is_empty()) {
         return SessionNameModelSelection {
             model,
@@ -74,24 +52,6 @@ pub fn select_session_name_model<'a>(
         model: default_model,
         reason: SessionNameModelSelectionReason::DefaultModel,
     }
-}
-
-fn first_available_model_matching<'a>(
-    available_models: &'a [ModelPreset],
-    keyword: &str,
-) -> Option<&'a str> {
-    available_models
-        .iter()
-        .filter(|preset| preset.show_in_picker)
-        .find(|preset| {
-            contains_ascii_case(&preset.model, keyword)
-                || contains_ascii_case(&preset.display_name, keyword)
-        })
-        .map(|preset| preset.model.as_str())
-}
-
-fn contains_ascii_case(value: &str, needle: &str) -> bool {
-    value.to_ascii_lowercase().contains(needle)
 }
 
 /// Builds the model prompt for automatic session-title generation.

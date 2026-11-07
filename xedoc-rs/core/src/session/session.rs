@@ -325,6 +325,7 @@ impl SessionConfiguration {
         {
             let config = Arc::make_mut(&mut next_configuration.original_config_do_not_use);
             config.model_provider_id = model_provider_id.clone();
+            config.model_fast = config.provider_fast_models.get(&model_provider_id).cloned();
             let new_provider = config
                 .model_providers
                 .get(&model_provider_id)

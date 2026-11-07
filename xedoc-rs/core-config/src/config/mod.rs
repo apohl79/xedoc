@@ -632,6 +632,10 @@ pub struct Config {
     /// Optional fast model used for side-band tasks on custom providers.
     pub model_fast: Option<String>,
 
+    /// Registry fast model per provider id, used to re-select `model_fast` when a
+    /// session switches provider.
+    pub provider_fast_models: HashMap<String, String>,
+
     /// Effective service tier request id preference for new turns.
     /// `default` means the user explicitly selected standard routing.
     pub service_tier: Option<String>,
@@ -3492,6 +3496,7 @@ impl Config {
             })?
             .clone();
         let registry_provider = registry_snapshot.provider(&model_provider_id);
+        let provider_fast_models = registry_snapshot.fast_models();
         let model_fast = cfg
             .model_fast
             .or_else(|| registry_provider.map(|provider| provider.fast_model.clone()));
@@ -3841,6 +3846,7 @@ impl Config {
             session_scripts: cfg.session_scripts.clone(),
             remote_agent,
             model_fast,
+            provider_fast_models,
             service_tier,
             review_model,
             model_context_window: cfg.model_context_window,

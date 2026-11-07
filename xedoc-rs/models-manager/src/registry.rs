@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
@@ -241,6 +242,13 @@ impl ModelRegistry {
 
     pub fn provider(&self, provider_id: &str) -> Option<&ProviderModelConfig> {
         self.providers.get(provider_id)
+    }
+
+    pub fn fast_models(&self) -> HashMap<String, String> {
+        self.providers
+            .iter()
+            .map(|(id, provider)| (id.clone(), provider.fast_model.clone()))
+            .collect()
     }
 
     pub fn provider_mut(&mut self, provider_id: &str) -> Option<&mut ProviderModelConfig> {

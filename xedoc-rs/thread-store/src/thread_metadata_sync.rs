@@ -244,6 +244,9 @@ impl ThreadMetadataSync {
                         update.cwd = Some(turn_ctx.cwd.clone().into_path_buf());
                     }
                     update.model = Some(turn_ctx.model.clone());
+                    if let Some(provider_id) = turn_ctx.model_provider_id.clone() {
+                        update.model_provider = Some(provider_id);
+                    }
                     update.reasoning_effort = Some(turn_ctx.effort.clone());
                     update.approval_mode = Some(turn_ctx.approval_policy);
                     update.permission_profile = Some(turn_ctx.permission_profile());

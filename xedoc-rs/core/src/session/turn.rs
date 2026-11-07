@@ -77,7 +77,6 @@ use xedoc_extension_api::TurnInputContext;
 use xedoc_extension_api::TurnInputEnvironment;
 use xedoc_features::Feature;
 use xedoc_git_utils::get_git_repo_root_with_fs;
-use xedoc_model_provider_info::OPENAI_PROVIDER_ID;
 use xedoc_protocol::ResponseItemId;
 use xedoc_protocol::config_types::AutoCompactTokenLimitScope;
 use xedoc_protocol::config_types::ModeKind;
@@ -91,7 +90,6 @@ use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::MessagePhase;
 use xedoc_protocol::models::ResponseInputItem;
 use xedoc_protocol::models::ResponseItem;
-use xedoc_protocol::openai_models::ModelPreset;
 use xedoc_protocol::protocol::AgentMessageContentDeltaEvent;
 use xedoc_protocol::protocol::AgentReasoningSectionBreakEvent;
 use xedoc_protocol::protocol::ErrorEvent;
@@ -2365,8 +2363,6 @@ pub(crate) fn get_last_assistant_message_from_turn(responses: &[ResponseItem]) -
 /// Maximum length of a sub-agent activity summary.
 const MAX_ACTIVITY_SUMMARY_CHARS: usize = 64;
 const ACTIVITY_SUMMARY_TIMEOUT: Duration = Duration::from_secs(8);
-/// Keywords used to find a fast model on OpenAI providers.
-const FAST_MODEL_KEYWORD: &str = "mini";
 
 /// Generates a short human-readable summary of what the sub-agent is currently doing.
 ///
@@ -2420,32 +2416,13 @@ async fn generate_sub_agent_activity_summary_inner(
         ..Default::default()
     };
     let selected_model = select_activity_summary_model(
-        turn_context.config.model_provider_id.as_str(),
         turn_context.config.model_fast.as_deref(),
         turn_context.model_info.slug.as_str(),
-        &turn_context.available_models,
     );
-    let available_mini_models = turn_context
-        .available_models
-        .iter()
-        .filter(|preset| {
-            preset.show_in_picker
-                && (preset
-                    .model
-                    .to_ascii_lowercase()
-                    .contains(FAST_MODEL_KEYWORD)
-                    || preset
-                        .display_name
-                        .to_ascii_lowercase()
-                        .contains(FAST_MODEL_KEYWORD))
-        })
-        .count();
     tracing::info!(
         provider_id = %turn_context.config.model_provider_id,
         model_fast = ?turn_context.config.model_fast,
         default_model = %turn_context.model_info.slug,
-        available_models = turn_context.available_models.len(),
-        available_mini_models,
         selected_model = %selected_model,
         "Selected sub-agent activity summary model"
     );
@@ -2557,24 +2534,9 @@ async fn generate_sub_agent_activity_summary_inner(
 }
 
 fn select_activity_summary_model<'a>(
-    provider_id: &str,
     model_fast: Option<&'a str>,
     default_model: &'a str,
-    available_models: &'a [ModelPreset],
 ) -> String {
-    if provider_id.eq_ignore_ascii_case(OPENAI_PROVIDER_ID)
-        && let Some(preset) = available_models
-            .iter()
-            .filter(|p| p.show_in_picker)
-            .find(|p| {
-                p.model.to_ascii_lowercase().contains(FAST_MODEL_KEYWORD)
-                    || p.display_name
-                        .to_ascii_lowercase()
-                        .contains(FAST_MODEL_KEYWORD)
-            })
-    {
-        return preset.model.clone();
-    }
     if let Some(model) = model_fast.map(str::trim).filter(|m| !m.is_empty()) {
         return model.to_string();
     }

@@ -72,10 +72,8 @@ impl Session {
             .await;
         let default_model = turn_context.model_info.slug.clone();
         let model_selection = select_session_name_model(
-            turn_context.config.model_provider_id.as_str(),
             turn_context.config.model_fast.as_deref(),
             default_model.as_str(),
-            &turn_context.available_models,
         );
         let selected_model = model_selection.model.to_string();
         let selection_reason = model_selection.reason.as_str();
