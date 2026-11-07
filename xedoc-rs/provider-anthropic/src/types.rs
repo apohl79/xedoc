@@ -59,8 +59,18 @@ pub enum AnthropicContentBlock {
     },
     ToolResult {
         tool_use_id: String,
-        content: String,
+        content: AnthropicToolResultContent,
     },
+}
+
+/// Anthropic accepts either a plain string or an array of text and image blocks as
+/// `tool_result` content. Images must be sent as image blocks so they are priced as images
+/// instead of as base64 text.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum AnthropicToolResultContent {
+    Text(String),
+    Blocks(Vec<AnthropicContentBlock>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

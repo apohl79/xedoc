@@ -339,11 +339,22 @@ async fn run_compact_task_inner_impl(
                 }
                 Err(e @ XedocErr::ContextWindowExceeded) => {
                     if turn_input_len > 1 {
-                        // Trim from the beginning to preserve cache (prefix-based) and keep recent messages intact.
+                        // Trim a fifth of the oldest items per retry: every attempt resends the whole
+                        // request, so one-item steps take minutes on a history far over the limit.
+                        // Trimming from the front keeps recent messages intact.
+                        let trim_count = turn_input_len.div_ceil(5).min(turn_input_len - 1);
                         error!(
-                            "Context window exceeded while compacting; removing oldest history item. Error: {e}"
+                            "Context window exceeded while compacting; removing {trim_count} oldest history items. Error: {e}"
                         );
-                        history.remove_first_item();
+                        send_progress(&sess, &turn_context, CompactionStage::Trimming).await;
+                        for _ in 0..trim_count {
+                            // Removing an item also removes its call/output counterpart, so keep
+                            // at least the compaction prompt.
+                            if history.raw_items().len() <= 1 {
+                                break;
+                            }
+                            history.remove_first_item();
+                        }
                         prefix_trimmed = true;
                         retries = 0;
                         continue;

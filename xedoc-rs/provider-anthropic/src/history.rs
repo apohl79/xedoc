@@ -5,6 +5,7 @@ use serde_json::json;
 use xedoc_protocol::models::AgentMessageInputContent;
 use xedoc_protocol::models::ContentItem;
 use xedoc_protocol::models::FunctionCallOutputBody;
+use xedoc_protocol::models::FunctionCallOutputContentItem;
 use xedoc_protocol::models::ReasoningItemReasoningSummary;
 use xedoc_protocol::models::ResponseItem;
 use xedoc_protocol::system_reminder::wrap_system_reminder;
@@ -15,6 +16,7 @@ use crate::types::AnthropicMessage;
 use crate::types::AnthropicMessagesRequest;
 use crate::types::AnthropicRole;
 use crate::types::AnthropicSystemBlock;
+use crate::types::AnthropicToolResultContent;
 
 const FERNET_MIN_RAW_BYTES: usize = 57;
 const FERNET_CIPHERTEXT_BLOCK_BYTES: usize = 16;
@@ -81,8 +83,12 @@ pub(crate) fn translate_history(
                 call_id, output, ..
             } => {
                 let content = match &output.body {
-                    FunctionCallOutputBody::Text(content) => content.clone(),
-                    FunctionCallOutputBody::ContentItems(items) => serde_json::to_string(items)?,
+                    FunctionCallOutputBody::Text(content) => {
+                        AnthropicToolResultContent::Text(content.clone())
+                    }
+                    FunctionCallOutputBody::ContentItems(items) => {
+                        translate_tool_output_items(items)?
+                    }
                 };
                 append_tool_result(call_id, content, &mut translated.messages);
             }
@@ -156,6 +162,37 @@ fn translate_message(
             translated.messages.push(AnthropicMessage { role, content });
         }
     }
+}
+
+fn translate_tool_output_items(
+    items: &[FunctionCallOutputContentItem],
+) -> Result<AnthropicToolResultContent, serde_json::Error> {
+    let mut blocks = Vec::with_capacity(items.len());
+    for item in items {
+        match item {
+            // Anthropic rejects empty text blocks.
+            FunctionCallOutputContentItem::InputText { text } if text.is_empty() => {}
+            FunctionCallOutputContentItem::InputText { text } => {
+                blocks.push(AnthropicContentBlock::Text { text: text.clone() });
+            }
+            FunctionCallOutputContentItem::InputImage { image_url, .. } => {
+                blocks.push(AnthropicContentBlock::Image {
+                    source: translate_image(image_url),
+                });
+            }
+            FunctionCallOutputContentItem::InputAudio { .. }
+            | FunctionCallOutputContentItem::EncryptedContent { .. } => {
+                blocks.push(AnthropicContentBlock::Text {
+                    text: serde_json::to_string(item)?,
+                });
+            }
+        }
+    }
+    Ok(if blocks.is_empty() {
+        AnthropicToolResultContent::Text(String::new())
+    } else {
+        AnthropicToolResultContent::Blocks(blocks)
+    })
 }
 
 fn extract_message_text(content: &[ContentItem]) -> String {
@@ -316,7 +353,11 @@ fn append_assistant_content(
     });
 }
 
-fn append_tool_result(call_id: &str, content: String, messages: &mut Vec<AnthropicMessage>) {
+fn append_tool_result(
+    call_id: &str,
+    content: AnthropicToolResultContent,
+    messages: &mut Vec<AnthropicMessage>,
+) {
     let block = AnthropicContentBlock::ToolResult {
         tool_use_id: call_id.to_string(),
         content,

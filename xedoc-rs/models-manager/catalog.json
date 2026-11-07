@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 2026110101,
+  "revision": 2026110701,
   "providers": {
     "openai": {
       "defaultModel": "gpt-6.1-sol",
@@ -21,6 +21,19 @@
       "defaultModel": "claude-fable-5-1",
       "fastModel": "claude-haiku-5-5",
       "models": ["claude-opus-5-5", "claude-fable-5-1", "claude-sonnet-5-5", "claude-haiku-5-5"],
+      "capabilities": {
+        "claude-haiku-5-5": {
+          "contextWindow": 200000,
+          "maxContextWindow": 200000,
+          "autoCompactTokenLimit": null,
+          "effectiveContextWindowPercent": 100,
+          "defaultReasoningEffort": "medium",
+          "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"],
+          "inputModalities": ["text", "image"],
+          "supportsReasoningSummaryParameter": true,
+          "supportsParallelToolCalls": false
+        }
+      },
       "roles": {
         "fast": "claude-haiku-5-5",
         "balanced": "claude-sonnet-5-5",

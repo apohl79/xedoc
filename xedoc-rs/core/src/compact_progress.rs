@@ -31,6 +31,8 @@ pub(crate) enum CompactionStage {
     Reducing { layer: usize, groups: usize },
     /// Summarizing history in a single request.
     Summarizing,
+    /// The summarization request exceeded the model context window; dropping the oldest history.
+    Trimming,
     /// The model has started streaming the compacted summary.
     WritingSummary,
     /// Replacing local history with the compacted summary.
@@ -49,6 +51,7 @@ impl CompactionStage {
             Self::Mapping { completed, total } => format!("summarizing {completed}/{total}"),
             Self::Reducing { layer, groups } => format!("merging layer {layer} ({groups} groups)"),
             Self::Summarizing => String::from("summarizing history"),
+            Self::Trimming => String::from("trimming history to fit context window"),
             Self::WritingSummary => String::from("writing summary"),
             Self::InstallingSummary => String::from("installing summary"),
             Self::Complete => String::from("complete"),
