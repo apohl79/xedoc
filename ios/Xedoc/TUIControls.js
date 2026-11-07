@@ -3,7 +3,6 @@
   const composer = document.getElementById("composer");
   if (!live || !composer || !document.getElementById("live-frame")) return;
   document.getElementById("attach").textContent = "+";
-  document.querySelector(".prompt-marker").textContent = "›";
   const bar = document.createElement("div");
   bar.id = "mobile-tui-controls";
   bar.setAttribute("role", "group");
