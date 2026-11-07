@@ -840,6 +840,11 @@
     return result;
   }
 
+  function focusSessionPrompt(frame) {
+    if (matchMedia("(pointer: coarse)").matches) return;
+    frame.contentWindow?.postMessage({ type: "xedoc-focus-prompt" }, location.origin);
+  }
+
   async function openSession(threadId, archived = false) {
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
@@ -857,6 +862,7 @@
       });
       markActiveSessionVisited();
       activity.markVisible();
+      focusSessionPrompt(cachedFrame);
       return;
     }
     byId("session-view").hidden = false;
@@ -895,13 +901,18 @@
         frame.className = "session-frame";
         frame.title = openedSession.title || "Xedoc session";
         frame.addEventListener("load", () => {
-          if (activeThread === threadId) byId("session-loading").hidden = true;
+          if (activeThread !== threadId) return;
+          byId("session-loading").hidden = true;
+          focusSessionPrompt(frame);
         });
         sessionFrames.set(threadId, frame);
         byId("session-frames").append(frame);
       }
       if (frame.getAttribute("src") !== result.guiUrl) frame.src = result.guiUrl;
-      else byId("session-loading").hidden = true;
+      else {
+        byId("session-loading").hidden = true;
+        focusSessionPrompt(frame);
+      }
       sessionFrames.forEach((item) => { item.hidden = item !== frame; });
       markActiveSessionVisited();
       activity.markVisible();
