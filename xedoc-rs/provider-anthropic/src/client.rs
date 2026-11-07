@@ -24,6 +24,8 @@ use xedoc_client::run_with_retry;
 
 use crate::AnthropicStreamTranslator;
 use crate::AnthropicThinking;
+use crate::cache::apply_cache_control;
+use crate::cache::select_ttl;
 use crate::translate_request;
 
 const MESSAGES_ENDPOINT: &str = "messages";
@@ -67,7 +69,11 @@ impl<T: HttpTransport> AnthropicClient<T> {
     ) -> Result<ResponseStream, ApiError> {
         let translated = translate_request(&request)
             .map_err(|error| ApiError::Stream(format!("failed to translate request: {error}")))?;
-        let body = EncodedJsonBody::encode(&translated)
+        let mut translated_json = serde_json::to_value(&translated)
+            .map_err(|error| ApiError::Stream(format!("failed to encode request: {error}")))?;
+        let selection = select_ttl(request.prompt_cache_key.as_deref());
+        apply_cache_control(&mut translated_json, selection.ttl);
+        let body = EncodedJsonBody::encode(&translated_json)
             .map_err(|error| ApiError::Stream(format!("failed to encode request: {error}")))?;
         let mut outbound = self.provider.build_request(Method::POST, MESSAGES_ENDPOINT);
         outbound.headers.insert(
@@ -146,6 +152,7 @@ impl<T: HttpTransport> AnthropicClient<T> {
             stream_response,
             self.provider.stream_idle_timeout,
             self.sse_telemetry.clone(),
+            selection.switched_to_long,
         ))
     }
 }
@@ -164,6 +171,7 @@ fn spawn_anthropic_stream(
     stream_response: StreamResponse,
     idle_timeout: std::time::Duration,
     telemetry: Option<Arc<dyn SseTelemetry>>,
+    announce_long_cache_ttl: bool,
 ) -> ResponseStream {
     let upstream_request_id = stream_response
         .headers
@@ -173,6 +181,9 @@ fn spawn_anthropic_stream(
         .map(str::to_string);
     let (tx_event, rx_event) =
         mpsc::channel::<Result<ResponseEvent, ApiError>>(RESPONSE_STREAM_CHANNEL_CAPACITY);
+    if announce_long_cache_ttl {
+        let _ = tx_event.try_send(Ok(ResponseEvent::PromptCacheTtlExtended));
+    }
     tokio::spawn(process_anthropic_stream(
         stream_response,
         tx_event,

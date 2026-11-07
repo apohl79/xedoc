@@ -257,6 +257,7 @@ async fn summarize_chunk(
             | ResponseEvent::ModelVerifications(_)
             | ResponseEvent::TurnModerationMetadata(_)
             | ResponseEvent::ServerReasoningIncluded(_)
+            | ResponseEvent::PromptCacheTtlExtended
             | ResponseEvent::OutputTextDelta(_)
             | ResponseEvent::ToolCallInputDelta { .. }
             | ResponseEvent::ReasoningSummaryDelta { .. }

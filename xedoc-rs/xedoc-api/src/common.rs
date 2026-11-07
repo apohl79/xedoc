@@ -58,6 +58,8 @@ pub enum ResponseEvent {
     /// meaning the server already accounted for past reasoning tokens and the
     /// client should not re-estimate them.
     ServerReasoningIncluded(bool),
+    /// Emitted when the provider switches this session to the one-hour prompt-cache TTL.
+    PromptCacheTtlExtended,
     Completed {
         response_id: String,
         token_usage: Option<TokenUsage>,

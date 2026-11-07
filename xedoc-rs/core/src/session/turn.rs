@@ -2093,6 +2093,15 @@ async fn try_run_sampling_request(
                 )
                 .await;
             }
+            ResponseEvent::PromptCacheTtlExtended => {
+                sess.send_event(
+                    &turn_context,
+                    EventMsg::Warning(WarningEvent {
+                        message: "Prompt cache TTL raised from 5 minutes to 1 hour for this session after an idle gap. Cache writes cost more, but pauses of up to an hour no longer re-bill the whole context.".to_string(),
+                    }),
+                )
+                .await;
+            }
             ResponseEvent::ServerReasoningIncluded(included) => {
                 sess.set_server_reasoning_included(included).await;
             }
