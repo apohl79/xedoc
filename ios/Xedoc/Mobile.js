@@ -77,8 +77,8 @@
       interrupt.setAttribute("aria-label", "Interrupt turn");
       interrupt.title = "Interrupt turn";
       interrupt.hidden = true;
-      interrupt.style.cssText = "flex-shrink:0;min-width:44px;min-height:44px;"
-        + "font-size:20px;background:var(--bg-prompt)";
+      interrupt.style.cssText = "flex:none;width:28px;height:28px;"
+        + "font-size:14px;background:#c0392b;color:#fff";
       interrupt.addEventListener("pointerdown", (event) => event.preventDefault());
       interrupt.addEventListener("click", () => {
         input.dispatchEvent(new KeyboardEvent("keydown", {

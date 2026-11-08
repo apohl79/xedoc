@@ -1307,6 +1307,32 @@
       if (!editList("Enter")) insertText("\n");
     }
   });
+  function keepSpaceAfterCodeSpan() {
+    const selection = editorSelection();
+    if (!selection || selection[0] !== selection[1]) return false;
+    const text = editorText();
+    const cursor = selection[0];
+    const lineStart = text.lastIndexOf("\n", cursor - 1) + 1;
+    const lineEndIndex = text.indexOf("\n", cursor);
+    const lineEnd = lineEndIndex === -1 ? text.length : lineEndIndex;
+    const lineIndex = text.slice(0, lineStart).split("\n").length - 1;
+    if (window.XedocPromptMarkdown.lines(text)[lineIndex]?.code) return false;
+    for (const match of text.slice(lineStart, lineEnd).matchAll(/\\[\s\S]|(`+)[^\n]*?\1/g)) {
+      if (!match[1]) continue;
+      const start = lineStart + match.index;
+      const end = start + match[0].length;
+      if (cursor < start + match[1].length || cursor > end) continue;
+      if (text[end] === " ") return false;
+      renderEditor(`${text.slice(0, end)} ${text.slice(end)}`, [cursor, cursor]);
+      return true;
+    }
+    return false;
+  }
+  document.addEventListener("selectionchange", () => {
+    if (composing || document.activeElement !== input || !keepSpaceAfterCodeSpan()) return;
+    dirty = true;
+    flushDraft();
+  });
   input.addEventListener("compositionend", () => {
     composing = false;
     renderEditor(editorText(), editorSelection());
@@ -1317,6 +1343,7 @@
     if (composing) return;
     const text = editorText();
     renderEditor(text, editorSelection());
+    keepSpaceAfterCodeSpan();
     dirty = true;
     flushDraft();
   });
