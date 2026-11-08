@@ -44,7 +44,7 @@ remote Xedoc hosts.
 ## Install
 
 ```shell
-curl -fsSL https://raw.githubusercontent.com/apohl79/codex/main/scripts/install/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/apohl79/xedoc/main/scripts/install/install.sh | sh
 ```
 
 ## Project resources
