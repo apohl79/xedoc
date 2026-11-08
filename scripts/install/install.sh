@@ -17,7 +17,8 @@ REMOTE_AGENT_BIN_PATH="$BIN_DIR/xedoc-remote-agentd"
 XEDOC_HOME_DIR="${XEDOC_HOME:-$HOME/.xedoc}"
 NON_INTERACTIVE="${XEDOC_NON_INTERACTIVE:-false}"
 ZSHRC_PATH="$HOME/.zshrc"
-LAUNCH_AGENT_PATH="$HOME/Library/LaunchAgents/com.xedoc.app-server.plist"
+LAUNCH_AGENT_LABEL="com.xedoc.app-server"
+LAUNCH_AGENT_PATH="$HOME/Library/LaunchAgents/$LAUNCH_AGENT_LABEL.plist"
 STANDALONE_ROOT="$XEDOC_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
 CURRENT_LINK="$STANDALONE_ROOT/current"
@@ -27,6 +28,7 @@ CHECK_ONLY=false
 EXPERIMENTAL=false
 tmp_dir=""
 app_server_was_running=false
+app_server_restart_pending=false
 skip_model_router_warm=false
 zshrc_app_server_action="skipped"
 
@@ -188,6 +190,11 @@ restart_running_app_server() {
     return
   fi
 
+  if [ "$zshrc_app_server_action" = "launchagent" ]; then
+    app_server_restart_pending=true
+    return
+  fi
+
   step "Restarting Xedoc app-server"
   if "$BIN_PATH" app-server daemon restart >/dev/null 2>&1; then
     step "Xedoc app-server restarted"
@@ -195,6 +202,41 @@ restart_running_app_server() {
     printf 'WARNING: Could not restart the running Xedoc app-server. Run: "%s" app-server daemon restart\n' \
       "$BIN_PATH" >&2
   fi
+}
+
+# macOS Local Network privacy judges the program at the root of a process
+# chain. Restarts run by this installer (or by remote-agent-configure) leave the
+# app-server and remote-agent broker under the installer's chain, which may be
+# denied LAN multicast, so the final restart goes through the LaunchAgent.
+restart_app_server_through_launch_agent() {
+  if [ "$zshrc_app_server_action" != "launchagent" ] ||
+    [ "$app_server_restart_pending" != true ]; then
+    return 0
+  fi
+
+  step "Restarting Xedoc app-server through its LaunchAgent"
+  restarted=false
+  if "$BIN_PATH" app-server daemon stop >/dev/null 2>&1 &&
+    launchctl kickstart -k "gui/$(id -u)/$LAUNCH_AGENT_LABEL" >/dev/null 2>&1; then
+    attempts=0
+    until app_server_is_running || [ "$attempts" -ge 60 ]; do
+      attempts=$((attempts + 1))
+      sleep 1
+    done
+    if app_server_is_running; then
+      restarted=true
+    fi
+  fi
+  if [ "$restarted" = true ]; then
+    step "Xedoc app-server restarted"
+    return 0
+  fi
+
+  if ! app_server_is_running; then
+    "$BIN_PATH" app-server daemon start >/dev/null 2>&1 || true
+  fi
+  printf 'WARNING: Could not restart the Xedoc app-server through its LaunchAgent; LAN host discovery may fail until you run: launchctl kickstart -k gui/%s/%s\n' \
+    "$(id -u)" "$LAUNCH_AGENT_LABEL" >&2
 }
 
 embedder_daemon_is_running() {
@@ -313,19 +355,22 @@ write_launch_agent() {
     printf '%s\n' "$BIN_PATH" |
       sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&apos;/g"
   )"
+  # macOS Local Network privacy judges the LaunchAgent program. Starting through
+  # Apple's /bin/sh keeps LAN discovery multicast working for the app-server
+  # and remote-agent broker it spawns; launching xedoc directly is denied.
   cat >"$LAUNCH_AGENT_PATH" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.xedoc.app-server</string>
+  <string>$LAUNCH_AGENT_LABEL</string>
   <key>ProgramArguments</key>
   <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>"\$0" app-server daemon start; exit \$?</string>
     <string>$launch_agent_binary_path</string>
-    <string>app-server</string>
-    <string>daemon</string>
-    <string>start</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -1146,6 +1191,8 @@ configure_remote_agent() {
     return 0
   fi
 
+  # remote-agent-configure restarts the app-server from this installer's chain.
+  app_server_restart_pending=true
   if "$remote_agent_command" remote-agent-configure </dev/tty; then
     step "Remote-agent configuration is ready"
   else
@@ -1438,12 +1485,13 @@ else
   update_current_link "$release_dir"
   update_visible_command
   "$BIN_PATH" --version >/dev/null
-  restart_running_app_server
   configure_app_server_startup
+  restart_running_app_server
 fi
 
 configure_host_push
 configure_remote_agent
+restart_app_server_through_launch_agent
 
 # Deploy statusline script
 STATUSLINE_DST="$XEDOC_HOME_DIR/statusline.sh"
