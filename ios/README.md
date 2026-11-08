@@ -45,12 +45,12 @@ The app reads its signed profile's APNs environment; Ad Hoc exports must use
 `production`. No signing key belongs in the mobile app or release archive.
 
 The desktop installer checks local credentials first. If they are ready, it
-never invokes 1Password. Otherwise it reuses an authenticated `OP_SESSION` or
-establishes one user-approved in-memory session with `op signin`, then retrieves
-only missing keys from `Private/Xedoc APNs Production` and
-`Private/Xedoc APNs Sandbox`. The existing 1Password CLI and access to that
-vault are required for retrieval. For manual `apns setup`, establish the
-session in the same terminal with `eval "$(op signin)"` first.
+never invokes 1Password. Otherwise `apns setup` takes the accounts from
+`op account list`, signs in with `op signin --account` only where `op whoami`
+fails, and retrieves only missing keys from `Private/Xedoc APNs Production`
+and `Private/Xedoc APNs Sandbox` in the first account that has them. It never
+asks for a sign-in address or email; the 1Password app integration (or a
+previous `op account add`) must already make the account known to `op`.
 No APNs configuration file, team/key IDs, or separate setup command is required.
 An unavailable sign-in is reported explicitly; it does not enable background
 push or prevent using the desktop app.
@@ -64,7 +64,7 @@ own app signing and credential overrides.
 
 For diagnostics, `xedoc-remote-agentd apns check` validates local credentials
 without contacting 1Password or Apple. `apns setup` retries missing-key
-provisioning only with an authenticated `OP_SESSION`. Keys are
+provisioning through the same `op` flow. Keys are
 validated as P-256, never passed in process arguments, and never overwritten.
 The standalone build-host checker remains available for signing prerequisites;
 a build-only Mac does not need APNs sending credentials.

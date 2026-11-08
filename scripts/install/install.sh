@@ -1177,19 +1177,12 @@ configure_host_push() (
     printf 'WARNING: Host push is unavailable: 1Password CLI is not installed; signing keys cannot be retrieved.\n' >&2
     return 0
   fi
-  # Reuse a session, or establish one user-approved session for this install.
-  if [ -z "${OP_SESSION:-}" ]; then
-    if ! prompt_user_available; then
-      printf 'WARNING: Host push is unavailable: 1Password sign-in approval requires an interactive terminal.\n' >&2
-      return 0
-    fi
-    eval "$(op signin)"
-    if [ -z "${OP_SESSION:-}" ]; then
-      printf 'WARNING: Host push is unavailable: 1Password sign-in did not establish a reusable session.\n' >&2
-      return 0
-    fi
+  # apns setup discovers the op accounts and asks for 1Password approval.
+  if ! prompt_user_available; then
+    printf 'WARNING: Host push is unavailable: 1Password sign-in approval requires an interactive terminal.\n' >&2
+    return 0
   fi
-  if ! "$push_command" apns setup --xedoc-home "$XEDOC_HOME_DIR"; then
+  if ! "$push_command" apns setup --xedoc-home "$XEDOC_HOME_DIR" </dev/tty; then
     printf 'WARNING: Host push credential provisioning failed; no manual APNs configuration is needed, but signing-key access is required.\n' >&2
   fi
 )

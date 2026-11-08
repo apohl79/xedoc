@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -59,6 +60,35 @@ def credential_exists(key: dict) -> bool:
     return path.exists() or path.is_symlink()
 
 
+def op_accounts() -> list:
+    result = subprocess.run(
+        ["op", "account", "list", "--format=json"], capture_output=True, timeout=15
+    )
+    accounts = json.loads(result.stdout or b"[]") if not result.returncode else []
+    if not accounts:
+        raise RuntimeError(
+            "1Password CLI has no accounts. In the 1Password app, turn on "
+            "Settings > Developer > Integrate with 1Password CLI, then rerun."
+        )
+    return accounts
+
+
+def op_signin(account: str) -> bool:
+    whoami = ["op", "whoami", "--account", account]
+    if not subprocess.run(whoami, capture_output=True, timeout=15).returncode:
+        return True
+    # Approval uses the 1Password app or this terminal; stdout only carries
+    # manual-mode session exports, kept in this process for child `op` calls.
+    result = subprocess.run(
+        ["op", "signin", "--account", account], stdout=subprocess.PIPE, timeout=180
+    )
+    for name, value in re.findall(
+        r'^export (OP_SESSION_\w+)="([^"]*)"$', result.stdout.decode(), re.M
+    ):
+        os.environ[name] = value
+    return not result.returncode
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("check", "setup"))
@@ -90,10 +120,6 @@ def main(argv=None) -> int:
             return 2
         materials = []
         if missing:
-            if not os.environ.get("OP_SESSION"):
-                raise RuntimeError(
-                    'Authenticate in this terminal with `eval "$(op signin)"` before provisioning.'
-                )
             if not shutil.which("op"):
                 raise RuntimeError(
                     "APNs provisioning requires the existing 1Password CLI."
@@ -103,16 +129,25 @@ def main(argv=None) -> int:
                 "{{op://Private/" + KEYS[environment][1] + "/credential}}"
                 for environment in missing
             )
-            result = subprocess.run(
-                ["op", "inject"],
-                input=template.encode(),
-                capture_output=True,
-                timeout=180,
-            )
-            if (
-                result.returncode
-                or not 0 < len(result.stdout) <= len(missing) * 17 * 1024
-            ):
+            for account in op_accounts():
+                print(
+                    f"Requesting APNs keys from 1Password account {account['url']}",
+                    file=sys.stderr,
+                )
+                if not op_signin(account["user_uuid"]):
+                    continue
+                result = subprocess.run(
+                    ["op", "inject", "--account", account["user_uuid"]],
+                    input=template.encode(),
+                    capture_output=True,
+                    timeout=180,
+                )
+                if (
+                    not result.returncode
+                    and 0 < len(result.stdout) <= len(missing) * 17 * 1024
+                ):
+                    break
+            else:
                 raise RuntimeError(
                     "Could not retrieve the missing APNs keys from 1Password."
                 )
