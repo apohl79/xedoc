@@ -213,6 +213,13 @@ omit it, or build only the iOS artifact:
 python3 scripts/build_xedoc_release.py --ios-only
 ```
 
+After the GitHub upload, the script exports the same archive for App Store
+Connect and uploads it to TestFlight with `xcodebuild -exportArchive`. It uses
+the Apple account signed in to Xcode, which needs App Store Connect upload
+rights and an existing app record for `org.e47.xedoc.mobile`. The build number
+is the numeric release version, so each version can be uploaded only once. Use
+`--skip-testflight` to skip this step. `--skip-github-release` also skips it.
+
 The release Mac needs Xcode, XcodeGen, and access to the configured signing team.
 The script archives the app, then exports it using Xcode's `release-testing`
 (Ad Hoc) distribution method. Automatic signing needs access to an Apple

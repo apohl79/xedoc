@@ -13,7 +13,7 @@ import sys
 import tempfile
 import textwrap
 
-from xedoc_ios_release import build_ios_release
+from xedoc_ios_release import build_ios_release, upload_ios_testflight
 from xedoc_package.targets import TARGET_SPECS
 from xedoc_package.targets import TargetSpec
 from xedoc_package.archive import write_archive
@@ -263,6 +263,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Build and publish only the iPhone/iPad cable-install archive.",
     )
     parser.add_argument(
+        "--skip-testflight",
+        action="store_true",
+        help="Skip the TestFlight upload after the GitHub release.",
+    )
+    parser.add_argument(
         "--allow-dirty",
         action="store_true",
         help=(
@@ -489,6 +494,8 @@ def build_release(args: argparse.Namespace) -> None:
                 target=release_target,
             ),
         )
+        if ios_archive is not None and not getattr(args, "skip_testflight", False):
+            upload_ios_testflight(output_dir=output_dir)
 
     print(f"Built Xedoc release {version}")
     if not args.skip_github_release:

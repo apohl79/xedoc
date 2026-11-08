@@ -1,6 +1,7 @@
 """Build an Ad Hoc distribution-signed iPhone/iPad release for cable installation."""
 
 from datetime import datetime, timezone
+import os
 from pathlib import Path
 import plistlib
 import shlex
@@ -28,7 +29,7 @@ def build_ios_release(
 
     ios_root = source_root / "ios"
     derived_data = output_dir / ".ios-derived-data"
-    archive_path = output_dir / ".ios-archive" / "Xedoc.xcarchive"
+    archive_path = ios_archive_path(output_dir)
     numeric_version = version.split("-", maxsplit=1)[0]
     run(["xcodegen", "generate", "--spec", str(ios_root / "project.yml")])
     run(
@@ -147,10 +148,50 @@ def build_ios_release(
     return archive_output
 
 
-def run(command: list[str]) -> None:
+def upload_ios_testflight(*, output_dir: Path) -> None:
+    """Export the iOS archive for App Store Connect and upload it to TestFlight."""
+    archive_path = ios_archive_path(output_dir)
+    if not archive_path.is_dir():
+        raise RuntimeError(f"Missing iOS archive for TestFlight upload: {archive_path}")
+    with tempfile.TemporaryDirectory(prefix="xedoc-ios-testflight-") as temp_dir:
+        temporary_root = Path(temp_dir)
+        export_options = temporary_root / "ExportOptions.plist"
+        with export_options.open("wb") as options_file:
+            plistlib.dump(
+                {
+                    "method": "app-store-connect",
+                    "destination": "upload",
+                    "signingStyle": "automatic",
+                    "manageAppVersionAndBuildNumber": False,
+                    "uploadSymbols": True,
+                },
+                options_file,
+            )
+        run(
+            [
+                "xcodebuild",
+                "-exportArchive",
+                "-archivePath",
+                str(archive_path),
+                "-exportPath",
+                str(temporary_root / "export"),
+                "-exportOptionsPlist",
+                str(export_options),
+                "-allowProvisioningUpdates",
+            ],
+            # Xcode's symbol upload fails when Homebrew rsync 3.x is first on PATH.
+            env={**os.environ, "PATH": f"/usr/bin:{os.environ.get('PATH', '')}"},
+        )
+
+
+def ios_archive_path(output_dir: Path) -> Path:
+    return output_dir / ".ios-archive" / "Xedoc.xcarchive"
+
+
+def run(command: list[str], env: dict[str, str] | None = None) -> None:
     print("+ " + shlex.join(command), flush=True)
     try:
-        subprocess.run(command, check=True)
+        subprocess.run(command, check=True, env=env)
     except (OSError, subprocess.CalledProcessError) as err:
         raise RuntimeError(
             f"iOS release command failed: {shlex.join(command)}"
