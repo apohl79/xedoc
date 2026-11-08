@@ -74,7 +74,16 @@ impl ChatWidget {
                         updated,
                         setting,
                         &value,
-                        |model, tokens| model.context_window = tokens,
+                        |model, tokens| {
+                            let previous = model.context_window.max(1);
+                            model.auto_compact_token_limit =
+                                (model.auto_compact_token_limit as i128 * tokens as i128
+                                    / previous as i128)
+                                    .clamp(1, (tokens as i128 * 9 / 10).max(1))
+                                    as i64;
+                            model.max_context_window = model.max_context_window.max(tokens);
+                            model.context_window = tokens;
+                        },
                     ),
                     ModelManagerSetting::MaxContextWindow => update_token_setting(
                         &app_event_tx,

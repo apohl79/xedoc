@@ -67,7 +67,7 @@ impl App {
                 read_model_manager(request_handle).await
             }
             .await
-            .map_err(|error| error.to_string());
+            .map_err(|error| format!("{error:#}"));
             app_event_tx.send(AppEvent::ModelManagerLoaded { result });
         });
     }
