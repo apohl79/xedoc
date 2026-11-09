@@ -1,16 +1,16 @@
 :root {
   color-scheme: dark;
   font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --canvas: #171d22;
-  --sidebar: #0e1216;
-  --tabbar: #101418;
-  --surface: #1c2329;
-  --raised: #222b32;
-  --hover: #2a343b;
-  --border: #5c707a;
-  --border-strong: #6a7f89;
-  --text: #cad7e0;
-  --muted: #8496a2;
+  --canvas: #1a2128;
+  --sidebar: #1a2128;
+  --tabbar: #1a2128;
+  --surface: #222b33;
+  --raised: #2d3946;
+  --hover: #2d3946;
+  --border: #2d3946;
+  --border-strong: #56697a;
+  --text: #a0b3c5;
+  --muted: #718ca1;
   --accent: #56d2ca;
   --accent-soft: #20363a;
   --brand: #bd82f5;
@@ -38,11 +38,11 @@ button:hover { background: var(--hover); }
 button:disabled { opacity: .5; cursor: wait; }
 button:focus-visible, input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .primary {
-  background: color-mix(in srgb, var(--brand) 34%, #292631);
+  background: color-mix(in srgb, var(--brand) 34%, var(--surface));
   color: #f6edff;
 }
 .primary:hover {
-  background: color-mix(in srgb, var(--brand) 44%, #292631);
+  background: color-mix(in srgb, var(--brand) 44%, var(--surface));
 }
 input, select {
   display: block;
@@ -78,7 +78,7 @@ label.check { display: flex; align-items: center; gap: 7px; margin: 7px 0; }
   border-radius: 0;
   overflow: hidden;
   color: transparent;
-  background: #202a30;
+  background: var(--surface);
 }
 #sidebar-toggle:hover, #sidebar-toggle:focus-visible { width: 24px; color: var(--text); }
 aside {
@@ -90,7 +90,7 @@ aside {
   width: 220px;
   min-height: 0;
   overflow-y: auto;
-  border-right: 1px solid #000;
+  border-right: 1px solid var(--border);
   padding: 7px;
   background: var(--sidebar);
   transform: translateX(calc(-100% - 8px));
@@ -185,7 +185,7 @@ aside button.workspace {
 .external-workspace .workspace-label { font-style: italic; }
 aside button.workspace.selected, aside button.project.selected {
   position: relative;
-  background: #292631;
+  background: color-mix(in srgb, var(--brand) 12%, var(--surface));
   color: #e4d7f2;
 }
 aside button.workspace.selected::before, aside button.project.selected::before {
@@ -193,7 +193,7 @@ aside button.workspace.selected::before, aside button.project.selected::before {
   inset: 0 auto 0 0;
   width: 2px;
   border-radius: 4px 0 0 4px;
-  background: linear-gradient(to bottom, #292631, var(--brand), #292631);
+  background: linear-gradient(to bottom, transparent, var(--brand), transparent);
   content: "";
   pointer-events: none;
 }
@@ -275,7 +275,7 @@ aside button.project {
 .state-completed::after { content: "✓"; }
 @keyframes host-spin { to { transform: rotate(360deg); } }
 .tab-strip { position: relative; isolation: isolate; display: flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 4px; background: var(--tabbar); }
-.tab-strip::after { position: absolute; z-index: 0; right: 0; bottom: 0; left: 0; height: 1px; background: #000; content: ""; pointer-events: none; }
+.tab-strip::after { position: absolute; z-index: 0; right: 0; bottom: 0; left: 0; height: 1px; background: var(--border); content: ""; pointer-events: none; }
 .tab-strip #project-title { font-size: 12px; padding: 0 5px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-strip #session-menu-button { flex: none; border: 0; padding: 2px 7px; background: transparent; color: var(--accent); font-size: 17px; }
 .tab-strip #session-menu-button:hover, .tab-strip #session-menu-button[aria-expanded="true"] { background: var(--hover); }
@@ -287,14 +287,14 @@ aside button.project {
 .session-heading p { display: none; overflow-wrap: anywhere; }
 .session-tabs { position: relative; z-index: 1; display: flex; min-width: 0; gap: 3px; overflow-x: auto; align-self: stretch; align-items: end; scrollbar-width: none; }
 .session-tabs::-webkit-scrollbar { display: none; }
-.session-tab { flex: none; max-width: 260px; display: flex; align-items: center; gap: 6px; padding: 3px 7px; border: 1px solid #000; border-bottom: 0; border-radius: 4px 4px 0 0; cursor: pointer; color: var(--muted); background: transparent; font-size: 11px; }
+.session-tab { flex: none; max-width: 260px; display: flex; align-items: center; gap: 6px; padding: 3px 7px; border: 1px solid var(--border); border-bottom: 0; border-radius: 4px 4px 0 0; cursor: pointer; color: var(--muted); background: transparent; font-size: 11px; }
 .session-tab:hover { color: var(--text); background: var(--surface); }
 .session-tab[aria-selected="true"] {
   position: relative;
   z-index: 1;
   align-self: stretch;
   background: linear-gradient(to bottom, var(--raised), var(--canvas));
-  border-color: #000;
+  border-color: var(--border);
   border-bottom: 0;
   color: #e0eaf0;
 }
@@ -311,7 +311,7 @@ aside button.project {
 #session-layout { display: flex; flex: 1; min-width: 0; min-height: 0; }
 #session-frames { display: flex; flex: 1; min-width: 0; min-height: 0; }
 #plugin-panels { display: flex; flex: 0 0 var(--plugin-panel-width, 50%); flex-direction: column; min-width: 0; background: var(--canvas); }
-#plugin-panel-divider { flex: 0 0 5px; background: var(--tabbar); border-inline: 1px solid #000; cursor: col-resize; touch-action: none; }
+#plugin-panel-divider { flex: 0 0 5px; background: var(--tabbar); border-inline: 1px solid var(--border); cursor: col-resize; touch-action: none; }
 #plugin-panel-divider:hover, #plugin-panel-divider:focus-visible, .panel-resizing #plugin-panel-divider { background: var(--accent); }
 #plugin-panel-divider:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .panel-resizing, .panel-resizing * { cursor: col-resize !important; user-select: none !important; }
@@ -326,7 +326,7 @@ aside button.project {
 .project-source button { flex: 1; }
 .project-source button[aria-pressed="true"] {
   color: #f4eafa;
-  background: color-mix(in srgb, var(--brand) 22%, #292631);
+  background: color-mix(in srgb, var(--brand) 22%, var(--surface));
 }
 #project-clone-fields { display: grid; }
 #resume-sessions { max-height: 60vh; overflow: auto; }
@@ -337,14 +337,14 @@ aside button.project {
 dialog {
   width: min(560px, calc(100% - 32px));
   max-height: 85dvh;
-  background: var(--canvas);
+  background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: 5px;
   padding: 15px;
   color: var(--text);
   box-shadow: 0 16px 48px #0007;
 }
-dialog::backdrop { background: rgb(0 0 0 / 80%); }
+dialog::backdrop { background: rgb(26 33 40 / 80%); }
 #resume-search { font-size: 16px; }
 dialog button {
   background: color-mix(in srgb, var(--brand) 8%, var(--surface));
