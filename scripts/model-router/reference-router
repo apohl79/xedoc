@@ -42,6 +42,7 @@ CLASSIFIER_FEEDBACK_EMBEDDING_CACHE_PATH = (
     STATE_DIR / "classifier-feedback-embeddings.json"
 )
 SESSION_DECISIONS_DIR = STATE_DIR / "session-decisions"
+SESSION_TABLES_DIR = STATE_DIR / "session-tables"
 BUDGET_LATCH_PATH = STATE_DIR / "budget-latch.json"
 MAX_DIAGNOSTICS_BYTES = 128 * 1024
 MAX_CLASSIFIER_FEEDBACK_BYTES = 512 * 1024
@@ -1509,6 +1510,24 @@ def session_mode(context):
     return (context.get("session") or {}).get("routerMode")
 
 
+def session_table_path(context):
+    thread_id = ((context.get("thread") or {}).get("id") or "").strip()
+    if not thread_id:
+        return None
+    return SESSION_TABLES_DIR / f"{hashlib.sha256(thread_id.encode()).hexdigest()}.json"
+
+
+def session_table(context):
+    path = session_table_path(context)
+    if path is None:
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return value if isinstance(value, str) else None
+
+
 def session_decisions_path(context):
     thread_id = ((context.get("thread") or {}).get("id") or "").strip()
     if not thread_id:
@@ -1650,7 +1669,9 @@ def root_menu(policy, context=None, conflict=None, session_update=None):
         )
     ]
     items.append(item(
-        "routing-table", "Routing table", "Switch the table for all decisions.", "open-table-picker"
+        "routing-table", "Routing table",
+        "Switch the table for this session." if session_table_path(context) else "Switch the table for all decisions.",
+        "open-table-picker"
     ))
     if supports_session_mode(context):
         current_session_mode = session_mode(context)
@@ -2221,6 +2242,8 @@ def canonical_route(route, context):
 
 
 def table_status(policy, context, name):
+    if name not in policy["ranking"]["tables"]:
+        return "unavailable", f"{name}: routing table no longer exists."
     pending = False
     pending_reason = None
     for entry in ladder(policy, name):
@@ -2252,7 +2275,9 @@ def table_status(policy, context, name):
     return ("unknown", "Availability is not yet confirmed.") if pending else ("available", None)
 
 
-def configured_tables(policy):
+def configured_tables(policy, context=None):
+    if table := session_table(context or {}):
+        return [table]
     ranking = policy["ranking"]
     keys = {
         "shared": ("shared",),
@@ -2263,7 +2288,7 @@ def configured_tables(policy):
 
 
 def unavailable_table_reason(policy, context):
-    for name in configured_tables(policy):
+    for name in configured_tables(policy, context):
         status, reason = table_status(policy, context, name)
         if status == "unavailable":
             return reason
@@ -2287,23 +2312,30 @@ def visible_tables(policy, context):
 
 
 def table_picker_menu(policy, context):
+    scoped = session_table_path(context) is not None
+    override = session_table(context)
     current = next(
-        (name for name in configured_tables(policy)
+        (name for name in configured_tables(policy, context)
          if table_status(policy, context, name)[0] == "unavailable"),
         selected_table(policy, context)[0],
     )
     return menu(
         policy,
         "Routing table",
-        [
+        ([
+            item(
+                ":default", "Shared default", "Use the global routing policy, including budget routing.",
+                "select-table-:default", current=override is None,
+            )
+        ] if scoped else []) + [
             item(
                 name, name, table_status(policy, context, name)[1] or f"Curve: {table['curve']}", f"select-table-{name}",
-                current=current == name,
+                current=(override == name if scoped else current == name),
                 disabled=name not in available_tables(policy, context),
             )
             for name, table in sorted(visible_tables(policy, context).items())
         ] + [item("back", "Back", None, "back")],
-        "Choose a table for all decisions.",
+        "Choose a table for this session." if scoped else "Choose a table for all decisions.",
         continuation="settings:table-picker",
     )
 
@@ -3022,6 +3054,22 @@ def settings_response(request, policy):
         return table_picker_menu(policy, context)
     if action_id.startswith("select-table-"):
         name = action_id.removeprefix("select-table-")
+        if path := session_table_path(context):
+            if name == ":default":
+                path.unlink(missing_ok=True)
+            elif name in available_tables(policy, context):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as out:
+                        json.dump(name, out)
+                    os.replace(temporary, path)
+                except BaseException:
+                    Path(temporary).unlink(missing_ok=True)
+                    raise
+            else:
+                return error_notice(policy, "Choose an available routing table.")
+            return table_picker_menu(policy, context)
         if name not in available_tables(policy, context):
             return error_notice(policy, "Choose an available routing table.")
         ranking = copy.deepcopy(policy["ranking"])
@@ -3992,6 +4040,8 @@ def save_budget_latch(budget, side):
 
 
 def selected_table(policy, context, *, advance_budget_latch=False):
+    if table := session_table(context):
+        return table, table
     ranking = policy["ranking"]
     mode = ranking["tableMode"]
     selection = ranking["tableSelection"]
@@ -4358,6 +4408,7 @@ def approval_continuation(
         "routerPrompt": prompt_preview(context.get("routerPrompt")),
         "routerDecisionId": context.get("routerDecisionId"),
         "thread": context.get("thread"),
+        "sessionTable": session_table(context),
         "providerBudgets": {
             provider_id: percentages[provider_id]
             for provider_id in (
@@ -5962,8 +6013,10 @@ def approval_state(continuation):
             "routerDecisionId": router_decision_id,
             "turn": {"scope": scope},
             "thread": state.get("thread"),
+            "sessionTableSnapshot": state.get("sessionTable"),
             "providerBudgets": percentages,
         }
+        session_table_snapshot = state.get("sessionTable")
         policy_revision = state["policyRevision"]
         recalibrated = state.get("recalibrated", False)
         if (
@@ -5984,6 +6037,11 @@ def approval_state(continuation):
             or scope not in ("root", "subagent")
             or not isinstance(percentages, dict)
             or len(percentages) > 2
+            or session_table_snapshot is not None
+            and (
+                not isinstance(session_table_snapshot, str)
+                or len(session_table_snapshot.encode("utf-8")) > 128
+            )
             or any(
                 not isinstance(provider_id, str)
                 or len(provider_id.encode("utf-8")) > 64
@@ -6139,6 +6197,26 @@ def approval_response(request, policy):
     scope = (current_context.get("turn") or {}).get("scope", "root")
     if mode != "full" and not (scope == "subagent" and mode == "subagents"):
         return routing_decide(request, policy)
+    if session_table(current_context) != rendered_context.get("sessionTableSnapshot"):
+        return fresh_approval(
+            policy,
+            axes,
+            confidence,
+            margin,
+            current_context,
+            "The session routing table changed. Review the updated route before applying it.",
+            recalibrated,
+            embedding_elapsed_ms,
+            embedding_input_count,
+            llm_confidence,
+            llm_elapsed_ms,
+            calibrated_confidence,
+            raw_confidence,
+            was_override,
+            classifier_notice,
+            classification_details,
+            steering,
+        )
     if policy_revision != str(policy["revision"]):
         return fresh_approval(
             policy,

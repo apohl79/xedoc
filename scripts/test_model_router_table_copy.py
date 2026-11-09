@@ -236,6 +236,84 @@ def main():
             "PASS: copies retain effective curves; capacity, unavailable backends and revoked approvals fail safely"
         )
 
+        policy = json.loads(path.read_text())
+        policy.update(mode="full", approval="all")
+        policy["ranking"]["tableMode"] = "shared"
+        policy["ranking"]["tableSelection"]["shared"] = "openai-balanced"
+        path.write_text(json.dumps(policy))
+        context["thread"] = {"id": "approval-session"}
+        context["availableProviders"] = ["openai", "anthropic"]
+        context["eligibleRoutes"] = [
+            {
+                "providerId": "openai",
+                "model": model,
+                "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"],
+            }
+            for model in ("gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol")
+        ]
+        context["eligibleRoutes"].extend(
+            {
+                "providerId": "anthropic",
+                "model": model,
+                "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"],
+            }
+            for model in (
+                "claude-haiku-5-5",
+                "claude-sonnet-5-5",
+                "claude-opus-5-5",
+                "claude-fable-5-1",
+            )
+        )
+        context["modelAvailability"] = {
+            route["providerId"]: {
+                model: "available"
+                for model in (
+                    entry["model"]
+                    for entry in context["eligibleRoutes"]
+                    if entry["providerId"] == route["providerId"]
+                )
+            }
+            for route in context["eligibleRoutes"]
+        }
+        picker = act(call("settings.open")["interaction"], "open-table-picker")
+        act(picker, "select-table-openai-balanced")
+        approval = call(
+            "routing.classifier.respond",
+            {"continuation": continuation, "output": classifier},
+        )
+        assert "interaction" in approval, approval
+        preview = approval["interaction"]
+        assert "openai/" in preview["surface"]["title"].lower(), preview
+        picker = act(call("settings.open")["interaction"], "open-table-picker")
+        changed_picker = act(picker, "select-table-anthropic-balanced")
+        assert any(
+            item["id"] == "anthropic-balanced" and item.get("current")
+            for item in changed_picker["surface"]["items"]
+        ), changed_picker
+        approval_state = json.loads(
+            base64.urlsafe_b64decode(preview["continuation"].split(":", 1)[1].encode())
+        )
+        assert approval_state.get("sessionTable") == "openai-balanced", approval_state
+        changed = call(
+            "interaction.respond",
+            {
+                "interactionId": preview["id"],
+                "continuation": preview["continuation"],
+                "stateRevision": preview["stateRevision"],
+                "outcome": "accepted",
+                "action": {"id": "approve"},
+                "values": {},
+            },
+        )
+        assert "interaction" in changed, changed
+        refreshed = changed["interaction"]
+        assert refreshed["surface"]["title"] != preview["surface"]["title"], refreshed
+        applied = act(refreshed, "approve", kind="decision")
+        assert applied["route"]["providerId"] == "anthropic", applied
+        print(
+            "PASS: changing a session table invalidates a pending approval until the new route is confirmed"
+        )
+
 
 if __name__ == "__main__":
     main()

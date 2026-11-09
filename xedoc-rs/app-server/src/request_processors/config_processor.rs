@@ -331,7 +331,7 @@ impl ConfigRequestProcessor {
     ) -> Result<ModelRouterSettingsOpenResponse, JSONRPCErrorError> {
         let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
         let thread = self
-            .model_router_settings_thread(params.thread_id.as_deref())
+            .loaded_model_router_settings_thread(params.thread_id.as_deref())
             .await?;
         let session_mode = match thread.as_ref() {
             Some(thread) => thread.model_router_session_mode().await,
@@ -436,7 +436,7 @@ impl ConfigRequestProcessor {
     ) -> Result<ModelRouterSettingsRespondResponse, JSONRPCErrorError> {
         let config = self.load_latest_config(/*fallback_cwd*/ None).await?;
         let thread = self
-            .model_router_settings_thread(params.thread_id.as_deref())
+            .loaded_model_router_settings_thread(params.thread_id.as_deref())
             .await?;
         let session_mode = match thread.as_ref() {
             Some(thread) => thread.model_router_session_mode().await,
@@ -511,6 +511,18 @@ impl ConfigRequestProcessor {
             .await
             .map(Some)
             .map_err(|error| invalid_request(format!("failed to load thread: {error}")))
+    }
+
+    async fn loaded_model_router_settings_thread(
+        &self,
+        thread_id: Option<&str>,
+    ) -> Result<Option<Arc<xedoc_core::XedocThread>>, JSONRPCErrorError> {
+        let Some(thread_id) = thread_id else {
+            return Ok(None);
+        };
+        let thread_id = ThreadId::from_string(thread_id)
+            .map_err(|error| invalid_request(format!("invalid thread id: {error}")))?;
+        Ok(self.thread_manager.get_thread(thread_id).await.ok())
     }
 
     async fn handle_config_mutation_result<T>(

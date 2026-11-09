@@ -625,6 +625,7 @@
       const button = document.getElementById(kind);
       const value = kind === "model" ? state.displayModel ?? state.model
         : kind === "effort" && "displayEffort" in state ? state.displayEffort
+        : kind === "routerTable" ? state.routerTableOptions?.find(option => option.id === state.routerTable)?.label ?? state.routerTable
         : state[kind];
       if (kind === "router" || kind === "routerTable") {
         button.querySelector(kind === "router" ? ".router-mode" : ".router-table").textContent =

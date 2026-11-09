@@ -48,6 +48,7 @@ impl Session {
         };
         let models = &self.services.models_manager;
         let context = json!({
+            "thread": {"id": self.thread_id.to_string()},
             "eligibleRoutes": eligible_script_routes(&config, models).await,
             "modelAvailability": script_model_availability(&config, models).await,
             "modelAliases": models.routing_model_aliases(),
