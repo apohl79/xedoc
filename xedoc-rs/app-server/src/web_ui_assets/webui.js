@@ -798,7 +798,7 @@
         decorateFileReferences(fragment);
         const textWalker = document.createTreeWalker(fragment, NodeFilter.SHOW_TEXT);
         const referencePattern = /\[(?:Image|Doc) #\d+\]/g;
-        const webUrlPattern = /https?:\/\/[^\s<>"'`]+/gi;
+        const webUrlPattern = /(?<![a-z\d+.-])[a-z][a-z\d+.-]*:\/\/[^\s<>"'`]+/gi;
         const textNodes = [];
         while (textWalker.nextNode()) {
           const node = textWalker.currentNode;
@@ -834,9 +834,8 @@
                 }
               }
               const destination = match[0].slice(0, linkEnd);
-              let parsed;
-              try { parsed = new URL(destination); } catch {}
-              if (parsed && ["http:", "https:"].includes(parsed.protocol) && parsed.hostname) {
+              const parsed = window.XedocPromptMarkdown.protocolUrl(destination);
+              if (parsed) {
                 const link = document.createElement("a");
                 link.href = parsed.href;
                 link.target = "_blank";
@@ -1138,6 +1137,10 @@
       if (active.innerHTML !== activeHtml) active.innerHTML = activeHtml;
     }
     history.append(active);
+    for (const anchor of history.querySelectorAll("a[data-xedoc-target]")) {
+      const parsed = window.XedocPromptMarkdown.protocolUrl(anchor.dataset.xedocTarget);
+      if (parsed) anchor.href = parsed.href;
+    }
     setConnection("Live", "live");
     if (following) history.scrollTop = history.scrollHeight;
   }

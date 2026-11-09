@@ -1,6 +1,17 @@
 "use strict";
 
 window.XedocPromptMarkdown = (() => {
+  function protocolUrl(destination) {
+    if (!/^[a-z][a-z\d+.-]*:\/\//i.test(destination)) return null;
+    try {
+      const parsed = new URL(destination);
+      if (parsed.hostname && !["javascript:", "vbscript:", "data:", "blob:"].includes(parsed.protocol)) {
+        return parsed;
+      }
+    } catch {}
+    return null;
+  }
+
   function indentWidth(text) {
     return [...text].reduce((width, character) => width + (character === "\t" ? 4 - width % 4 : 1), 0);
   }
@@ -88,7 +99,10 @@ window.XedocPromptMarkdown = (() => {
   function link(destination, image) {
     destination = destination.replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g, "$1");
     let safe = false;
-    try { safe = ["http:", "https:", "mailto:"].includes(new URL(destination, location.href).protocol); } catch {}
+    try {
+      safe = !!protocolUrl(destination)
+        || ["http:", "https:", "mailto:"].includes(new URL(destination, location.href).protocol);
+    } catch {}
     const element = document.createElement(safe && !image ? "a" : "span");
     if (!image) {
       element.className = "editor-link";
@@ -103,7 +117,7 @@ window.XedocPromptMarkdown = (() => {
   }
 
   function inline(parent, text, references) {
-    const pattern = /\\[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]|&(?:#\d+|#x[\da-fA-F]+|[a-zA-Z][a-zA-Z\d]+);|(`+)([^\n]*?)\1|!?\[([^\]\n]+)\]\(((?:\\.|[^()\\\n]|\((?:\\.|[^()\\\n])*\))+)\)|(\*\*|__|~~)(?=\S)(.+?)(?<!\\)\5|(\*|_)(?=\S)(.+?)(?<!\\)\7|(?:\$[\w][\w./:-]*|\[(?:Image|Doc) #\d+\])|<(https?:\/\/[^<>\s]+|mailto:[^<>\s]+)>|!?\[([^\]\n]+)\](?:\[([^\]\n]*)\])?/g;
+    const pattern = /\\[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]|&(?:#\d+|#x[\da-fA-F]+|[a-zA-Z][a-zA-Z\d]+);|(`+)([^\n]*?)\1|!?\[([^\]\n]+)\]\(((?:\\.|[^()\\\n]|\((?:\\.|[^()\\\n])*\))+)\)|(\*\*|__|~~)(?=\S)(.+?)(?<!\\)\5|(\*|_)(?=\S)(.+?)(?<!\\)\7|(?:\$[\w][\w./:-]*|\[(?:Image|Doc) #\d+\])|<([a-zA-Z][a-zA-Z\d+.-]*:\/\/[^<>\s]+|mailto:[^<>\s]+)>|!?\[([^\]\n]+)\](?:\[([^\]\n]*)\])?/g;
     let offset = 0;
     for (const match of text.matchAll(pattern)) {
       parent.append(document.createTextNode(text.slice(offset, match.index)));
@@ -351,5 +365,5 @@ window.XedocPromptMarkdown = (() => {
     return { text: lines.map((line) => line.text).join("\n"), selection: selection.map(adjust) };
   }
 
-  return { render, lines: (text) => scan(text).lines, indent };
+  return { render, lines: (text) => scan(text).lines, indent, protocolUrl };
 })();
