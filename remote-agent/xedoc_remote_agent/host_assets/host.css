@@ -121,7 +121,7 @@ aside {
 .login-hostname { margin: -3px 0 8px; font-size: 12px; }
 #navigation button { display: grid; flex: none; width: 28px; height: 28px; padding: 0; place-items: center; }
 #navigation svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
-#update-dialog { width: 60vw; max-width: none; }
+#update-dialog { width: 60vw; min-width: min(800px, calc(100% - 32px)); max-width: none; }
 .update-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
 #update-version { flex: 1; }
 #update-status { min-height: 20px; color: var(--muted); }

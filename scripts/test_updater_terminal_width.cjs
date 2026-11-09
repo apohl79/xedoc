@@ -18,7 +18,7 @@ module.exports = async function verifyUpdaterTerminalWidth(page) {
         - parseFloat(style.paddingRight) - (viewport.offsetWidth - viewport.clientWidth);
       const gap = available - screen.getBoundingClientRect().width;
       const bounds = dialog.getBoundingClientRect();
-      return Math.abs(bounds.width - innerWidth * .6) < 1
+      return Math.abs(bounds.width - Math.max(innerWidth * .6, Math.min(800, innerWidth - 32))) < 1
         && Math.abs(bounds.left - (innerWidth - bounds.right)) < 1
         && dialog.scrollWidth === dialog.clientWidth
         && gap >= -1 && gap < 10 && terminal.scrollWidth === terminal.clientWidth;
