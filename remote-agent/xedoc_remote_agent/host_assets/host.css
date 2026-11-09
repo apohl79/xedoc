@@ -2,13 +2,14 @@
   color-scheme: dark;
   font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --canvas: #1a2128;
-  --sidebar: #1a2128;
-  --tabbar: #1a2128;
+  --sidebar: #12171c;
+  --tabbar: #12171c;
   --surface: #222b33;
+  --dialog: #181e24;
   --raised: #2d3946;
   --hover: #2d3946;
-  --border: #2d3946;
-  --border-strong: #56697a;
+  --border: #050607;
+  --border-strong: #090b0c;
   --text: #a0b3c5;
   --muted: #718ca1;
   --accent: #56d2ca;
@@ -337,7 +338,7 @@ aside button.project {
 dialog {
   width: min(560px, calc(100% - 32px));
   max-height: 85dvh;
-  background: var(--surface);
+  background: var(--dialog);
   border: 1px solid var(--border-strong);
   border-radius: 5px;
   padding: 15px;
