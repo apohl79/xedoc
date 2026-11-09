@@ -532,7 +532,8 @@ impl AppServerSession {
                 params: thread_start_params_from_config(
                     &session_config,
                     self.thread_params_mode(),
-                    self.remote_cwd_override.as_deref(),
+                    // Unlike initial startup, a fresh session has an attached thread's cwd.
+                    Some(session_config.cwd.as_path()),
                     session_start_source,
                 ),
             })
