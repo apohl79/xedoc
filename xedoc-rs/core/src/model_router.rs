@@ -86,6 +86,12 @@ pub(crate) async fn apply_script_route_to_config(
         return false;
     }
 
+    if config.model_provider_id != route.provider_id.as_str() {
+        config.model_fast = config
+            .provider_fast_models
+            .get(route.provider_id.as_str())
+            .cloned();
+    }
     config.model = Some(route.model.as_str().to_string());
     config.model_provider_id = route.provider_id.as_str().to_string();
     config.model_provider = provider;

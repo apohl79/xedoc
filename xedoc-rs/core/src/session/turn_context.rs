@@ -60,6 +60,10 @@ impl Session {
             {
                 per_turn_config.model_provider_id.clone_from(provider_id);
                 per_turn_config.model_provider = provider.clone();
+                per_turn_config.model_fast = per_turn_config
+                    .provider_fast_models
+                    .get(provider_id)
+                    .cloned();
             }
         }
         per_turn_config.model_reasoning_summary = session_configuration.model_reasoning_summary;

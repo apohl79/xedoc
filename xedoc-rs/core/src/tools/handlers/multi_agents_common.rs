@@ -294,6 +294,12 @@ pub(crate) async fn apply_requested_spawn_agent_model_overrides(
             )
             .await;
 
+        if config.model_provider_id != selected_provider_id {
+            config.model_fast = config
+                .provider_fast_models
+                .get(&selected_provider_id)
+                .cloned();
+        }
         config.model = Some(selected_model_name.clone());
         config.model_provider_id = selected_provider_id;
         config.model_provider = selected_provider;

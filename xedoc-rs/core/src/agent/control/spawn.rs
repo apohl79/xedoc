@@ -436,6 +436,12 @@ impl AgentControl {
                     "model provider `{stored_model_provider_id}` for thread {thread_id} is unavailable"
                 ))
             })?;
+        if config.model_provider_id != stored_model_provider_id {
+            config.model_fast = config
+                .provider_fast_models
+                .get(&stored_model_provider_id)
+                .cloned();
+        }
         config.model_provider_id = stored_model_provider_id;
         config.model_provider = stored_model_provider;
         config.model = stored_model;

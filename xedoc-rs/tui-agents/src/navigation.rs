@@ -164,6 +164,7 @@ impl AgentNavigationState {
     /// The key invariant of this module is enforced here: a thread id is appended to `order` only
     /// the first time it is seen. Later updates may change nickname, role, or closed state, but
     /// they must not move the thread in the cycle or keyboard navigation would feel unstable.
+    /// Activity summaries come from a separate timer, so refreshes keep the last one.
     pub fn upsert(
         &mut self,
         thread_id: ThreadId,
@@ -182,6 +183,7 @@ impl AgentNavigationState {
             previous_reasoning_effort,
             previous_total_tokens,
             previous_is_running,
+            previous_current_activity,
         ) = self
             .threads
             .get(&thread_id)
@@ -193,9 +195,10 @@ impl AgentNavigationState {
                     entry.reasoning_effort.clone(),
                     entry.total_tokens,
                     entry.is_running,
+                    entry.current_activity.clone(),
                 )
             })
-            .unwrap_or((None, None, None, None, None, false));
+            .unwrap_or((None, None, None, None, None, false, None));
         self.threads.insert(
             thread_id,
             AgentPickerThreadEntry {
@@ -208,7 +211,7 @@ impl AgentNavigationState {
                 total_tokens: previous_total_tokens,
                 is_running: previous_is_running && !is_closed,
                 is_closed,
-                current_activity: None,
+                current_activity: previous_current_activity,
             },
         );
     }
