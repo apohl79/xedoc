@@ -26,6 +26,7 @@
   const openedSessions = new Map();
   const projectCache = new Map();
   const sessionCache = new Map();
+  const sessionTabOrders = new Map();
   const projectActivityLoaded = new Set();
   const projectActivityRefreshAt = new Map();
   const activity = new window.XedocHostActivity();
@@ -313,6 +314,7 @@
     openedSessions.clear();
     projectCache.clear();
     sessionCache.clear();
+    sessionTabOrders.clear();
     workspaceViews.clear();
     projectActivityLoaded.clear();
     projectActivityRefreshAt.clear();
@@ -803,6 +805,10 @@
   }
 
   function sessionTab(session) {
+    const key = projectSessionKey(selectedWorkspace, selectedProject);
+    const order = sessionTabOrders.get(key) || [];
+    if (!order.includes(session.threadId)) order.push(session.threadId);
+    sessionTabOrders.set(key, order);
     const element = document.createElement("div");
     element.className = "session-tab";
     element.dataset.threadId = session.threadId;
@@ -837,7 +843,18 @@
       if (session.workspaceId === selectedWorkspace && session.projectName === selectedProject
         && !result.some((item) => item.threadId === session.threadId)) result.push(session);
     }
-    return result;
+    const key = projectSessionKey(selectedWorkspace, selectedProject);
+    const remaining = new Map(result.map((session) => [session.threadId, session]));
+    const ordered = [];
+    for (const threadId of sessionTabOrders.get(key) || []) {
+      if (remaining.has(threadId)) {
+        ordered.push(remaining.get(threadId));
+        remaining.delete(threadId);
+      }
+    }
+    ordered.push(...remaining.values());
+    sessionTabOrders.set(key, ordered.map((session) => session.threadId));
+    return ordered;
   }
 
   function focusSessionPrompt(frame) {
@@ -930,6 +947,8 @@
     sessionFrames.get(threadId)?.remove();
     sessionFrames.delete(threadId);
     openedSessions.delete(threadId);
+    const key = projectSessionKey(workspaceId, projectName);
+    sessionTabOrders.set(key, (sessionTabOrders.get(key) || []).filter((id) => id !== threadId));
     pluginPanels.removeSession(threadId);
     activity.releaseLive(threadId);
     projectCache.delete(projectCacheKey(workspaceId));
