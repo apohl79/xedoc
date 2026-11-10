@@ -88,6 +88,7 @@ class HostPluginPanels:
                     declarations = json.loads(manifest.read_text()).get("gui", {})
                     for declaration in declarations.get("panels", [])[:16]:
                         panel = self._declaration(summary["id"], root, declaration)
+                        panel["pluginName"] = summary["name"]
                         panels[(summary["id"], panel["id"])] = panel
                 except (OSError, ValueError, TypeError, KeyError):
                     continue
@@ -98,13 +99,14 @@ class HostPluginPanels:
 
     @staticmethod
     def _declaration(plugin_id, root, declaration):
-        panel_id, title = declaration["id"], declaration["title"]
+        panel_id, title = declaration["id"], declaration.get("title")
         entrypoint = declaration["entrypoint"]
         if (
             not isinstance(panel_id, str)
             or not _IDENTIFIER.fullmatch(panel_id)
-            or not isinstance(title, str)
-            or not 0 < len(title) <= 120
+            or title is not None and (
+                not isinstance(title, str) or not 0 < len(title) <= 120
+            )
             or not isinstance(entrypoint, str)
             or not entrypoint.startswith("./")
         ):
@@ -285,6 +287,11 @@ class HostPluginPanels:
                 except queue.Empty as error:
                     raise ValueError("Plugin panel startup timed out") from error
                 result = json.loads(line)
+                title = result.get("title")
+                if title is not None and (
+                    not isinstance(title, str) or not 0 < len(title.strip()) <= 255
+                ):
+                    raise ValueError("Invalid plugin panel title")
                 address = urlsplit(result["url"])
                 if (
                     address.scheme != "http" or address.hostname != "127.0.0.1"
@@ -294,7 +301,8 @@ class HostPluginPanels:
                     raise ValueError("Invalid plugin loopback address")
                 entry = {
                     "owner": owner, "pluginId": plugin_id, "manifestPanelId": panel_id,
-                    "title": panel["title"], "target": target, "address": address,
+                    "title": title.strip() if title is not None else panel["pluginName"],
+                    "target": target, "address": address,
                     "process": process,
                 }
                 self.entries[token] = entry

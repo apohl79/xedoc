@@ -7,6 +7,7 @@ window.XedocPluginPanels = class {
     this.run = run;
     this.entries = new Map();
     this.selected = new Map();
+    this.fullscreen = new Map();
     this.actions = [];
     this.key = null;
     this.refreshing = new Set();
@@ -168,6 +169,11 @@ window.XedocPluginPanels = class {
       this.selected.set(this.key, visible[0]?.panelId);
     }
     const selected = this.selected.get(this.key);
+    if (!visible.some((entry) => entry.panelId === this.fullscreen.get(this.key))) {
+      this.fullscreen.delete(this.key);
+    }
+    const fullscreen = this.fullscreen.get(this.key) === selected && !!selected;
+    document.getElementById("session-layout").classList.toggle("panel-fullscreen", fullscreen);
     for (const entry of this.entries.values()) {
       entry.frame.hidden = entry.key !== this.key || entry.panelId !== selected;
     }
@@ -223,11 +229,31 @@ window.XedocPluginPanels = class {
       browser.textContent = "↗";
       browser.setAttribute("aria-label", `Open ${entry.title || "plugin panel"} in browser`);
       browser.addEventListener("click", (event) => event.stopPropagation());
-      tab.append(select, browser, close);
+      const expand = document.createElement("button");
+      expand.type = "button";
+      expand.className = "plugin-panel-expand";
+      const expanded = fullscreen && entry.panelId === selected;
+      expand.title = expanded ? "Restore split view" : "Expand panel";
+      expand.setAttribute("aria-label", expand.title);
+      expand.setAttribute("aria-pressed", String(expanded));
+      expand.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+        aria-hidden="true" focusable="false"><path d="${expanded
+          ? "M8 3v5H3m13-5v5h5M8 21v-5H3m13 5v-5h5"
+          : "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"}"/></svg>`;
+      expand.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this.selected.set(this.key, entry.panelId);
+        if (expanded) this.fullscreen.delete(this.key);
+        else this.fullscreen.set(this.key, entry.panelId);
+        this.render();
+        this.tabs.querySelector('[aria-selected="true"] .plugin-panel-expand')?.focus();
+      });
+      tab.append(select, expand, browser, close);
       this.tabs.append(tab);
     }
     this.container.hidden = !visible.length;
-    this.divider.hidden = !visible.length;
+    this.divider.hidden = !visible.length || fullscreen;
   }
 
   async open(current, data) {
@@ -281,6 +307,7 @@ window.XedocPluginPanels = class {
   clear() {
     this.entries.clear();
     this.selected.clear();
+    this.fullscreen.clear();
     this.browserPanels.clear();
     this.frames.replaceChildren();
     this.key = null;

@@ -57,7 +57,10 @@ The host passes one bounded JSON line on stdin:
 ```
 
 The process must print one JSON line within 180 seconds:
-`{"url":"http://127.0.0.1:12345/","title":"Inline Discussion"}`.
+`{"url":"http://127.0.0.1:12345/","title":"discussion.md"}`.
+The optional `title` sets the panel tab title (1–255 characters after trimming).
+If omitted, the host uses the installed plugin's name. The manifest panel title
+is optional and does not override the launch response.
 Keep stdout reserved for this response and use stderr for diagnostics.
 The host stores stderr in the private panel directory's `runtime.log`.
 The process must handle termination and close its agents and connections.

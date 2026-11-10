@@ -318,6 +318,11 @@ aside button.project {
 .panel-resizing, .panel-resizing * { cursor: col-resize !important; user-select: none !important; }
 #plugin-panel-tabs { flex: none; align-self: stretch; margin: 0; padding: 0 4px; }
 .plugin-panel-tab { min-width: 0; }
+.plugin-panel-expand { display: grid; place-items: center; flex: none; border: 0; padding: 2px; background: transparent; color: var(--muted); }
+.plugin-panel-expand svg { width: 14px; height: 14px; }
+.plugin-panel-expand:hover { color: var(--text); }
+#session-layout.panel-fullscreen > #session-frames { display: none; }
+#session-layout.panel-fullscreen > #plugin-panels { flex: 1; }
 .plugin-panel-open { display: grid; place-items: center; color: var(--muted); text-decoration: none; }
 .plugin-panel-open:hover { color: var(--text); }
 #plugin-panel-frames { display: flex; flex: 1; min-height: 0; }
