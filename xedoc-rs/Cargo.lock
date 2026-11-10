@@ -11980,7 +11980,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-app-server"
-version = "1.85.8"
+version = "1.85.9"
 dependencies = [
  "anyhow",
  "app_test_support",
@@ -12276,7 +12276,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-cli"
-version = "1.85.8"
+version = "1.85.9"
 dependencies = [
  "anyhow",
  "app_test_support",
@@ -12431,7 +12431,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core"
-version = "1.85.8"
+version = "1.85.9"
 dependencies = [
  "anyhow",
  "arc-swap",

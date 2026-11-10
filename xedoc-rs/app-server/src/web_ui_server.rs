@@ -38,6 +38,9 @@ use xedoc_protocol::ThreadId;
 use crate::error_code::internal_error;
 use crate::error_code::invalid_request;
 
+#[path = "web_ui_file_search.rs"]
+mod file_search;
+
 const FRAME_LIMIT: usize = 16 * 1024 * 1024;
 const INPUT_LIMIT: usize = 16 * 1024 * 1024;
 const SEND_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 5);
@@ -324,8 +327,8 @@ async fn browser_socket(mut socket: WebSocket, state: Arc<SessionState>) {
                             if query.len() > 1024 { break; }
                             let cancellation = Arc::new(AtomicBool::new(false));
                             let config = state.thread.config().await;
-                            let search = crate::fuzzy_file_search::run_fuzzy_file_search(
-                                query.to_owned(), vec![config.cwd.to_string_lossy().into_owned()], Arc::clone(&cancellation),
+                            let search = file_search::search(
+                                query.to_owned(), config.cwd.to_path_buf(), Arc::clone(&cancellation),
                             );
                             let matches = timeout(Duration::from_secs(/*secs*/ 2), search).await.unwrap_or_default();
                             cancellation.store(true, Ordering::Relaxed);

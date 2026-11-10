@@ -59,7 +59,7 @@ window.XedocQuestion = class {
     this.countdown.textContent = state.remainingSeconds == null
       ? "" : `Auto-submit in ${state.remainingSeconds}s`;
     if (this.notes) {
-      const acknowledged = this.pendingNotes.lastIndexOf(state.notes);
+      const acknowledged = this.pendingNotes.indexOf(state.notes);
       if (acknowledged !== -1) this.pendingNotes.splice(0, acknowledged + 1);
       else if (state.notes !== this.serverNotes) this.pendingNotes = [];
       this.serverNotes = state.notes;
@@ -184,7 +184,9 @@ window.XedocQuestion = class {
           this.insert("\n");
         }
       });
+      window.XedocPromptMarkdown.bindSelectionWrapping(this.notes, this.editor, () => this.changed());
       this.notes.addEventListener("keydown", (event) => {
+        if (event.defaultPrevented) return;
         if (event.isComposing || this.composing) return;
         if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
             && event.key.toLowerCase() === "a") {

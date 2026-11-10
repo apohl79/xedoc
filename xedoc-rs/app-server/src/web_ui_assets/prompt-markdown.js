@@ -365,5 +365,47 @@ window.XedocPromptMarkdown = (() => {
     return { text: lines.map((line) => line.text).join("\n"), selection: selection.map(adjust) };
   }
 
-  return { render, lines: (text) => scan(text).lines, indent, protocolUrl };
+  function bindSelectionWrapping(root, editor, changed) {
+    let wrapped = null;
+    const clear = () => { wrapped = null; };
+    root.addEventListener("input", clear);
+    root.addEventListener("pointerdown", clear);
+    root.addEventListener("compositionstart", clear);
+    root.addEventListener("keydown", (event) => {
+      if (event.defaultPrevented || event.isComposing || !root.isContentEditable
+          || event.ctrlKey || event.metaKey || event.altKey) {
+        clear();
+        return;
+      }
+      if (["Shift", "Control", "Meta", "Alt"].includes(event.key)) return;
+      const text = editor.text(root);
+      const selection = editor.selection(root);
+      const previous = wrapped;
+      clear();
+      if (!selection) return;
+      if (event.key === "Backspace" && previous && text === previous.text
+          && selection.every((offset, index) => offset === previous.selection[index])) {
+        event.preventDefault();
+        editor.render(previous.source, previous.originalSelection, root);
+        changed();
+      } else if (["Backspace", "Delete"].includes(event.key) && selection[0] !== selection[1]) {
+        event.preventDefault();
+        const start = Math.min(...selection), end = Math.max(...selection);
+        editor.render(text.slice(0, start) + text.slice(end), [start, start], root);
+        changed();
+      } else if (['"', "'", "`"].includes(event.key) && selection[0] !== selection[1]) {
+        event.preventDefault();
+        const start = Math.min(...selection), end = Math.max(...selection);
+        const result = text.slice(0, start) + event.key + text.slice(start, end)
+          + event.key + text.slice(end);
+        const selected = selection[0] < selection[1] ? [start, end + 2] : [end + 2, start];
+        editor.render(result, selected, root);
+        changed();
+        wrapped = { text: editor.text(root), selection: editor.selection(root),
+          source: text, originalSelection: selection };
+      }
+    });
+  }
+
+  return { render, lines: (text) => scan(text).lines, indent, protocolUrl, bindSelectionWrapping };
 })();

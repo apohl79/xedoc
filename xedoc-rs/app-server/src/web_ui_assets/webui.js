@@ -372,7 +372,8 @@
             if (syntax && offset <= node.length) {
               const marker = syntax.closest(".syntax-entity") || syntax;
               const index = Array.prototype.indexOf.call(marker.parentNode.childNodes, marker);
-              return [marker.parentNode, index + (offset > 0 || index === 0 ? 1 : 0)];
+              return [marker.parentNode, index
+                + (offset > 0 || index === 0 && offsets[0] === offsets[1] ? 1 : 0)];
             }
             if (offset <= node.length) return [node, offset];
             offset -= node.length;
@@ -1227,7 +1228,14 @@
       if (action === "cut" && ready) insertText("");
     });
   }
+  window.XedocPromptMarkdown.bindSelectionWrapping(input, {
+    text: editorText, selection: editorSelection, render: renderEditor,
+  }, () => {
+    dirty = true;
+    flushDraft();
+  });
   input.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) return;
     if (composing || event.isComposing || event.key === "Process" || event.key === "Dead") return;
     if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
         && event.key.toLowerCase() === "a") {
@@ -1299,7 +1307,8 @@
         const item = window.XedocPromptMarkdown.lines(text)[lineIndex]?.item;
         const supportedMarker = item
           && (item.marker === "-" || item.ordered && item.marker.endsWith("."));
-        if (supportedMarker && cursor === lineStart + item.indent.length + item.marker.length) {
+        if (supportedMarker && !(item.marker === "-" && event.data === "-")
+            && cursor === lineStart + item.indent.length + item.marker.length) {
           event.preventDefault();
           insertText(` ${event.data}`);
           return;
@@ -1343,10 +1352,25 @@
     dirty = true;
     flushDraft();
   });
-  input.addEventListener("input", () => {
+  input.addEventListener("input", (event) => {
     if (composing) return;
-    const text = editorText();
-    renderEditor(text, editorSelection());
+    let text = editorText();
+    let selection = editorSelection();
+    if (event.inputType === "insertText" && event.data === "-"
+        && selection && selection[0] === selection[1]) {
+      const cursor = selection[0];
+      const lineStart = cursor === 0 ? 0 : text.lastIndexOf("\n", cursor - 1) + 1;
+      const lineEnd = text.indexOf("\n", cursor);
+      const line = text.slice(lineStart, lineEnd < 0 ? text.length : lineEnd);
+      const lineIndex = text.slice(0, lineStart).split("\n").length - 1;
+      const rendered = window.XedocPromptMarkdown.render(text).querySelectorAll(".editor-line")[lineIndex];
+      if (/^ {0,3}---$/.test(line) && cursor === lineStart + line.length
+          && rendered?.classList.contains("editor-rule")) {
+        if (text[cursor] !== "\n") text = `${text.slice(0, cursor)}\n${text.slice(cursor)}`;
+        selection = [cursor + 1, cursor + 1];
+      }
+    }
+    renderEditor(text, selection);
     keepSpaceAfterCodeSpan();
     dirty = true;
     flushDraft();
