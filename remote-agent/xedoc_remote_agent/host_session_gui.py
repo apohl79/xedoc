@@ -49,7 +49,6 @@ class _Producer:
 
     def spawn(self, params):
         self.client.request("process/spawn", params)
-        self.client._transport.socket.settimeout(1)
         self.thread = threading.Thread(
             target=self.drain, daemon=True, name="host-gui-terminal"
         )
@@ -57,11 +56,14 @@ class _Producer:
 
     def drain(self):
         try:
+            transport = self.client._transport
             while not self.stopped.is_set():
-                try:
-                    self.client.handle_message(self.client.receive_message())
-                except socket.timeout:
+                # Poll between messages; timed-out partial frames cannot be resumed.
+                if not transport.buffer and not select.select(
+                    [transport.socket], [], [], 1
+                )[0]:
                     continue
+                self.client.handle_message(self.client.receive_message())
         except Exception:
             self.stopped.set()
         finally:
