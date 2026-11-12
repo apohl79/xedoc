@@ -68,12 +68,12 @@ pub(crate) async fn handle_retryable_response_stream_error(
         if report_error {
             // Surface retry information to any UI/front-end so the user understands what is
             // happening instead of staring at a seemingly frozen screen.
-            sess.notify_stream_error(
-                turn_context,
-                format!("Reconnecting... {retry_count}/{max_retries}"),
-                err,
-            )
-            .await;
+            let message = if matches!(err, XedocErr::ServerOverloaded) {
+                format!("Model capacity error. Retrying... {retry_count}/{max_retries}")
+            } else {
+                format!("Reconnecting... {retry_count}/{max_retries}")
+            };
+            sess.notify_stream_error(turn_context, message, err).await;
         }
         tokio::time::sleep(delay).await;
         return Ok(());

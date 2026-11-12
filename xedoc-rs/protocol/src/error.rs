@@ -117,7 +117,9 @@ pub enum XedocErr {
     InvalidImageRequest(),
     #[error("{0}")]
     UsageLimitReached(UsageLimitReachedError),
-    #[error("Selected model is at capacity. Please try a different model.")]
+    #[error(
+        "Model capacity error: the provider is temporarily overloaded for the selected model. Try again shortly or choose a different model."
+    )]
     ServerOverloaded,
     #[error("{message}")]
     CyberPolicy { message: String },

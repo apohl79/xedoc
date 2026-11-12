@@ -319,7 +319,9 @@ async fn run_remote_compaction_request_v2(
 
         match result {
             Ok(compaction_output) => return Ok(compaction_output),
-            Err(err) if !err.is_retryable() => return Err(err),
+            Err(err) if !err.is_retryable() && !matches!(err, XedocErr::ServerOverloaded) => {
+                return Err(err);
+            }
             Err(err) => {
                 handle_retryable_response_stream_error(
                     &mut retries,
