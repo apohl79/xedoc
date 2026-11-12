@@ -831,9 +831,10 @@ async fn maybe_run_model_switch_request_baseline_compact(
         turn_context,
         Session::base_instructions_for_turn(turn_context),
     );
-    let Some(estimated_request_tokens) =
-        prompt.estimated_request_token_count(&turn_context.model_info)
-    else {
+    let Some(estimated_request_tokens) = prompt.estimated_request_token_count(
+        &turn_context.model_info,
+        crate::context_manager::estimate_item_token_count,
+    ) else {
         return Ok((Some(router), false));
     };
 

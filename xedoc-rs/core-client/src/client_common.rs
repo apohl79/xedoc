@@ -52,12 +52,16 @@ impl Default for Prompt {
 }
 
 impl Prompt {
-    /// Estimates the serialized input sent on the next request.
+    /// Estimates the model-visible input sent on the next request.
     ///
     /// Model switches cannot reuse a previous response, so the full request shape matters more
     /// than the previous provider's reported usage. This intentionally favors a conservative
     /// estimate over tokenizer-specific precision.
-    pub fn estimated_request_token_count(&self, model_info: &ModelInfo) -> Option<i64> {
+    pub fn estimated_request_token_count(
+        &self,
+        model_info: &ModelInfo,
+        estimate_item_tokens: impl Fn(&ResponseItem) -> i64,
+    ) -> Option<i64> {
         let mut input = self.get_formatted_input_for_request(model_info.use_responses_lite);
         let tools = create_tools_json_for_responses_api(&self.tools).ok()?;
         let (instructions, request_tools) = if model_info.use_responses_lite {
@@ -85,15 +89,20 @@ impl Prompt {
                 serde_json::Value::Array(tools),
             )
         };
+        // Encoded media and opaque continuity data are not ordinary text tokens.
+        let input_tokens = input
+            .iter()
+            .map(estimate_item_tokens)
+            .fold(0i64, i64::saturating_add);
         let request = serde_json::json!({
             "instructions": instructions,
-            "input": input,
+            "input": [],
             "tools": request_tools,
             "parallel_tool_calls": self.parallel_tool_calls,
             "output_schema": self.output_schema,
         });
         let serialized = serde_json::to_string(&request).ok()?;
-        i64::try_from(approx_token_count(&serialized)).ok()
+        Some(input_tokens.saturating_add(i64::try_from(approx_token_count(&serialized)).ok()?))
     }
 
     pub fn get_formatted_input_for_request(&self, use_responses_lite: bool) -> Vec<ResponseItem> {
