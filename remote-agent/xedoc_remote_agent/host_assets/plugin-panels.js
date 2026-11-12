@@ -7,7 +7,7 @@ window.XedocPluginPanels = class {
     this.run = run;
     this.entries = new Map();
     this.selected = new Map();
-    this.fullscreen = new Map();
+    this.fullscreen = new Set();
     this.actions = [];
     this.key = null;
     this.refreshing = new Set();
@@ -169,10 +169,10 @@ window.XedocPluginPanels = class {
       this.selected.set(this.key, visible[0]?.panelId);
     }
     const selected = this.selected.get(this.key);
-    if (!visible.some((entry) => entry.panelId === this.fullscreen.get(this.key))) {
+    if (!visible.length) {
       this.fullscreen.delete(this.key);
     }
-    const fullscreen = this.fullscreen.get(this.key) === selected && !!selected;
+    const fullscreen = this.fullscreen.has(this.key);
     document.getElementById("session-layout").classList.toggle("panel-fullscreen", fullscreen);
     for (const entry of this.entries.values()) {
       entry.frame.hidden = entry.key !== this.key || entry.panelId !== selected;
@@ -245,7 +245,7 @@ window.XedocPluginPanels = class {
         event.stopPropagation();
         this.selected.set(this.key, entry.panelId);
         if (expanded) this.fullscreen.delete(this.key);
-        else this.fullscreen.set(this.key, entry.panelId);
+        else this.fullscreen.add(this.key);
         this.render();
         this.tabs.querySelector('[aria-selected="true"] .plugin-panel-expand')?.focus();
       });
