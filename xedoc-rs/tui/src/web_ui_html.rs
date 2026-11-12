@@ -319,7 +319,8 @@ fn markdown_html(source: &str) -> String {
 
     let mut html = String::new();
     let mut closing = Vec::new();
-    let source = normalize_blockquote_continuations(source);
+    let source = crate::web_ui_citations::normalize_file_citations(source);
+    let source = normalize_blockquote_continuations(&source);
     let mut blockquote_depth = 0;
     let mut suppress_next_block_margin = false;
     for event in Parser::new_ext(

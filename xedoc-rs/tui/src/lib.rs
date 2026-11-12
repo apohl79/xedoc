@@ -145,6 +145,7 @@ mod token_usage;
 mod transcript_reflow;
 mod tui;
 mod web_ui;
+mod web_ui_citations;
 mod web_ui_files;
 mod web_ui_html;
 mod web_ui_images;
