@@ -49,6 +49,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .history-cell p { margin: .8em 0; white-space: pre-wrap; }
 .image-anchor { color: #00a8b5; font-family: var(--mono); }
 .history-markdown { padding: 0 8px 0 26px; }
+.history-arrow { display: inline-block; width: 1.1em; font-size: .75em; line-height: 1; text-align: center; vertical-align: .08em; }
 .history-agent { padding: 0 8px 0 34px; }
 .history-markdown > :first-child:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6),
 .history-user > div > :first-child:not(h1):not(h2):not(h3):not(h4):not(h5):not(h6) { margin-top: 0; }

@@ -734,6 +734,36 @@
     flushDraft();
   }
 
+  function decorateProseArrows(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) {
+      nodes.push(walker.currentNode);
+    }
+    for (const node of nodes) {
+      if (!node.data.includes("->") && !node.data.includes("=>")
+          || !node.parentElement.closest(".history-markdown, .history-plan")
+          || node.parentElement.closest("code, pre, a, .editor-reference")) continue;
+      const fragment = document.createDocumentFragment();
+      const arrowOrUrl = /[a-z][a-z\d+.-]*:\/\/[^\s<>"'`]+|->|=>/gi;
+      let offset = 0;
+      for (const match of node.data.matchAll(arrowOrUrl)) {
+        fragment.append(document.createTextNode(node.data.slice(offset, match.index)));
+        if (match[0] === "->" || match[0] === "=>") {
+          const arrow = document.createElement("span");
+          arrow.className = "history-arrow";
+          arrow.textContent = match[0] === "->" ? "→" : "⇒";
+          fragment.append(arrow);
+        } else {
+          fragment.append(document.createTextNode(match[0]));
+        }
+        offset = match.index + match[0].length;
+      }
+      fragment.append(document.createTextNode(node.data.slice(offset)));
+      node.replaceWith(fragment);
+    }
+  }
+
   function render(frame) {
     setConnection("Live", "live");
     if (frame.fullImage?.requestId === imageViewerRequestId) {
@@ -854,6 +884,7 @@
           replacement.append(document.createTextNode(node.data.slice(offset)));
           node.replaceWith(replacement);
         }
+        decorateProseArrows(fragment);
         stored.chunks.set(cell.rowStart, {
           html: cell.html, end: cell.rowEnd, element: fragment,
         });
@@ -1138,6 +1169,7 @@
       const activeHtml = `${frame.active || ""}${frame.toolSummary || ""}`;
       if (active.innerHTML !== activeHtml) active.innerHTML = activeHtml;
     }
+    decorateProseArrows(active);
     history.append(active);
     for (const anchor of history.querySelectorAll("a[data-xedoc-target]")) {
       const parsed = window.XedocPromptMarkdown.protocolUrl(anchor.dataset.xedocTarget);
