@@ -8,12 +8,16 @@ use super::session_lifecycle::ThreadAttachPresentation;
 use super::*;
 use crate::chatwidget::ThreadInputStateRestoreMode;
 use crate::session_resume::read_session_model;
+use sha2::Digest;
+use sha2::Sha256;
 use xedoc_app_server_protocol::SessionSource;
 use xedoc_app_server_protocol::TurnSteerCancelStatus;
 use xedoc_protocol::protocol::SubAgentSource;
 
-fn pending_steer_client_user_message_id(thread_id: ThreadId, pending_steer_id: u64) -> String {
-    format!("xedoc-tui:{thread_id}:pending-steer:{pending_steer_id}")
+fn pending_steer_client_user_message_id(turn_id: &str, pending_steer_id: &str) -> String {
+    // Retrying a rejected steer against another turn changes its delivery payload.
+    let key = Sha256::digest(format!("{pending_steer_id}:{turn_id}").as_bytes());
+    format!("xedoc-tui:pending-steer:{key:x}")
 }
 
 impl App {
@@ -638,15 +642,15 @@ impl App {
                 let response = app_server
                     .turn_steer_cancel(
                         thread_id,
-                        turn_id,
-                        pending_steer_client_user_message_id(thread_id, *pending_steer_id),
+                        turn_id.clone(),
+                        pending_steer_client_user_message_id(&turn_id, pending_steer_id),
                     )
                     .await
                     .wrap_err("turn/steer/cancel failed in TUI")?;
                 match response.status {
                     TurnSteerCancelStatus::Canceled | TurnSteerCancelStatus::NotFound => self
                         .chat_widget
-                        .record_safety_buffering_steer_canceled(*pending_steer_id),
+                        .record_safety_buffering_steer_canceled(pending_steer_id),
                 }
                 Ok(true)
             }
@@ -682,15 +686,16 @@ impl App {
                                 steer_turn_id.clone(),
                                 items.to_vec(),
                                 /*client_user_message_id*/
-                                pending_steer_id
-                                    .map(|id| pending_steer_client_user_message_id(thread_id, id)),
+                                pending_steer_id.as_deref().map(|id| {
+                                    pending_steer_client_user_message_id(&steer_turn_id, id)
+                                }),
                             )
                             .await
                         {
                             Ok(_) => {
                                 self.chat_widget.record_safety_buffering_steer(
                                     &steer_turn_id,
-                                    *pending_steer_id,
+                                    pending_steer_id.clone(),
                                     items,
                                 );
                                 return Ok(true);

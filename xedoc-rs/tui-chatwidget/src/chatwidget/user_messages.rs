@@ -112,10 +112,9 @@ pub struct ThreadInputState {
     pub(super) composer: Option<ThreadComposerState>,
     pub(super) safety_buffering_prompt: Option<UserMessage>,
     pub(super) pending_steers: VecDeque<UserMessage>,
-    pub(super) pending_steer_ids: VecDeque<Option<u64>>,
+    pub(super) pending_steer_ids: VecDeque<Option<String>>,
     pub(super) pending_steer_history_records: VecDeque<UserMessageHistoryRecord>,
     pub(super) pending_steer_compare_keys: VecDeque<PendingSteerCompareKey>,
-    pub(super) next_pending_steer_id: u64,
     pub(super) rejected_steers_queue: VecDeque<UserMessage>,
     pub(super) rejected_steer_history_records: VecDeque<UserMessageHistoryRecord>,
     pub(super) queued_user_messages: VecDeque<QueuedUserMessage>,
@@ -135,7 +134,7 @@ pub struct ThreadInputStateRestoreMode {
 
 #[derive(Debug)]
 pub(super) struct PendingSteer {
-    pub(super) id: Option<u64>,
+    pub(super) id: Option<String>,
     pub(super) user_message: UserMessage,
     pub(super) history_record: UserMessageHistoryRecord,
     pub(super) compare_key: PendingSteerCompareKey,

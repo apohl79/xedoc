@@ -20,7 +20,7 @@ struct ActiveSafetyBuffering {
 
 #[derive(Debug)]
 struct AcceptedSafetyBufferingSteer {
-    pending_steer_id: Option<u64>,
+    pending_steer_id: Option<String>,
     input: Vec<UserInput>,
 }
 
@@ -40,7 +40,7 @@ impl ChatWidget {
     pub fn record_safety_buffering_steer(
         &mut self,
         turn_id: &str,
-        pending_steer_id: Option<u64>,
+        pending_steer_id: Option<String>,
         input: &[UserInput],
     ) {
         let Some((submitted_turn_id, AppCommand::UserTurn { .. })) =
@@ -59,10 +59,10 @@ impl ChatWidget {
             });
     }
 
-    pub fn record_safety_buffering_steer_canceled(&mut self, pending_steer_id: u64) {
+    pub fn record_safety_buffering_steer_canceled(&mut self, pending_steer_id: &str) {
         self.safety_buffering
             .accepted_steers
-            .retain(|steer| steer.pending_steer_id != Some(pending_steer_id));
+            .retain(|steer| steer.pending_steer_id.as_deref() != Some(pending_steer_id));
     }
 
     pub fn apply_safety_buffered_retry_input(

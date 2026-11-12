@@ -29,7 +29,7 @@ pub enum AppCommand {
     },
     UserTurn {
         items: Vec<UserInput>,
-        pending_steer_id: Option<u64>,
+        pending_steer_id: Option<String>,
         cwd: PathBuf,
         approval_policy: AskForApproval,
         active_permission_profile: Option<ActivePermissionProfile>,
@@ -42,7 +42,7 @@ pub enum AppCommand {
         personality: Option<Personality>,
     },
     CancelPendingSteer {
-        pending_steer_id: u64,
+        pending_steer_id: String,
     },
     OverrideTurnContext {
         cwd: Option<PathBuf>,
@@ -142,7 +142,7 @@ impl AppCommand {
         }
     }
 
-    pub fn with_pending_steer_id(mut self, id: u64) -> Self {
+    pub fn with_pending_steer_id(mut self, id: String) -> Self {
         if let Self::UserTurn {
             pending_steer_id, ..
         } = &mut self
@@ -152,15 +152,15 @@ impl AppCommand {
         self
     }
 
-    pub fn cancel_pending_steer(pending_steer_id: u64) -> Self {
+    pub fn cancel_pending_steer(pending_steer_id: String) -> Self {
         Self::CancelPendingSteer { pending_steer_id }
     }
 
-    pub fn pending_steer_id(&self) -> Option<u64> {
+    pub fn pending_steer_id(&self) -> Option<&str> {
         match self {
             Self::UserTurn {
                 pending_steer_id, ..
-            } => *pending_steer_id,
+            } => pending_steer_id.as_deref(),
             Self::Interrupt { .. }
             | Self::CancelPendingSteer { .. }
             | Self::CleanBackgroundTerminals

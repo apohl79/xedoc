@@ -185,7 +185,7 @@ impl ChatWidget {
             .input_queue
             .pending_steers
             .iter()
-            .any(|pending| pending.id == Some(id))
+            .any(|pending| pending.id.as_deref() == Some(id))
     }
 
     pub fn enqueue_rejected_steer(&mut self) -> bool {
@@ -433,7 +433,7 @@ impl ChatWidget {
                 .input_queue
                 .pending_steers
                 .iter()
-                .map(|pending| pending.id)
+                .map(|pending| pending.id.clone())
                 .collect(),
             pending_steer_history_records: self
                 .input_queue
@@ -447,7 +447,6 @@ impl ChatWidget {
                 .iter()
                 .map(|pending| pending.compare_key.clone())
                 .collect(),
-            next_pending_steer_id: self.input_queue.next_pending_steer_id,
             rejected_steers_queue: self.input_queue.rejected_steers_queue.clone(),
             rejected_steer_history_records: self.input_queue.rejected_steer_history_records.clone(),
             queued_user_messages: self.input_queue.queued_user_messages.clone(),
@@ -486,7 +485,6 @@ impl ChatWidget {
                 preserve_in_flight_turn && input_state.user_turn_pending_start;
             self.input_queue.submit_pending_steers_after_interrupt =
                 preserve_in_flight_turn && input_state.submit_pending_steers_after_interrupt;
-            self.input_queue.next_pending_steer_id = input_state.next_pending_steer_id;
             self.update_collaboration_mode_indicator();
             self.refresh_model_dependent_surfaces();
             self.restore_composer_state(input_state.composer.unwrap_or_default());

@@ -272,9 +272,8 @@ impl ChatWidget {
         } else {
             None
         };
-        let pending_steer_id =
-            (!render_in_history).then(|| self.input_queue.next_pending_steer_id());
-        let pending_steer = pending_steer_id.map(|id| PendingSteer {
+        let pending_steer_id = (!render_in_history).then(|| uuid::Uuid::new_v4().to_string());
+        let pending_steer = pending_steer_id.clone().map(|id| PendingSteer {
             id: Some(id),
             user_message: UserMessage {
                 text: text.clone(),
