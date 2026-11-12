@@ -2,7 +2,6 @@
 
 import ipaddress
 import logging
-import secrets
 import threading
 import time
 from urllib.parse import urlsplit
@@ -81,7 +80,7 @@ class HostGuiBonjour:
             return
         port = urlsplit(self.origin).port or 443
         name = f"{self.hostname[:48]}-{port}.{SERVICE_TYPE}"
-        server = f"xedoc-{secrets.token_hex(8)}.local."
+        server = f"{self.hostname}.local."
         warned = False
         while not self._stopping.is_set():
             try:

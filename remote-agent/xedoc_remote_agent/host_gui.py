@@ -29,6 +29,7 @@ from .host_ca_discovery import HostCADiscovery, discover_shared_cas
 from .host_gui_bonjour import HostGuiBonjour
 from .host_gui_discovery import HostGuiDiscovery, discover_host_guis
 from .host_gui_config import HostGuiConfig
+from .host_hostname import host_hostname
 from .host_workspace import HostWorkspaces
 from .host_outside_projects import OTHER_WORKSPACE, outside_directory, session_inventory
 from .host_session_gui import HostSessionGuis, proxy_session_gui
@@ -56,7 +57,7 @@ class HostServer(ThreadingHTTPServer):
         self.origin = origin
         self.authority = urlsplit(origin).netloc
         self.secure = origin.startswith("https://")
-        self.hostname = socket.gethostname().split(".", 1)[0]
+        self.hostname = host_hostname()
         self.instance_id = secrets.token_hex(16)
         self.auth = HostAuth(home)
         self.ca = HostCA(home)
@@ -95,7 +96,7 @@ class HostServer(ThreadingHTTPServer):
         ):
             try:
                 discovery = HostCADiscovery(
-                    socket.gethostname(), self.origin, self.ca.fingerprint()
+                    self.hostname, self.origin, self.ca.fingerprint()
                 )
                 if discovery.start():
                     self.ca_discovery = discovery
@@ -928,9 +929,7 @@ def main(argv=None) -> int:
         ).strip()
         try:
             if remote_access.casefold() in ("y", "yes"):
-                default_origin = (
-                    f"https://{socket.gethostname().split('.', 1)[0]}:50000"
-                )
+                default_origin = f"https://{host_hostname()}:50000"
                 origin = input(
                     f"HTTPS origin clients will visit [{default_origin}]: "
                 ).strip() or default_origin
