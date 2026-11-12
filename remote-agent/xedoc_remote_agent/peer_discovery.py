@@ -306,6 +306,7 @@ class PeerDiscovery:
         )
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP) as sender:
+                sender.setblocking(False)
                 sender.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
                 sender.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
                 packets: dict[str, bytes | None] = {}
