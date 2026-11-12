@@ -776,6 +776,7 @@
       turnActive: !!frame.turnActive,
       needsInput: !!frame.question,
       title: frame.title || "",
+      primaryThreadId: frame.primaryThreadId || null,
     };
     window.dispatchEvent(new CustomEvent("xedoc-session-activity", { detail: hostActivity }));
     const activityKey = JSON.stringify(hostActivity);

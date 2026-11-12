@@ -27,6 +27,7 @@
   const projectCache = new Map();
   const sessionCache = new Map();
   const sessionTabOrders = new Map();
+  const sessionRebindings = new WeakMap();
   const projectActivityLoaded = new Set();
   const projectActivityRefreshAt = new Map();
   const activity = new window.XedocHostActivity();
@@ -92,14 +93,29 @@
     if (frame) frame.title = normalizedTitle;
   }
 
-  window.addEventListener("message", (event) => {
+  window.addEventListener("message", async (event) => {
     if (event.origin !== location.origin || event.data?.type !== "xedoc-session-activity") return;
     const entry = [...sessionFrames].find(([, frame]) => frame.contentWindow === event.source);
-    if (!entry) return;
-    const [threadId] = entry;
-    const session = openedSessions.get(threadId);
+    if (!entry || entry[1].dataset.closing) return;
+    let [threadId] = entry;
+    let session = openedSessions.get(threadId);
     if (!session) return;
-    updateSessionTitle(threadId, event.data.title);
+    let title = event.data.title;
+    const primaryThreadId = event.data.primaryThreadId;
+    if (typeof primaryThreadId === "string" && primaryThreadId && primaryThreadId !== threadId) {
+      const frame = entry[1];
+      const pending = sessionRebindings.get(frame) || Promise.resolve();
+      const next = pending.then(() => rebindSession(frame, primaryThreadId))
+        .catch((error) => notice(error.message));
+      sessionRebindings.set(frame, next);
+      await next;
+      if (sessionFrames.get(primaryThreadId) !== frame) return;
+      threadId = primaryThreadId;
+      session = openedSessions.get(threadId);
+      if (!session) return;
+      title ||= threadId;
+    }
+    updateSessionTitle(threadId, title);
     const needsInput = Boolean(event.data.needsInput);
     activity.observe({
       threadId,
@@ -109,6 +125,51 @@
     if (activeThread === threadId) markActiveSessionVisited();
     activity.paint();
   });
+
+  async function rebindSession(frame, threadId) {
+    const entry = [...sessionFrames].find(([, item]) => item === frame);
+    if (!entry || entry[0] === threadId) return;
+    const previousThreadId = entry[0];
+    const session = openedSessions.get(previousThreadId);
+    const generation = accountGeneration;
+    const token = new URL(frame.src).hash.slice(1);
+    await api("session/rebind", {
+      workspaceId: session.workspaceId, projectName: session.projectName,
+      threadId, token: new URLSearchParams(token).get("capability"),
+    });
+    if (generation !== accountGeneration || sessionFrames.get(previousThreadId) !== frame) return;
+    sessionRequest++;
+    projectViewRequest++;
+    const selected = activeThread === previousThreadId || activeThread === threadId;
+    const duplicate = sessionFrames.get(threadId);
+    if (duplicate && duplicate !== frame) duplicate.remove();
+    sessionFrames.delete(previousThreadId);
+    sessionFrames.set(threadId, frame);
+    openedSessions.delete(previousThreadId);
+    openedSessions.set(threadId, { ...session, threadId });
+    pluginPanels.removeSession(previousThreadId);
+    pluginPanels.removeSession(threadId);
+    activity.releaseLive(previousThreadId);
+    activity.releaseLive(threadId);
+    const key = projectSessionKey(session.workspaceId, session.projectName);
+    const order = sessionTabOrders.get(key) || [];
+    sessionTabOrders.set(key, order.filter((id) => id !== threadId)
+      .map((id) => id === previousThreadId ? threadId : id));
+    const cached = sessionCache.get(key);
+    if (cached) sessionCache.set(key, cached.filter((item) => item.threadId !== threadId)
+      .map((item) => item.threadId === previousThreadId ? { ...item, threadId } : item));
+    if (selected) activeThread = threadId;
+    if (session.workspaceId === selectedWorkspace && session.projectName === selectedProject) {
+      applyProjectSessions(sessionCache.get(key) || []);
+      if (selected) {
+        frame.hidden = false;
+        byId("session-loading").hidden = true;
+        focusSessionPrompt(frame);
+      }
+    }
+    activity.paint();
+    saveView();
+  }
   document.addEventListener("visibilitychange", refreshVisibleActivity);
   window.addEventListener("focus", refreshVisibleActivity);
   function saveView() {
@@ -942,8 +1003,19 @@
   async function closeSession(threadId) {
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
+    const frame = sessionFrames.get(threadId);
+    if (frame) {
+      frame.dataset.closing = "true";
+      await sessionRebindings.get(frame);
+      threadId = [...sessionFrames].find(([, item]) => item === frame)?.[0] || threadId;
+    }
     sessionRequest++;
-    await api("session/close", { workspaceId, projectName, threadId });
+    try {
+      await api("session/close", { workspaceId, projectName, threadId });
+    } catch (error) {
+      if (frame) delete frame.dataset.closing;
+      throw error;
+    }
     sessionFrames.get(threadId)?.remove();
     sessionFrames.delete(threadId);
     openedSessions.delete(threadId);

@@ -96,22 +96,25 @@ class HostSessionGuis:
         ):
             raise BrokerError.unavailable("Invalid local GUI address")
         with self.lock:
-            connected = None
             for token, entry in list(self.entries.items()):
                 if (entry["username"], entry["threadId"]) == (username, thread_id):
-                    if entry["address"].netloc == address.netloc:
-                        connected = self._connected(address)
-                        if connected:
-                            return {
-                                "guiUrl": f"/session-ui/{token}/#capability={token}"
-                            }
+                    if self._connected(entry["address"]):
+                        return {
+                            "guiUrl": f"/session-ui/{token}/#capability={token}"
+                        }
                     self.entries.pop(token)
-            if connected is not True:
-                previous = self.producers.pop(thread_id, None)
+                    if not any(
+                        other["address"].netloc == entry["address"].netloc
+                        for other in self.entries.values()
+                    ):
+                        previous = self.producers.pop(entry["address"].netloc, None)
+                        if previous is not None:
+                            previous.close()
+            connected = self._connected(address)
+            if not connected:
+                previous = self.producers.pop(address.netloc, None)
                 if previous is not None:
                     previous.close()
-                if connected is None:
-                    connected = self._connected(address)
             if len(self.entries) >= 16:
                 raise BrokerError.limit_exceeded(
                     "Close a session tab before opening another"
@@ -176,7 +179,7 @@ class HostSessionGuis:
                     "address": address,
                 }
                 if client is not None:
-                    self.producers[thread_id] = client
+                    self.producers[address.netloc] = client
                 return {"guiUrl": f"/session-ui/{token}/#capability={token}"}
             except BaseException:
                 if client is not None:
@@ -209,6 +212,22 @@ class HostSessionGuis:
                 raise BrokerError.not_found()
             return entry
 
+    def rebind(self, token, account, workspace_id, project_name, thread_id):
+        with self.lock:
+            if not isinstance(token, str):
+                raise BrokerError.not_found()
+            entry = self.entry(token, account)
+            if (entry["workspaceId"], entry["projectName"]) != (
+                workspace_id, project_name
+            ):
+                raise BrokerError.not_found()
+            previous_thread_id = entry["threadId"]
+            if previous_thread_id == thread_id:
+                return previous_thread_id
+            self.close(account["username"], thread_id)
+            entry["threadId"] = thread_id
+            return previous_thread_id
+
     def close(self, username=None, thread_id=None, *, workspace_id=None):
         with self.lock:
             for token, entry in list(self.entries.items()):
@@ -222,10 +241,10 @@ class HostSessionGuis:
                     continue
                 self.entries.pop(token)
                 if not any(
-                    other["threadId"] == entry["threadId"]
+                    other["address"].netloc == entry["address"].netloc
                     for other in self.entries.values()
                 ):
-                    client = self.producers.pop(entry["threadId"], None)
+                    client = self.producers.pop(entry["address"].netloc, None)
                     if client is not None:
                         client.close()
 

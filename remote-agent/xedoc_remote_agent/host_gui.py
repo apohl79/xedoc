@@ -552,6 +552,7 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/api/session/close",
                 "/api/session/turn",
                 "/api/session/gui",
+                "/api/session/rebind",
                 "/api/plugin/panels",
                 "/api/plugin/actions",
                 "/api/plugin/open",
@@ -595,6 +596,31 @@ class HostHandler(BaseHTTPRequestHandler):
                         self.reply(200, {"ok": True})
                     else:
                         self.reply(405, {"error": "Method not allowed"})
+                    return
+                if self.command == "POST" and path == "/api/session/rebind":
+                    thread_id = body.get("threadId")
+                    with service._lock:
+                        project = service._project_path(workspace_id, project_name)
+                        service._thread_for_project(thread_id, project)
+                        previous_thread_id = self.server.session_guis.rebind(
+                            body.get("token"), account, workspace_id,
+                            project_name, thread_id,
+                        )
+                        if previous_thread_id != thread_id:
+                            service._remember_closed(
+                                account["username"], previous_thread_id, True
+                            )
+                        service._remember_closed(
+                            account["username"], thread_id, False
+                        )
+                    if previous_thread_id != thread_id:
+                        self.server.plugin_panels.close(
+                            account["username"], previous_thread_id
+                        )
+                    self.server.plugin_panels.attach(
+                        account, token, workspace_id, project_name, thread_id, project
+                    )
+                    self.reply(200, {"ok": True})
                     return
                 if self.command == "POST" and path == "/api/session/gui":
                     thread_id = body.get("threadId")

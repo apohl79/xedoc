@@ -699,6 +699,7 @@ impl App {
             "type": "frame", "threadId": session.thread_id.to_string(),
             "fullImage": full_image,
             "activeThreadId": active_thread.map(|id| id.to_string()),
+            "primaryThreadId": self.primary_thread_id.map(|id| id.to_string()),
             "title": self.chat_widget.thread_name(), "width": width,
             "turnActive": self.chat_widget.browser_turn_active(),
             "history": history, "historyStart": first, "historyEnd": end, "historyTotal": self.transcript_cells.len(),

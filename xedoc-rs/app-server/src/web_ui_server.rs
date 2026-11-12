@@ -104,6 +104,26 @@ impl WebUiServer {
             return Err(internal_error("web UI server is shutting down"));
         }
         let mut sessions = self.sessions.lock().await;
+        let moved: Vec<_> = sessions
+            .iter()
+            .filter_map(|(owner, session)| {
+                let frame = session.state.frame.borrow();
+                let frame: serde_json::Value = serde_json::from_str(frame.as_ref()?).ok()?;
+                let primary = ThreadId::from_string(frame["primaryThreadId"].as_str()?).ok()?;
+                (primary != *owner).then_some((*owner, primary))
+            })
+            .collect();
+        let moved: Vec<_> = moved
+            .into_iter()
+            .filter_map(|(owner, primary)| {
+                sessions.remove(&owner).map(|session| (primary, session))
+            })
+            .collect();
+        for (primary, session) in moved {
+            if let Some(previous) = sessions.insert(primary, session) {
+                previous.state.shutdown.cancel();
+            }
+        }
         if !sessions.contains_key(&thread_id) {
             if sessions.len() >= 16 {
                 sessions.retain(|_, session| {
