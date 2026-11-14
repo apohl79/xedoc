@@ -35,7 +35,12 @@ pub(crate) fn history_cell_page_count(cell: &dyn HistoryCell) -> u16 {
     let markdown_page_count = cell
         .as_any()
         .downcast_ref::<UserHistoryCell>()
-        .map(|user| markdown_pages(&user.message).len())
+        .map(|user| {
+            markdown_pages(&user.message)
+                .len()
+                .saturating_add(user.remote_image_urls.len())
+                .saturating_add(user.local_image_paths.len())
+        })
         .or_else(|| {
             cell.as_any()
                 .downcast_ref::<AgentMarkdownCell>()
@@ -108,19 +113,32 @@ pub(crate) fn history_cell_html(
                 html.push('"');
             }
             html.push_str("><div>");
-            if index == 0 {
-                for (image_index, _) in user.remote_image_urls.iter().enumerate() {
-                    let _ = write!(
-                        html,
-                        "<div class=\"image-anchor\">[Image #{}]</div>",
-                        image_index + 1
-                    );
-                }
-            }
             html.push_str("<div class=\"prompt-markdown\">");
             escape_html(&mut html, page);
             html.push_str("</div>");
             html.push_str("</div></div>");
+        }
+        let image_count = user
+            .remote_image_urls
+            .len()
+            .saturating_add(user.local_image_paths.len());
+        for image_index in usize::from(page_start).saturating_sub(pages.len())
+            ..usize::from(page_end)
+                .saturating_sub(pages.len())
+                .min(image_count)
+        {
+            let _ = write!(
+                html,
+                "<div class=\"history-user\"><div class=\"image-anchor\">[Image #{}]</div>",
+                image_index + 1
+            );
+            let source = crate::web_ui_images::history_image_source(cell, image_index);
+            html.push_str(&crate::web_ui_images::image_html(
+                source.as_deref().unwrap_or_default(),
+                cell_index,
+                image_index,
+            ));
+            html.push_str("</div>");
         }
         return html;
     }

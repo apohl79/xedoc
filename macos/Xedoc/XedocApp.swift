@@ -14,6 +14,7 @@ struct XedocApp: App {
                 CommandGroup(after: .newItem) {
                     Button("Reload Host") { delegate.reloadHost() }.keyboardShortcut("r")
                     Button("Pair Device…") { delegate.pairDevice() }
+                    Button("Open Website…") { delegate.openWebsite() }.keyboardShortcut("l")
                 }
             }
     }
@@ -120,6 +121,26 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             connection.pairingDevice = true
         } else {
             showHosts()
+        }
+    }
+
+    func openWebsite() {
+        guard let connection = connections.values.first(where: { $0.window === NSApp.keyWindow }),
+              let window = connection.window else { return }
+        let alert = NSAlert()
+        alert.messageText = "Open Website"
+        let address = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
+        address.placeholderString = "https://example.com"
+        alert.accessoryView = address
+        alert.addButton(withTitle: "Open")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = address
+        alert.beginSheetModal(for: window) { result in
+            guard result == .alertFirstButtonReturn else { return }
+            let text = address.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let url = WebsitePanel.validatedURL(text.contains("://") ? text : "https://\(text)") {
+                connection.openWebsite(url)
+            }
         }
     }
 

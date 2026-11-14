@@ -12,6 +12,8 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
     var authenticationChanged: ((Bool) -> Void)?
     @Published var error: String?
     @Published var pairingDevice = false
+    @Published var websites: [WebsitePanel] = []
+    @Published var selectedWebsite: UUID?
     @Published private(set) var certificateError = false
     private var username: String?
     private var pendingRoute: SessionRoute?
@@ -28,9 +30,16 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
         let script = try! String(contentsOf: scriptURL, encoding: .utf8)
         configuration.userContentController.addUserScript(WKUserScript(
             source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        let linksURL = Bundle.main.url(forResource: "WebsiteLinks", withExtension: "js")!
+        let links = try! String(contentsOf: linksURL, encoding: .utf8)
+        configuration.userContentController.addUserScript(WKUserScript(
+            source: links, injectionTime: .atDocumentStart, forMainFrameOnly: false,
+            in: .defaultClient))
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
         configuration.userContentController.add(DesktopBridge(connection: self), name: "xedocDesktop")
+        configuration.userContentController.add(WebsiteBridge(connection: self),
+                                                contentWorld: .defaultClient, name: "xedocWebsite")
         webView.navigationDelegate = self
         webView.uiDelegate = self
     }
@@ -49,6 +58,10 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
     func close() {
         webView.stopLoading()
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "xedocDesktop")
+        webView.configuration.userContentController.removeScriptMessageHandler(
+            forName: "xedocWebsite", contentWorld: .defaultClient)
+        websites.forEach { $0.close() }
+        websites.removeAll()
         window?.contentView = nil
         window = nil
     }
@@ -143,6 +156,32 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
         target.scheme == url.scheme && target.host == url.host && (target.port ?? 443) == (url.port ?? 443)
     }
 
+    func openWebsite(_ url: URL, external: Bool = false) {
+        guard WebsitePanel.validatedURL(url.absoluteString) != nil else { return }
+        if external {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        let panel = WebsitePanel()
+        websites.append(panel)
+        selectedWebsite = panel.id
+        panel.load(url)
+    }
+
+    func closeWebsite(_ panel: WebsitePanel) {
+        panel.close()
+        websites.removeAll { $0.id == panel.id }
+        if selectedWebsite == panel.id { selectedWebsite = websites.last?.id }
+    }
+
+    func receiveWebsite(_ message: WKScriptMessage) {
+        guard let source = message.frameInfo.request.url, sameOrigin(source),
+              let body = message.body as? [String: Any],
+              let text = body["url"] as? String, let url = WebsitePanel.validatedURL(text)
+        else { return }
+        openWebsite(url, external: body["external"] as? Bool ?? false)
+    }
+
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let target = action.request.url else { decisionHandler(.cancel); return }
@@ -151,7 +190,7 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
         } else {
             decisionHandler(.cancel)
             if action.navigationType == .linkActivated, ["https", "http"].contains(target.scheme) {
-                NSWorkspace.shared.open(target)
+                openWebsite(target, external: action.modifierFlags.contains(.command))
             }
         }
     }
@@ -159,7 +198,9 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         guard let target = action.request.url else { return nil }
-        if ["http", "https"].contains(target.scheme) { NSWorkspace.shared.open(target) }
+        if ["http", "https"].contains(target.scheme) {
+            openWebsite(target, external: sameOrigin(target) || action.modifierFlags.contains(.command))
+        }
         return nil
     }
 
@@ -184,6 +225,15 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
 }
 
 @MainActor
+private final class WebsiteBridge: NSObject, WKScriptMessageHandler {
+    weak var connection: HostConnection?
+    init(connection: HostConnection) { self.connection = connection }
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        connection?.receiveWebsite(message)
+    }
+}
+
+@MainActor
 private final class DesktopBridge: NSObject, WKScriptMessageHandler {
     weak var connection: HostConnection?
     init(connection: HostConnection) { self.connection = connection }
@@ -196,7 +246,10 @@ struct HostScreen: View {
     @ObservedObject var connection: HostConnection
 
     var body: some View {
-        DesktopWebView(view: connection.webView)
+        HSplitView {
+            DesktopWebView(view: connection.webView).frame(minWidth: 320)
+            if !connection.websites.isEmpty { WebsitePane(connection: connection).padding(.top, 32) }
+        }
             .ignoresSafeArea()
             .sheet(isPresented: $connection.pairingDevice) {
                 PairDeviceView(connection: connection)

@@ -1,8 +1,42 @@
 //! Bounded raster previews for image output in the browser transcript.
 
 use std::io::Cursor;
+use std::io::Read;
 
 use base64::Engine;
+
+pub(crate) fn history_image_source(
+    cell: &dyn crate::history_cell::HistoryCell,
+    image_index: usize,
+) -> Option<std::borrow::Cow<'_, str>> {
+    use crate::history_cell::ImageOutputCell;
+    use crate::history_cell::UserHistoryCell;
+
+    if let Some(images) = cell.as_any().downcast_ref::<ImageOutputCell>() {
+        return images
+            .images
+            .get(image_index)
+            .map(|source| std::borrow::Cow::Borrowed(source.as_str()));
+    }
+    let user = cell.as_any().downcast_ref::<UserHistoryCell>()?;
+    if let Some(source) = user.remote_image_urls.get(image_index) {
+        return Some(std::borrow::Cow::Borrowed(source.as_str()));
+    }
+    let path = user
+        .local_image_paths
+        .get(image_index.checked_sub(user.remote_image_urls.len())?)?;
+    let file = std::fs::File::open(path).ok()?;
+    let mut bytes = Vec::new();
+    file.take(8 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if bytes.len() > 8 * 1024 * 1024 {
+        return None;
+    }
+    Some(std::borrow::Cow::Owned(
+        base64::engine::general_purpose::STANDARD.encode(bytes),
+    ))
+}
 
 pub(crate) fn image_html(source: &str, cell_index: Option<usize>, image_index: usize) -> String {
     let image_reference = cell_index.map_or_else(String::new, |cell_index| {
@@ -10,7 +44,7 @@ pub(crate) fn image_html(source: &str, cell_index: Option<usize>, image_index: u
     });
     match preview(source) {
         Some(preview) => format!(
-            "<figure class=\"history-image\"><button class=\"history-image-trigger\" type=\"button\" aria-label=\"View image at full size\"{image_reference}><img src=\"{}\" alt=\"Generated image\" loading=\"lazy\"></button><figcaption>{} × {} · {}</figcaption></figure>",
+            "<figure class=\"history-image\"><button class=\"history-image-trigger\" type=\"button\" aria-label=\"View image at full size\"{image_reference}><img src=\"{}\" alt=\"Image\" loading=\"lazy\"></button><figcaption>{} × {} · {}</figcaption></figure>",
             preview.data_url, preview.width, preview.height, preview.format
         ),
         None => "<div class=\"history-tool\">Image preview unavailable</div>".to_string(),

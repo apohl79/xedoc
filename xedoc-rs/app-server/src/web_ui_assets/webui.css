@@ -82,7 +82,7 @@ a { color: #8fc4e7; }
 .history-user > :first-child { margin-top: 0; }
 .history-user > :last-child { margin-bottom: 0; }
 .line { display: block; min-height: 1lh; white-space: pre-wrap; overflow-wrap: anywhere; }
-.history-terminal .line, #live .line, #activity > .line { white-space: pre; overflow-wrap: normal; }
+.history-terminal .line, #live .line { white-space: pre; overflow-wrap: normal; }
 .history-lines { white-space: normal; overflow-wrap: anywhere; }
 .history-lines > div { min-height: 1.4em; white-space: pre-wrap; overflow-wrap: anywhere; }
 .history-tool, .history-tool-slice { padding: 0 8px; }
@@ -114,7 +114,7 @@ a { color: #8fc4e7; }
 .history-slice { padding: 0 8px; }
 .history-user-slice .line, .history-user-slice span, .history-slice .line { background-color: transparent !important; }
 #composer { flex: none; min-width: 0; }
-#activity { max-height: 32dvh; overflow: auto; padding-left: 10px; font-family: var(--mono); font-size: 13px; margin-bottom: 10px; }
+#activity { max-height: 32dvh; overflow-y: auto; overflow-x: hidden; padding-left: 10px; font-family: var(--mono); font-size: 13px; margin-bottom: 10px; }
 #activity:empty { display: none; }
 #activity .activity-meta, #activity .activity-meta * { color: var(--fg-dim) !important; opacity: 1; }
 #activity .task-heading, #activity .task-row, #activity .agent-heading, #activity .agent-row { font-family: var(--sans); font-size: 15px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }

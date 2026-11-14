@@ -275,11 +275,9 @@ impl App {
                     .transcript_cells
                     .get(cell_index)
                     .and_then(|cell| {
-                        cell.as_any()
-                            .downcast_ref::<crate::history_cell::ImageOutputCell>()
+                        crate::web_ui_images::history_image_source(cell.as_ref(), image_index)
                     })
-                    .and_then(|images| images.images.get(image_index))
-                    .and_then(|source| crate::web_ui_images::full_image_data_url(source));
+                    .and_then(|source| crate::web_ui_images::full_image_data_url(&source));
                 if let (Some(data_url), Some(session)) = (data_url, tui.web_ui.as_mut()) {
                     session.full_image_response = Some(FullImageResponse {
                         request_id,
