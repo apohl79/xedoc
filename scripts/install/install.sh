@@ -1221,7 +1221,16 @@ configure_host_push() (
   fi
   step "Provisioning missing host push credentials"
   if ! command -v op >/dev/null 2>&1; then
-    printf 'WARNING: Host push is unavailable: 1Password CLI is not installed; signing keys cannot be retrieved.\n' >&2
+    for op_dir in /opt/homebrew/bin /usr/local/bin; do
+      if [ -x "$op_dir/op" ]; then
+        PATH="$op_dir:$PATH"
+        export PATH
+        break
+      fi
+    done
+  fi
+  if ! command -v op >/dev/null 2>&1; then
+    printf 'WARNING: Host push is unavailable: 1Password CLI was not found in PATH or standard Homebrew locations; signing keys cannot be retrieved.\n' >&2
     return 0
   fi
   # apns setup discovers the op accounts and asks for 1Password approval.
