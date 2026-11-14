@@ -6,6 +6,8 @@ struct PairDeviceView: View {
     let connection: HostConnection
     @Environment(\.dismiss) private var dismiss
     @State private var enabled: Bool?
+    @State private var canInvite = false
+    @State private var localPairing = LocalDevicePairing()
     @State private var invitation = ""
     @State private var invitationID = ""
     @State private var expiresAt = Date.distantPast
@@ -56,21 +58,23 @@ struct PairDeviceView: View {
                     } else if enabled == true {
                         Text("On this Mac: create a single-use invitation for the connected host. Keep this window open while you pair the other device.")
                         Text("Next, you’ll transfer the invitation and compare the host fingerprint on both devices.")
+                    } else if canInvite {
+                        Label("Pair your other device", systemImage: "iphone.and.arrow.forward")
+                            .font(.headline)
+                        Text("On this Mac: choose Create invitation. Xedoc will enable certificate protection for other devices. You do not need to pair this Mac or install a certificate profile.")
+                        Text("Local access on the host Mac stays unchanged. Existing unpaired remote connections will be disconnected.")
+                            .font(.callout).foregroundStyle(.secondary)
+                        Text("Next, open Xedoc on the other device to receive the invitation and verify the host.")
                     } else if enabled == false {
-                        Label("First pair this Mac", systemImage: "terminal").font(.headline)
-                        Text("On the host computer: configure private-CA HTTPS with the address devices will use through the bridge. Do not expose the connector yet.")
-                        Text("In a terminal on that host, run:")
-                        Text("xedoc-remote-agentd device-pairing invite")
-                            .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
-                        Text("Use --xedoc-home if the host uses a non-default home. Keep the output private: it is this Mac’s first invitation.")
-                        Text("On the host computer: restart its Host GUI service to enable client certificate protection. This disconnects existing unpaired clients.")
-                        Text("On this Mac: open Hosts → Pair a host, paste that invitation, and complete pairing. Reconnect and sign in as an administrator, then return to File → Pair Device… to invite the other device.")
+                        Label("Host setup required", systemImage: "network").font(.headline)
+                        Text("On the host computer: configure private-CA HTTPS with an address the other device can reach. Then return here and choose Check again. Local access on this Mac does not need pairing.")
+                        Text("If HTTPS is already configured, update the host to enable invitation creation from this app.")
                     } else if failure == nil {
                         ProgressView("Checking host protection…")
                     }
                     if let failure {
                         Text(failure).foregroundStyle(.red).font(.callout)
-                        Text("On this Mac: sign in to this host as an administrator and retry. If protection is not enabled yet, use the host setup steps first.")
+                        Text("For this Mac’s host, connect using This Mac in Hosts. For another host, sign in as an administrator and retry.")
                             .font(.callout)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
@@ -80,8 +84,8 @@ struct PairDeviceView: View {
                 Spacer()
                 if working { ProgressView().controlSize(.small) }
                 if status != "completed" {
-                    Button(enabled == true ? (invitation.isEmpty ? "Create invitation" : "New invitation") : "Check again") {
-                        Task { await update(create: enabled == true) }
+                    Button(canInvite ? (invitation.isEmpty ? "Create invitation" : "New invitation") : "Check again") {
+                        Task { await update(create: canInvite) }
                     }
                     .buttonStyle(.borderedProminent).disabled(working)
                 }
@@ -128,11 +132,13 @@ struct PairDeviceView: View {
                 expiresAt = Date(timeIntervalSince1970: expiration)
                 status = "pending"
                 invitationID = identifier
+                enabled = true
             } else {
                 guard let protection = result["enabled"] as? Bool else {
                     throw pairingError("Update the host to a version that supports device pairing.")
                 }
                 enabled = protection
+                canInvite = result["canInvite"] as? Bool ?? protection
             }
         } catch {
             failure = error.localizedDescription
@@ -140,6 +146,9 @@ struct PairDeviceView: View {
     }
 
     private func request(_ path: String, body: [String: String]?) async throws -> [String: Any] {
+        if let result = try await localPairing.request(for: connection.url, path: path, body: body) {
+            return result
+        }
         let encoded = try body.map { String(decoding: try JSONEncoder().encode($0), as: UTF8.self) }
         let value = try await connection.webView.callAsyncJavaScript("""
             if (location.origin !== origin) throw new Error("Open and sign in to the host first.");

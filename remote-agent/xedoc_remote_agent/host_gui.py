@@ -31,6 +31,7 @@ from .host_gui_discovery import HostGuiDiscovery, discover_host_guis
 from .host_gui_config import HostGuiConfig
 from .host_gui_local import LocalHostAccess
 from .host_device_pairing import HostDevicePairing
+from .host_pairing_activation import can_invite_device, invite_device
 from .host_hostname import host_hostname
 from .host_workspace import HostWorkspaces
 from .host_outside_projects import OTHER_WORKSPACE, outside_directory, session_inventory
@@ -68,9 +69,12 @@ class HostServer(ThreadingHTTPServer):
         self.tls_certificate = (
             tls_config.tls_cert.read_bytes() if tls_config.tls_cert is not None else None
         )
+        self.active_connections: dict[int, socket.socket] = {}
+        self.active_connections_lock = threading.Lock()
         self.device_pairing = (
             HostDevicePairing(home) if tls_config.tls_client_ca is not None else None
         )
+        self.pairing_lock = threading.Lock()
         if self.device_pairing is not None and not self.secure:
             raise ValueError("Paired device access requires HTTPS")
         self.hostname = host_hostname()
@@ -161,11 +165,32 @@ class HostServer(ThreadingHTTPServer):
         if not self.slots.acquire(blocking=False):
             self.shutdown_request(request)
             return
+        connection_id = request.fileno()
+        with self.active_connections_lock:
+            self.active_connections[connection_id] = request
         try:
             super().process_request(request, client_address)
         except BaseException:
+            with self.active_connections_lock:
+                if self.active_connections.get(connection_id) is request:
+                    self.active_connections.pop(connection_id)
             self.slots.release()
             raise
+
+    def close_existing_connections(self, except_connection=None):
+        except_id = except_connection.fileno() if except_connection is not None else None
+        with self.active_connections_lock:
+            connections = [
+                (connection_id, connection)
+                for connection_id, connection in self.active_connections.items()
+                if connection_id != except_id
+            ]
+        for _, connection in connections:
+            try:
+                connection.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            self.shutdown_request(connection)
 
     def get_request(self):
         try:
@@ -181,15 +206,25 @@ class HostServer(ThreadingHTTPServer):
         logging.error("Host GUI connection handler failed", exc_info=True)
 
     def process_request_thread(self, request, client_address):
+        connection_id = request.fileno()
         try:
             request.settimeout(15)
-            if self.tls_context is not None:
-                request = self.tls_context.wrap_socket(request, server_side=True)
+            tls_context = self.tls_context
+            if tls_context is not None:
+                request = tls_context.wrap_socket(request, server_side=True)
+                with self.active_connections_lock:
+                    self.active_connections[connection_id] = request
+                if tls_context is not self.tls_context:
+                    self.shutdown_request(request)
+                    return
             super().process_request_thread(request, client_address)
         except OSError:
             logging.warning("Host GUI TLS connection failed", exc_info=True)
             self.shutdown_request(request)
         finally:
+            with self.active_connections_lock:
+                if self.active_connections.get(connection_id) is request:
+                    self.active_connections.pop(connection_id)
             self.slots.release()
 
 
@@ -822,42 +857,30 @@ class HostHandler(BaseHTTPRequestHandler):
                 self.reply(200, {
                     "enabled": pairing is not None and pairing_server.secure
                     and pairing_server.tls_context is not None,
+                    "canInvite": can_invite_device(pairing_server),
                     "origin": pairing_server.origin,
                 })
                 return
             if self.command == "POST" and path in (
                 "/api/device/invite", "/api/device/pairing-status"
             ):
-                if pairing is None or not pairing_server.secure or pairing_server.tls_context is None:
+                if not pairing_server.secure or pairing_server.tls_context is None:
                     self.reply(409, {
-                        "error": "Device pairing is not enabled. On the host, create a "
-                        "device-pairing invitation and restart Host GUI first."
+                        "error": "Configure private-CA HTTPS on the host before inviting "
+                        "another device. This Mac does not need to be paired."
                     })
                     return
                 if path == "/api/device/pairing-status":
+                    if pairing is None:
+                        self.reply(409, {"error": "Create a device invitation first"})
+                        return
                     if set(body) != {"invitationId"}:
                         raise ValueError("Expected an invitation ID")
                     self.reply(200, pairing.invitation_status(body["invitationId"]))
                     return
                 if body:
                     raise ValueError("Expected an empty invitation request")
-                config = pairing_server.tls_config
-                if (
-                    config.tls_client_ca.resolve() != pairing.ca_path.resolve()
-                    or ssl.PEM_cert_to_DER_cert(pairing.ca_path.read_text())
-                    not in pairing_server.tls_context.get_ca_certs(binary_form=True)
-                ):
-                    raise ValueError(
-                        "The running client CA does not match app-managed device pairing; "
-                        "configure device-pairing on the host first"
-                    )
-                if config.tls_cert.read_bytes() != pairing_server.tls_certificate:
-                    raise ValueError(
-                        "The server certificate changed; restart Host GUI before pairing"
-                    )
-                self.reply(200, pairing.invite_details(
-                    config, self.server.auth.directory / "ca-cert.pem"
-                ))
+                self.reply(200, invite_device(pairing_server, self.connection))
                 return
             if self.command == "POST" and path == "/api/project/open-folder":
                 directory = outside_directory(body.get("path"))
