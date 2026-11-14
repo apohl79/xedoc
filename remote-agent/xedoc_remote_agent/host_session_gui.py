@@ -2,6 +2,7 @@
 
 import base64
 import http.client
+import json
 import os
 from pathlib import Path
 import secrets
@@ -10,7 +11,7 @@ import shutil
 import socket
 import threading
 import time
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from .controller import _default_client_factory
 from .errors import BrokerError
@@ -213,6 +214,57 @@ class HostSessionGuis:
             ):
                 raise BrokerError.not_found()
             return entry
+
+    def inference(self, account, thread_id):
+        with self.lock:
+            match = next(
+                ((token, entry) for token, entry in self.entries.items()
+                 if entry["username"] == account["username"]
+                 and entry["threadId"] == thread_id),
+                None,
+            )
+            if match is None:
+                raise BrokerError.unavailable("No active host GUI session for hosted inference")
+            token, _ = match
+            entry = self.entry(token, account)
+            address = entry["address"]
+        capability = address.fragment.removeprefix("capability=")
+        connection = http.client.HTTPConnection(address.hostname, address.port, timeout=2)
+        try:
+            connection.request(
+                "GET", f"/inference/{quote(capability, safe='')}/{quote(thread_id, safe='')}"
+            )
+            response = connection.getresponse()
+            body = response.read(1024 * 1024 + 1)
+            if len(body) > 1024 * 1024:
+                raise BrokerError.unavailable("Hosted inference snapshot is too large")
+            if response.status != 200:
+                message = body.decode().strip() if response.status in (409, 503) else ""
+                if response.status == 409:
+                    raise BrokerError.conflict(message or "The main session changed")
+                raise BrokerError.unavailable(message or "Hosted inference snapshot is unavailable")
+            snapshot = json.loads(body)
+            if (
+                not isinstance(snapshot, dict)
+                or snapshot.get("threadId") != thread_id
+                or not isinstance(snapshot.get("model"), str) or not snapshot["model"]
+                or not isinstance(snapshot.get("modelProvider"), str) or not snapshot["modelProvider"]
+                or "reasoningEffort" not in snapshot
+                or snapshot.get("reasoningEffort") is not None
+                and not isinstance(snapshot["reasoningEffort"], str)
+                or not isinstance(snapshot.get("models"), list)
+                or not 0 < len(snapshot["models"]) <= 1000
+            ):
+                raise BrokerError.unavailable("Invalid hosted inference snapshot")
+            with self.lock:
+                current = self.entry(token, account)
+                if current["threadId"] != thread_id or current["address"] != address:
+                    raise BrokerError.conflict("The main session changed; reopen the plugin panel")
+            return snapshot
+        except (OSError, ValueError, http.client.HTTPException) as error:
+            raise BrokerError.unavailable("Hosted inference snapshot is unavailable") from error
+        finally:
+            connection.close()
 
     def rebind(self, token, account, workspace_id, project_name, thread_id):
         with self.lock:

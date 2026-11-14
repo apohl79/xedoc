@@ -52,9 +52,60 @@ The host passes one bounded JSON line on stdin:
   "home": "/absolute/xedoc-home",
   "sessionSocket": "/absolute/controller.sock",
   "sessionDir": "/absolute/private-panel-state",
-  "mainJsonlPath": null
+  "mainJsonlPath": null,
+  "inference": {
+    "threadId": "the-open-main-thread",
+    "model": "gpt-6-astra",
+    "modelProvider": "openai",
+    "reasoningEffort": "medium",
+    "models": [{
+      "id": "gpt-6-astra",
+      "model": "gpt-6-astra",
+      "providerId": "openai",
+      "upgrade": null,
+      "upgradeInfo": null,
+      "availabilityNux": null,
+      "displayName": "GPT-6 Astra",
+      "description": "Example cached model",
+      "hidden": false,
+      "availability": "available",
+      "supportedReasoningEfforts": [{
+        "reasoningEffort": "medium",
+        "description": "Medium reasoning"
+      }],
+      "defaultReasoningEffort": "medium",
+      "inputModalities": ["text", "image"],
+      "supportsPersonality": false,
+      "additionalSpeedTiers": [],
+      "serviceTiers": [],
+      "defaultServiceTier": null,
+      "isDefault": true
+    }]
+  }
 }
 ```
+
+`inference` is the host's current resolved main-thread selection and cached model
+catalog, not browser-supplied settings. `reasoningEffort` may be `null`; each model
+retains its explicit `providerId`, `supportedReasoningEfforts`, and
+`defaultReasoningEffort` as in the native `model/list` response. Plugins use this
+snapshot directly instead of starting another app-server, calling `model/list`
+or `config/read`, or reading the rollout to discover their initial selection.
+Standalone plugin launches may retain their own discovery path.
+
+The host reads a private capability-protected loopback snapshot from the existing
+session server. This reads only the current thread state and in-memory catalog:
+it does not refresh providers, reload configuration, or wait for model discovery.
+Catalog freshness follows Xedoc's existing refresh worker. Both browser actions
+and local skill launches receive the same snapshot. Main-thread changes are
+validated independently of the selected child thread in the browser.
+
+Snapshots are limited to 1000 models and 1 MiB of serialized JSON. A busy, missing,
+or oversized cache, an active provider/model absent from that cache, or a stale
+main-thread identity fails the launch explicitly. It never silently chooses a
+different provider or falls back to discovery; retry after the session/catalog
+is ready. An existing live panel still reuses its process without fetching another
+snapshot.
 
 The process must print one JSON line within 180 seconds:
 `{"url":"http://127.0.0.1:12345/","title":"discussion.md"}`.

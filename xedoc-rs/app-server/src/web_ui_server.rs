@@ -40,6 +40,8 @@ use crate::error_code::invalid_request;
 
 #[path = "web_ui_file_search.rs"]
 mod file_search;
+#[path = "web_ui_inference.rs"]
+mod inference;
 
 const FRAME_LIMIT: usize = 16 * 1024 * 1024;
 const INPUT_LIMIT: usize = 16 * 1024 * 1024;
@@ -61,6 +63,7 @@ struct RunningSession {
 
 struct SessionState {
     thread: Arc<xedoc_core::XedocThread>,
+    threads: Arc<ThreadManager>,
     thread_id: String,
     host: String,
     origin: String,
@@ -71,6 +74,7 @@ struct SessionState {
     inputs: mpsc::Sender<String>,
     input_receiver: Mutex<Option<mpsc::Receiver<String>>>,
     producer_connected: AtomicBool,
+    frame_received: AtomicBool,
     connections: Arc<Semaphore>,
     shutdown: CancellationToken,
 }
@@ -156,6 +160,7 @@ impl WebUiServer {
             let (inputs, input_receiver) = mpsc::channel(/*buffer*/ 4);
             let state = Arc::new(SessionState {
                 thread,
+                threads: Arc::clone(&self.threads),
                 thread_id: params.thread_id,
                 host: address.to_string(),
                 origin: format!("http://{address}"),
@@ -166,6 +171,7 @@ impl WebUiServer {
                 inputs,
                 input_receiver: Mutex::new(Some(input_receiver)),
                 producer_connected: AtomicBool::new(false),
+                frame_received: AtomicBool::new(false),
                 connections: Arc::new(Semaphore::new(/*permits*/ 8)),
                 shutdown: self.shutdown.child_token(),
             });
@@ -176,6 +182,7 @@ impl WebUiServer {
                 .route("/webui.css", get(styles))
                 .route("/session/{token}", get(browser_upgrade))
                 .route("/bridge/{token}", get(producer_upgrade))
+                .route("/inference/{token}/{thread_id}", get(inference::snapshot))
                 .with_state(Arc::clone(&state));
             let shutdown = state.shutdown.clone();
             tokio::spawn(async move {
@@ -305,6 +312,7 @@ async fn producer_socket(mut socket: WebSocket, state: Arc<SessionState>) {
                         let valid = serde_json::from_str::<serde_json::Value>(&text)
                             .is_ok_and(|frame| frame["type"] == "frame" && frame["threadId"] == state.thread_id);
                         if !valid { break; }
+                        state.frame_received.store(true, Ordering::SeqCst);
                         state.frame.send_replace(Some(text.to_string()));
                     }
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
