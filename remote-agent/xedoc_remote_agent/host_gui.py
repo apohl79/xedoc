@@ -71,7 +71,9 @@ class HostServer(ThreadingHTTPServer):
             work_admission=work_admission,
         )
         self.session_guis = HostSessionGuis(home, self.workspaces._bootstrap_path)
-        self.plugin_panels = HostPluginPanels(home, self.workspaces, self.auth)
+        self.plugin_panels = HostPluginPanels(
+            home, self.workspaces, self.auth, self.session_guis
+        )
         self.slots = threading.BoundedSemaphore(48)
         self.tls_context = None
         self._last_accept_error = 0.0

@@ -24,10 +24,11 @@ _SOURCE_RANGE = re.compile(r":\d+(?::\d+)?(?:-\d+(?::\d+)?)?$")
 
 
 class HostPluginPanels:
-    def __init__(self, home, workspaces, auth):
+    def __init__(self, home, workspaces, auth, session_guis):
         self.home = home
         self.workspaces = workspaces
         self.auth = auth
+        self.session_guis = session_guis
         self.lock = threading.RLock()
         self.sessions = {}
         self.entries = {}
@@ -239,6 +240,7 @@ class HostPluginPanels:
             if len(self.entries) >= 16:
                 raise BrokerError.limit_exceeded("Close a plugin panel before opening another")
             thread = self.workspaces._thread_for_project(thread_id, session["project"])
+            inference = self.session_guis.inference(account, thread_id)
             descriptor = load_bootstrap_descriptor(self.workspaces._bootstrap_path)
             token = secrets.token_hex(24)
             storage_id = hashlib.sha256(json.dumps(
@@ -253,6 +255,7 @@ class HostPluginPanels:
                 "target": target, "home": str(self.home), "sessionDir": str(directory),
                 "sessionSocket": str(descriptor.socket_path),
                 "mainJsonlPath": thread.get("path"),
+                "inference": inference,
             }
             executable = str(panel["executable"])
             interpreter = panel["interpreter"]
@@ -275,7 +278,7 @@ class HostPluginPanels:
                         stdout=subprocess.PIPE, stderr=log,
                         env=environment,
                     )
-                process.stdin.write((json.dumps(context) + "\n").encode())
+                process.stdin.write((json.dumps(context, ensure_ascii=False) + "\n").encode())
                 process.stdin.close()
                 ready = queue.Queue(maxsize=1)
                 threading.Thread(
