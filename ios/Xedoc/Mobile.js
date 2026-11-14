@@ -69,6 +69,53 @@
     });
     const send = document.getElementById("send");
     const input = document.getElementById("input");
+    if (input) {
+      let swipe;
+      input.addEventListener("touchstart", (event) => {
+        swipe = null;
+        if (event.touches.length !== 1 || !input.isContentEditable
+            || !window.getSelection()?.isCollapsed) return;
+        const touch = event.touches[0];
+        swipe = { id: touch.identifier, x: touch.clientX, y: touch.clientY,
+          time: performance.now(), scrollTop: input.scrollTop, direction: null };
+      }, { passive: true });
+      input.addEventListener("touchmove", (event) => {
+        if (!swipe) return;
+        const touch = [...event.touches].find((touch) => touch.identifier === swipe.id);
+        if (event.touches.length !== 1 || !touch || performance.now() - swipe.time > 600
+            || !window.getSelection()?.isCollapsed) {
+          swipe = null;
+          return;
+        }
+        const dx = touch.clientX - swipe.x;
+        const dy = touch.clientY - swipe.y;
+        swipe.direction = null;
+        if (Math.abs(dx) > 20 && Math.abs(dx) >= Math.abs(dy)) {
+          swipe = null;
+          return;
+        }
+        if (Math.abs(dy) < 10 || Math.abs(dy) < Math.abs(dx) * 2) return;
+        const canScroll = dy < 0
+          ? swipe.scrollTop + input.clientHeight < input.scrollHeight - 1
+          : swipe.scrollTop > 1;
+        if (canScroll || !event.cancelable) {
+          swipe = null;
+          return;
+        }
+        event.preventDefault();
+        if (Math.abs(dy) >= 40) swipe.direction = dy < 0 ? "ArrowUp" : "ArrowDown";
+      }, { passive: false });
+      input.addEventListener("touchend", (event) => {
+        const gesture = swipe;
+        swipe = null;
+        if (!gesture?.direction || event.touches.length
+            || performance.now() - gesture.time > 600) return;
+        input.dispatchEvent(new KeyboardEvent("keydown", {
+          key: gesture.direction, bubbles: true, cancelable: true,
+        }));
+      });
+      input.addEventListener("touchcancel", () => { swipe = null; });
+    }
     if (send && input) {
       const interrupt = document.createElement("button");
       interrupt.id = "mobile-interrupt";

@@ -199,8 +199,12 @@
     search.focus();
   }
 
-  document.addEventListener("pointerdown", () => { promptNavigation = null; }, true);
+  document.addEventListener("pointerdown", (event) => {
+    if (event.pointerType === "touch" && input.contains(event.target)) return;
+    promptNavigation = null;
+  }, true);
   input.addEventListener("blur", () => { promptNavigation = null; });
+  input.addEventListener("input", () => { promptNavigation = null; });
   document.addEventListener("keydown", (event) => {
     const focused = input.contains(event.target);
     const plainArrow = !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
