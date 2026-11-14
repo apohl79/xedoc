@@ -534,6 +534,9 @@
     }
     await renderWorkspace();
     void refreshWorkspaceActivity().catch(() => {});
+    window.dispatchEvent(new CustomEvent("xedoc-host-ready", {
+      detail: { username: state.account.username },
+    }));
   }
 
   async function refreshWorkspaceActivity() {
@@ -999,6 +1002,57 @@
       throw error;
     }
   }
+
+  window.xedocOpenSession = async (route) => {
+    const fields = ["username", "workspaceId", "projectName", "threadId"];
+    if (!route || fields.some((key) =>
+      typeof route[key] !== "string" || !route[key].trim() || route[key].length > 1024
+    )) throw new Error("Invalid session notification.");
+    const { username, workspaceId, projectName, threadId } = route;
+    const generation = accountGeneration;
+    const viewRequest = projectViewRequest;
+    const isAccountCurrent = () => generation === accountGeneration
+      && state?.account?.username === username
+      && state.workspaces.some((workspace) => workspace.workspaceId === workspaceId);
+    if (!isAccountCurrent()) throw new Error("Sign in to the notification's account first.");
+    const projects = await api(query("projects", { workspaceId }));
+    if (!isAccountCurrent() || viewRequest !== projectViewRequest) {
+      throw new Error("Session navigation was interrupted.");
+    }
+    if (!projects.projects?.some((project) => project.name === projectName)) {
+      throw new Error("The notification's project is no longer available.");
+    }
+    const history = await api(query("project/sessions", {
+      workspaceId, projectName, includeHistory: "1",
+    }));
+    if (!isAccountCurrent() || viewRequest !== projectViewRequest) {
+      throw new Error("Session navigation was interrupted.");
+    }
+    const session = history.sessions?.find((item) => item.threadId === threadId);
+    if (!session) throw new Error("The notification's session is no longer available.");
+    saveView();
+    projectRequest++;
+    projectViewRequest++;
+    selectedWorkspace = workspaceId;
+    selectedProject = projectName;
+    activeThread = threadId;
+    projectCache.set(projectCacheKey(workspaceId), projects.projects);
+    const opening = openSession(threadId, session.archived === true);
+    const request = sessionRequest;
+    await opening;
+    if (!isAccountCurrent() || request !== sessionRequest
+      || selectedWorkspace !== workspaceId || selectedProject !== projectName
+      || activeThread !== threadId || !sessionFrames.has(threadId)) {
+      throw new Error("Session navigation was interrupted.");
+    }
+    await renderWorkspace();
+    if (!isAccountCurrent() || selectedWorkspace !== workspaceId
+      || selectedProject !== projectName || activeThread !== threadId
+      || sessionFrames.get(threadId)?.hidden !== false) {
+      throw new Error("Session navigation was interrupted.");
+    }
+    return true;
+  };
 
   async function closeSession(threadId) {
     const workspaceId = selectedWorkspace;

@@ -57,7 +57,7 @@ window.XedocHostActivity = class {
         : !active && previous.active ? "turnFinished" : null;
       if (kind) {
         window.dispatchEvent(new CustomEvent("xedoc-activity-notification", {
-          detail: { kind, threadId: session.threadId, projectName },
+          detail: { kind, username: this.account, workspaceId, threadId: session.threadId, projectName },
         }));
       }
     }

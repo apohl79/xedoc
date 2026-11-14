@@ -1,0 +1,58 @@
+name: Xedoc
+options:
+  bundleIdPrefix: org.e47.xedoc
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.77.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: 62QZB3NCZR
+targets:
+  Xedoc:
+    type: application
+    platform: macOS
+    sources:
+      - Xedoc
+      - path: ../ios/Xedoc/HostDiscovery.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.e47.xedoc.desktop
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+    info:
+      path: Xedoc/Info.plist
+      properties:
+        CFBundleDisplayName: Xedoc
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleIconFile: AppIcon
+        NSLocalNetworkUsageDescription: Find Xedoc hosts and connect to their GUI on your local network.
+        NSBonjourServices: [_xedoc-gui._tcp]
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    preBuildScripts:
+      - name: Reuse the iOS app icon
+        script: |
+          set -eu
+          iconset="$DERIVED_FILE_DIR/AppIcon.iconset"
+          mkdir -p "$iconset" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+          for size in 16 32 128 256 512; do
+            for scale in 1 2; do
+              suffix=""
+              if [ "$scale" = 2 ]; then suffix="@2x"; fi
+              pixels=$((size * scale))
+              sips -z "$pixels" "$pixels" "$SRCROOT/../ios/Xedoc/Assets.xcassets/AppIcon.appiconset/AppIcon.png" --out "$iconset/icon_${size}x${size}${suffix}.png" >/dev/null
+            done
+          done
+          iconutil -c icns "$iconset" -o "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/AppIcon.icns"
+        inputFiles:
+          - $(SRCROOT)/../ios/Xedoc/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AppIcon.icns
+schemes:
+  Xedoc:
+    build:
+      targets:
+        Xedoc: all
