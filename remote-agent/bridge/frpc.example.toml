@@ -1,0 +1,14 @@
+serverAddr = "sendnix.de"
+serverPort = 7000
+transport.tls.enable = true
+transport.tls.serverName = "sendnix.de"
+transport.tls.trustedCaFile = "/absolute/path/bridge-ca.crt"
+transport.tls.certFile = "/absolute/path/host.crt"
+transport.tls.keyFile = "/absolute/path/host.key"
+
+[[proxies]]
+name = "xedoc-host-1"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 50001
+remotePort = 50001

@@ -11,13 +11,20 @@ struct DiscoveredHost: Identifiable {
         guard origin.count <= 512,
               origin.unicodeScalars.allSatisfy({ (33...126).contains($0.value) }),
               let components = URLComponents(string: origin),
-              components.scheme == "https",
               let host = components.host, !host.isEmpty,
               components.user == nil, components.password == nil,
               components.query == nil, components.fragment == nil,
               components.path.isEmpty || components.path == "/",
               components.port.map({ (1...65535).contains($0) }) ?? true
         else { return nil }
+        if components.scheme != "https" {
+            #if os(macOS)
+            guard components.scheme == "http", ["127.0.0.1", "localhost", "[::1]"].contains(host.lowercased())
+            else { return nil }
+            #else
+            return nil
+            #endif
+        }
         return components.url
     }
 }

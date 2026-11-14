@@ -16,6 +16,8 @@ targets:
     sources:
       - Xedoc
       - path: ../ios/Xedoc/HostDiscovery.swift
+      - path: ../ios/Xedoc/HostDevicePairing.swift
+      - path: ../ios/Xedoc/HostPairingView.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.e47.xedoc.desktop

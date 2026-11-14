@@ -191,7 +191,7 @@ final class PushSubscription: ObservableObject {
 
     private func revoke() async throws {
         guard let secret = record.subscriptionId, let origin = record.origin, let url = URL(string: origin) else { return }
-        let cookies = await WKWebsiteDataStore.default().httpCookieStore.allCookies()
+        let cookies = await (HostDevicePairing.dataStore(for: url) ?? WKWebsiteDataStore.default()).httpCookieStore.allCookies()
         let response = try await request("/api/push/unregister", origin: url, cookies: cookies,
                                          body: ["subscriptionId": secret])
         guard response.code == 200 else {
@@ -278,6 +278,15 @@ final class PushSubscription: ObservableObject {
 }
 
 private final class PushRedirectGuard: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard let url = task.currentRequest?.url else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        HostDevicePairing.authenticate(challenge, for: url, completion: completionHandler)
+    }
+
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
                     completionHandler: @escaping (URLRequest?) -> Void) {

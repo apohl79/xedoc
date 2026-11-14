@@ -24,6 +24,10 @@ _ENSURE_POLL_SECONDS = 0.05
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "device-pairing":
+        from .host_device_pairing import main as device_pairing_main
+
+        return device_pairing_main(arguments[1:])
     if arguments and arguments[0] == "host-gui":
         from .host_gui import main as host_gui_main
 

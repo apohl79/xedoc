@@ -23,6 +23,7 @@ class HostGuiConfig:
     origin: str
     tls_cert: Path | None = None
     tls_key: Path | None = None
+    tls_client_ca: Path | None = None
 
     @classmethod
     def local_only(cls) -> "HostGuiConfig":
@@ -44,6 +45,7 @@ class HostGuiConfig:
             origin=value["origin"],
             tls_cert=Path(value["tls_cert"]) if value.get("tls_cert") else None,
             tls_key=Path(value["tls_key"]) if value.get("tls_key") else None,
+            tls_client_ca=Path(value["tls_client_ca"]) if value.get("tls_client_ca") else None,
         )
         config.validate()
         return config
@@ -71,7 +73,7 @@ class HostGuiConfig:
         ):
             raise ValueError("Invalid Host GUI listener address or port")
         if origin.scheme == "http":
-            if self.tls_cert or self.tls_key:
+            if self.tls_cert or self.tls_key or self.tls_client_ca:
                 raise ValueError("TLS certificate paths require an HTTPS origin")
             if self.listen_address not in ("127.0.0.1", "::1", "localhost"):
                 raise ValueError("Plain HTTP Host GUI listeners must be local-only")
@@ -93,6 +95,8 @@ class HostGuiConfig:
             raise ValueError("Host GUI listener port must match the origin port")
         if (self.tls_cert and not self.tls_cert.is_absolute()) or (
             self.tls_key and not self.tls_key.is_absolute()
+        ) or (
+            self.tls_client_ca and not self.tls_client_ca.is_absolute()
         ):
             raise ValueError("Host GUI TLS paths must be absolute")
 
@@ -103,6 +107,10 @@ class HostGuiConfig:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.load_cert_chain(self.tls_cert, self.tls_key)
+        if self.tls_client_ca is not None:
+            context.minimum_version = ssl.TLSVersion.TLSv1_3
+            context.load_verify_locations(cafile=self.tls_client_ca)
+            context.verify_mode = ssl.CERT_OPTIONAL
         return context
 
     def save(self, home: Path) -> None:
@@ -114,6 +122,7 @@ class HostGuiConfig:
             **asdict(self),
             "tls_cert": str(self.tls_cert) if self.tls_cert else None,
             "tls_key": str(self.tls_key) if self.tls_key else None,
+            "tls_client_ca": str(self.tls_client_ca) if self.tls_client_ca else None,
         }
         descriptor, temporary = tempfile.mkstemp(dir=directory)
         try:

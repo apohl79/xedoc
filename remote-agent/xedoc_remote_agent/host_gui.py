@@ -29,6 +29,8 @@ from .host_ca_discovery import HostCADiscovery, discover_shared_cas
 from .host_gui_bonjour import HostGuiBonjour
 from .host_gui_discovery import HostGuiDiscovery, discover_host_guis
 from .host_gui_config import HostGuiConfig
+from .host_gui_local import LocalHostAccess
+from .host_device_pairing import HostDevicePairing
 from .host_hostname import host_hostname
 from .host_workspace import HostWorkspaces
 from .host_outside_projects import OTHER_WORKSPACE, outside_directory, session_inventory
@@ -52,11 +54,25 @@ class HostServer(ThreadingHTTPServer):
         bootstrap_path: Path | None = None,
         on_workspace_config_changed: Callable[[], None] | None = None,
         work_admission: WorkAdmissionGate | None = None,
+        tls_config: HostGuiConfig | None = None,
     ):
         self.address_family = socket.AF_INET6 if ":" in address[0] else socket.AF_INET
         self.origin = origin
         self.authority = urlsplit(origin).netloc
         self.secure = origin.startswith("https://")
+        tls_config = tls_config or HostGuiConfig.load(home)
+        if tls_config.origin != origin:
+            raise ValueError("Running TLS configuration must match the Host GUI origin")
+        self.tls_config = tls_config
+        self.tls_context = tls_config.create_tls_context()
+        self.tls_certificate = (
+            tls_config.tls_cert.read_bytes() if tls_config.tls_cert is not None else None
+        )
+        self.device_pairing = (
+            HostDevicePairing(home) if tls_config.tls_client_ca is not None else None
+        )
+        if self.device_pairing is not None and not self.secure:
+            raise ValueError("Paired device access requires HTTPS")
         self.hostname = host_hostname()
         self.instance_id = secrets.token_hex(16)
         self.auth = HostAuth(home)
@@ -75,7 +91,6 @@ class HostServer(ThreadingHTTPServer):
             home, self.workspaces, self.auth, self.session_guis
         )
         self.slots = threading.BoundedSemaphore(48)
-        self.tls_context = None
         self._last_accept_error = 0.0
         super().__init__(address, HostHandler)
         self.panel_broker = PanelBroker(self.plugin_panels)
@@ -85,7 +100,6 @@ class HostServer(ThreadingHTTPServer):
         self.ca_discovery: HostCADiscovery | None = None
         self.host_discovery: HostGuiDiscovery | None = None
         self.bonjour: HostGuiBonjour | None = None
-        tls_config = HostGuiConfig.load(home)
         ca_certificate = self.ca.directory / "server-cert.pem"
         ca_key = self.ca.directory / "server-key.pem"
         if (
@@ -114,12 +128,20 @@ class HostServer(ThreadingHTTPServer):
                 self.host_discovery = discovery
             else:
                 logging.warning("Host GUI LAN discovery is unavailable")
+        try:
+            self.local_access = LocalHostAccess(self, home)
+        except BaseException:
+            self.server_close()
+            self.workspaces.close()
+            raise
 
     def origin_for_authority(self, authority: str) -> str:
         scheme = "https" if self.secure else "http"
         return f"{scheme}://{authority}"
 
     def server_close(self):
+        if hasattr(self, "local_access"):
+            self.local_access.close()
         self.push.close()
         if self.bonjour is not None:
             self.bonjour.stop()
@@ -192,7 +214,6 @@ class HostGuiService:
     def start(self) -> bool:
         if not HostAuth(self.home).users:
             return False
-        tls_context = self.config.create_tls_context()
         server = HostServer(
             (self.config.listen_address, self.config.port),
             self.config.origin,
@@ -200,8 +221,8 @@ class HostGuiService:
             bootstrap_path=self.bootstrap_path,
             on_workspace_config_changed=self.on_workspace_config_changed,
             work_admission=self.work_admission,
+            tls_config=self.config,
         )
-        server.tls_context = tls_context
         thread = threading.Thread(
             target=server.serve_forever,
             name="xedoc-host-gui",
@@ -265,6 +286,8 @@ class HostHandler(BaseHTTPRequestHandler):
         session_frame=False,
         attachment_name=None,
     ):
+        if cookie is None:
+            cookie = getattr(self, "local_session_cookie", None)
         body = value if isinstance(value, bytes) else json.dumps(value).encode()
         self.send_response(status)
         self.send_header("Content-Type", content_type)
@@ -310,6 +333,27 @@ class HostHandler(BaseHTTPRequestHandler):
                 return
             parsed = urlsplit(self.path)
             path = parsed.path
+            local_token = getattr(self.server, "local_access_token", None)
+            if local_token is not None:
+                authorization = self.headers.get("Authorization", "")
+                if self.command == "GET" and self.path == "/" and secrets.compare_digest(
+                    authorization, f"Bearer {local_token}"
+                ):
+                    self.local_session_cookie = self.server.auth.local_login()
+                else:
+                    cookies = SimpleCookie(self.headers.get("Cookie", ""))
+                    token = cookies["xedoc_host"].value if "xedoc_host" in cookies else ""
+                    self.server.auth.account(token)
+            pairing = self.server.device_pairing
+            enrollment = self.command == "POST" and self.path == "/api/device/enroll"
+            if pairing is not None and not enrollment:
+                certificate = (
+                    self.connection.getpeercert(binary_form=True)
+                    if isinstance(self.connection, ssl.SSLSocket) else None
+                )
+                if not pairing.allowed(certificate):
+                    self.reply(403, {"error": "Paired device certificate required"})
+                    return
             if path.startswith("/plugin-ui/"):
                 proxy_plugin_panel(self, self.server.plugin_panels, path, parsed.query)
                 return
@@ -332,6 +376,9 @@ class HostHandler(BaseHTTPRequestHandler):
                 body = json.loads(self.rfile.read(size))
                 if not isinstance(body, dict):
                     raise ValueError("Expected JSON object")
+            if enrollment and pairing is not None:
+                self.reply(200, pairing.enroll(body, self.server.origin))
+                return
             if self.command == "GET" and path in (
                 "/",
                 "/host.js",
@@ -769,6 +816,49 @@ class HostHandler(BaseHTTPRequestHandler):
             if not admin:
                 self.reply(403, {"error": "Administrator access required"})
                 return
+            pairing_server = getattr(self.server, "pairing_server", self.server)
+            pairing = pairing_server.device_pairing
+            if self.command == "GET" and path == "/api/device/pairing":
+                self.reply(200, {
+                    "enabled": pairing is not None and pairing_server.secure
+                    and pairing_server.tls_context is not None,
+                    "origin": pairing_server.origin,
+                })
+                return
+            if self.command == "POST" and path in (
+                "/api/device/invite", "/api/device/pairing-status"
+            ):
+                if pairing is None or not pairing_server.secure or pairing_server.tls_context is None:
+                    self.reply(409, {
+                        "error": "Device pairing is not enabled. On the host, create a "
+                        "device-pairing invitation and restart Host GUI first."
+                    })
+                    return
+                if path == "/api/device/pairing-status":
+                    if set(body) != {"invitationId"}:
+                        raise ValueError("Expected an invitation ID")
+                    self.reply(200, pairing.invitation_status(body["invitationId"]))
+                    return
+                if body:
+                    raise ValueError("Expected an empty invitation request")
+                config = pairing_server.tls_config
+                if (
+                    config.tls_client_ca.resolve() != pairing.ca_path.resolve()
+                    or ssl.PEM_cert_to_DER_cert(pairing.ca_path.read_text())
+                    not in pairing_server.tls_context.get_ca_certs(binary_form=True)
+                ):
+                    raise ValueError(
+                        "The running client CA does not match app-managed device pairing; "
+                        "configure device-pairing on the host first"
+                    )
+                if config.tls_cert.read_bytes() != pairing_server.tls_certificate:
+                    raise ValueError(
+                        "The server certificate changed; restart Host GUI before pairing"
+                    )
+                self.reply(200, pairing.invite_details(
+                    config, self.server.auth.directory / "ca-cert.pem"
+                ))
+                return
             if self.command == "POST" and path == "/api/project/open-folder":
                 directory = outside_directory(body.get("path"))
                 roots, _ = service._config()
@@ -910,6 +1000,7 @@ def main(argv=None) -> int:
             parser.error(str(error))
         return 0
     if args.action == "setup":
+        previous_config = HostGuiConfig.load(args.xedoc_home)
         auth = HostAuth(args.xedoc_home)
         if auth.users:
             print("Host GUI administrator is already configured.")
@@ -1073,9 +1164,12 @@ def main(argv=None) -> int:
                     origin,
                     tls_cert,
                     tls_key,
+                    previous_config.tls_client_ca,
                 )
                 config.create_tls_context()
             else:
+                if previous_config.tls_client_ca is not None:
+                    raise ValueError("Paired device access requires HTTPS")
                 config = HostGuiConfig.local_only()
             config.save(args.xedoc_home)
         except (OSError, ValueError, ssl.SSLError) as error:
@@ -1120,12 +1214,18 @@ def main(argv=None) -> int:
         )
     if origin.scheme == "http" and (args.tls_cert or args.tls_key):
         parser.error("TLS certificates require an HTTPS origin")
-    with HostServer((args.listen, args.port), args.origin, args.xedoc_home) as server:
-        if origin.scheme == "https":
-            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            context.minimum_version = ssl.TLSVersion.TLSv1_2
-            context.load_cert_chain(args.tls_cert, args.tls_key)
-            server.tls_context = context
+    saved = HostGuiConfig.load(args.xedoc_home)
+    if saved.tls_client_ca is not None and origin.scheme != "https":
+        parser.error("Paired device access requires HTTPS")
+    tls_config = HostGuiConfig(
+        args.listen, args.port, args.origin,
+        Path(args.tls_cert) if args.tls_cert else None,
+        Path(args.tls_key) if args.tls_key else None,
+        saved.tls_client_ca,
+    )
+    with HostServer(
+        (args.listen, args.port), args.origin, args.xedoc_home, tls_config=tls_config
+    ) as server:
         print(f"Host GUI: {args.origin}", flush=True)
         try:
             server.serve_forever()

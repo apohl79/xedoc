@@ -25,6 +25,7 @@ struct HostWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> MobileWebView {
         let configuration = WKWebViewConfiguration()
+        if let store = HostDevicePairing.dataStore(for: url) { configuration.websiteDataStore = store }
         configuration.userContentController.add(context.coordinator, name: "xedocNotifications")
         do {
             for name in ["Mobile", "TUIControls", "Notifications"] {
@@ -96,6 +97,16 @@ struct HostWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
             showError(error)
+        }
+
+        func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
+                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+            HostDevicePairing.authenticate(challenge, for: parent.url) { disposition, credential in
+                if disposition == .cancelAuthenticationChallenge {
+                    self.parent.error = .connection("Host identity verification failed. Obtain a new pairing invitation directly from your trusted host.")
+                }
+                completionHandler(disposition, credential)
+            }
         }
 
         private func showError(_ error: Error) {

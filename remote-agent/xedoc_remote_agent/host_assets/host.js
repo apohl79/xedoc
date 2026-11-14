@@ -1,6 +1,7 @@
 "use strict";
 (() => {
   const byId = (id) => document.getElementById(id);
+  document.querySelector('#login a[href="/trust"]').hidden = location.protocol !== "https:";
   let state = null;
   let selectedWorkspace = null;
   let selectedProject = null;

@@ -1,0 +1,17 @@
+services:
+  bridge:
+    image: ghcr.io/fatedier/frps:v0.72.0@sha256:17abb20dd392557a44070d9726954630c0eb1f7a9bd6ead5ae9150d165179ea4
+    command: ["-c", "/etc/frp/frps.toml"]
+    user: "65532:65532"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    ports:
+      - "7000:7000/tcp"
+      - "50001-50010:50001-50010/tcp"
+    volumes:
+      - ./frps.toml:/etc/frp/frps.toml:ro
+      - ./relay/server.crt:/etc/frp/server.crt:ro
+      - ./relay/server.key:/etc/frp/server.key:ro
+      - ./relay/bridge-ca.crt:/etc/frp/bridge-ca.crt:ro

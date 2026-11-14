@@ -1,0 +1,11 @@
+bindAddr = "0.0.0.0"
+bindPort = 7000
+allowPorts = [{ start = 50001, end = 50010 }]
+maxPortsPerClient = 1
+detailedErrorsToClient = false
+transport.tls.force = true
+transport.tls.certFile = "/etc/frp/server.crt"
+transport.tls.keyFile = "/etc/frp/server.key"
+transport.tls.trustedCaFile = "/etc/frp/bridge-ca.crt"
+log.to = "console"
+log.disablePrintColor = true

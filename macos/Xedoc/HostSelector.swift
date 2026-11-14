@@ -5,6 +5,9 @@ struct HostSelector: View {
     @StateObject private var discovery = HostDiscovery()
     @State private var address = ""
     @State private var invalidAddress = false
+    @State private var pairing = false
+    @State private var pairedHosts = HostDevicePairing.hosts
+    @State private var localHost = Self.readLocalHost()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,7 +21,9 @@ struct HostSelector: View {
                         .foregroundStyle(HostSelectorPalette.secondary)
                 }
                 Spacer()
-                Button { discovery.scan() } label: {
+                Button("Pair a host") { pairing = true }
+                    .buttonStyle(.bordered)
+                Button { localHost = Self.readLocalHost(); discovery.scan() } label: {
                     Image(systemName: "arrow.clockwise")
                 }
                 .buttonStyle(.bordered)
@@ -33,6 +38,15 @@ struct HostSelector: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
+                    if let localHost {
+                        Text("THIS MAC")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(HostSelectorPalette.secondary)
+                        hostRow(localHost)
+                    }
+                    ForEach(pairedHosts) { host in
+                        hostRow(host)
+                    }
                     Text("NEARBY HOSTS")
                         .font(.system(size: 11, weight: .semibold))
                         .tracking(0.8)
@@ -89,9 +103,31 @@ struct HostSelector: View {
         .preferredColorScheme(.dark)
         .task { discovery.scan() }
         .onDisappear { discovery.stop() }
-        .alert("Enter an HTTPS host URL", isPresented: $invalidAddress) {
+        .sheet(isPresented: $pairing, onDismiss: { pairedHosts = HostDevicePairing.hosts }) {
+            HostPairingView { url in select(DiscoveredHost(hostname: url.host ?? "Host", url: url)) }
+        }
+        .alert("Enter an HTTPS host URL, or HTTP for localhost", isPresented: $invalidAddress) {
             Button("OK", role: .cancel) {}
         }
+    }
+
+    static func readLocalHost() -> DiscoveredHost? {
+        guard let access = localAccess() else { return nil }
+        return DiscoveredHost(hostname: "This Mac — no setup required", url: access.url)
+    }
+
+    static func localAccess() -> (url: URL, token: String)? {
+        let home = ProcessInfo.processInfo.environment["XEDOC_HOME"].map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".xedoc")
+        let path = home.appendingPathComponent("host-gui/local.json")
+        guard let data = try? Data(contentsOf: path), data.count <= 1024,
+              let value = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+              let origin = value["origin"], let url = DiscoveredHost.validatedURL(origin),
+              url.scheme == "http", url.host == "127.0.0.1",
+              let token = value["token"], token.count == 64,
+              token.utf8.allSatisfy({ (45...122).contains($0) })
+        else { return nil }
+        return (url, token)
     }
 
     private var discoveryStatus: some View {

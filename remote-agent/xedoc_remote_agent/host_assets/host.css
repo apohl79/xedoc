@@ -73,6 +73,7 @@ label.check { display: flex; align-items: center; gap: 7px; margin: 7px 0; }
   border-radius: 8px;
   font-weight: 600;
 }
+#login input[name="password"] { margin-bottom: 24px; }
 .trust-page { display: block; height: auto; overflow: auto; }
 .trust-page .login { max-width: 640px; margin: 24px auto; }
 .trust-page p, .trust-page details { margin: 12px 0; }

@@ -11,6 +11,7 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
     var openHost: ((URL) -> Void)?
     var authenticationChanged: ((Bool) -> Void)?
     @Published var error: String?
+    @Published var pairingDevice = false
     @Published private(set) var certificateError = false
     private var username: String?
     private var pendingRoute: SessionRoute?
@@ -22,7 +23,7 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
         let identifier = defaults.string(forKey: key).flatMap(UUID.init(uuidString:)) ?? UUID()
         defaults.set(identifier.uuidString, forKey: key)
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = WKWebsiteDataStore(forIdentifier: identifier)
+        configuration.websiteDataStore = HostDevicePairing.dataStore(for: url) ?? WKWebsiteDataStore(forIdentifier: identifier)
         let scriptURL = Bundle.main.url(forResource: "Native", withExtension: "js")!
         let script = try! String(contentsOf: scriptURL, encoding: .utf8)
         configuration.userContentController.addUserScript(WKUserScript(
@@ -38,7 +39,11 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
         error = nil
         certificateError = false
         (window as? HostWindow)?.headerDragStart = nil
-        webView.load(URLRequest(url: url))
+        var request = URLRequest(url: url)
+        if let local = HostSelector.localAccess(), sameOrigin(local.url) {
+            request.setValue("Bearer \(local.token)", forHTTPHeaderField: "Authorization")
+        }
+        webView.load(request)
     }
 
     func close() {
@@ -63,11 +68,17 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
             }
             if let route = pendingRoute { navigate(to: route) }
         case "signedOut":
+            if let local = HostSelector.localAccess(), sameOrigin(local.url) {
+                load()
+                return
+            }
             let wasAuthenticated = username != nil
             username = nil
             if wasAuthenticated || window?.isVisible == false { authenticationChanged?(false) }
         case "hosts":
             showHosts?()
+        case "pairDevice":
+            pairingDevice = true
         case "openHost":
             if let origin = event["url"] as? String, let target = DiscoveredHost.validatedURL(origin) {
                 openHost?(target)
@@ -104,6 +115,17 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         showError(error)
+    }
+
+    func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
+                 completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        HostDevicePairing.authenticate(challenge, for: url) { disposition, credential in
+            if disposition == .cancelAuthenticationChallenge {
+                self.certificateError = false
+                self.error = "Host identity verification failed. Obtain a new pairing invitation directly from your trusted host."
+            }
+            completionHandler(disposition, credential)
+        }
     }
 
     private func showError(_ error: Error) {
@@ -176,6 +198,9 @@ struct HostScreen: View {
     var body: some View {
         DesktopWebView(view: connection.webView)
             .ignoresSafeArea()
+            .sheet(isPresented: $connection.pairingDevice) {
+                PairDeviceView(connection: connection)
+            }
             .overlay {
                 if let error = connection.error {
                     VStack(spacing: 16) {

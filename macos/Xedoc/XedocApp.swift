@@ -13,6 +13,7 @@ struct XedocApp: App {
                 }
                 CommandGroup(after: .newItem) {
                     Button("Reload Host") { delegate.reloadHost() }.keyboardShortcut("r")
+                    Button("Pair Device…") { delegate.pairDevice() }
                 }
             }
     }
@@ -29,8 +30,11 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         DesktopNotifications.shared.openSession = { [weak self] route in
             self?.openHost(route.host, route: route)
         }
-        let remembered = (defaults.stringArray(forKey: "connectedHosts") ?? [])
+        var remembered = (defaults.stringArray(forKey: "connectedHosts") ?? [])
             .compactMap(DiscoveredHost.validatedURL)
+        if defaults.bool(forKey: "connectedLocalHost"), let local = HostSelector.readLocalHost() {
+            remembered.append(local.url)
+        }
         if remembered.isEmpty { showHosts() }
         for url in remembered { openHost(url, restoring: true) }
         Task {
@@ -66,6 +70,10 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     func openHost(_ url: URL, route: SessionRoute? = nil, restoring: Bool = false) {
         guard let url = DiscoveredHost.validatedURL(url.absoluteString)?.appendingPathComponent("") else { return }
         let key = url.absoluteString
+        if let connection = connections[key], let store = HostDevicePairing.dataStore(for: url),
+           connection.webView.configuration.websiteDataStore.identifier != store.identifier {
+            connection.window?.close()
+        }
         if let connection = connections[key] {
             connection.window?.makeKeyAndOrderFront(nil)
             if let route { connection.navigate(to: route) }
@@ -82,7 +90,11 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             guard let self, let connection else { return }
             var hosts = defaults.stringArray(forKey: "connectedHosts") ?? []
             hosts.removeAll { $0 == key }
-            if authenticated { hosts.append(key) }
+            if HostSelector.readLocalHost()?.url.appendingPathComponent("") == url {
+                defaults.set(authenticated, forKey: "connectedLocalHost")
+            } else if authenticated {
+                hosts.append(key)
+            }
             defaults.set(hosts, forKey: "connectedHosts")
             if authenticated {
                 connection.window?.makeKeyAndOrderFront(nil)
@@ -101,6 +113,14 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
     func reloadHost() {
         connections.values.first { $0.window === NSApp.keyWindow }?.load()
+    }
+
+    func pairDevice() {
+        if let connection = connections.values.first(where: { $0.window === NSApp.keyWindow }) {
+            connection.pairingDevice = true
+        } else {
+            showHosts()
+        }
     }
 
     func windowWillClose(_ notification: Notification) {
