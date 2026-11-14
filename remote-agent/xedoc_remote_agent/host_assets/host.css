@@ -58,7 +58,21 @@ label { display: block; }
 label.check { display: flex; align-items: center; gap: 7px; margin: 7px 0; }
 .check input { display: inline; width: auto; margin: 0; }
 .login { max-width: 360px; margin: 10vh auto; padding: 18px; }
-.login input:focus { outline-color: var(--brand); }
+#login {
+  width: min(360px, calc(100% - 32px));
+  background: var(--dialog);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+}
+#login > .primary {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 4px 0 12px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+}
 .trust-page { display: block; height: auto; overflow: auto; }
 .trust-page .login { max-width: 640px; margin: 24px auto; }
 .trust-page p, .trust-page details { margin: 12px 0; }
