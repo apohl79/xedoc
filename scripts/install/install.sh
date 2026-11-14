@@ -1280,7 +1280,7 @@ install_macos_app() {
     *-alpha* | *-beta*) return 0 ;;
   esac
   prompt_user_available || return 0
-  if ! prompt_yes_no "Install the Xedoc macOS app from Homebrew (adds the apohl79/xedoc tap)?"; then
+  if ! prompt_yes_no "Install the Xedoc macOS app from Homebrew (adds the apohl79/xedoc tap and trusts its cask)?"; then
     step "Skipping Xedoc macOS app installation"
     return 0
   fi
@@ -1293,6 +1293,12 @@ install_macos_app() {
   step "Adding Homebrew tap apohl79/xedoc"
   if ! brew tap apohl79/xedoc; then
     printf 'WARNING: Could not add the apohl79/xedoc Homebrew tap; the Xedoc CLI remains installed.\n' >&2
+    return 0
+  fi
+
+  step "Trusting Homebrew cask apohl79/xedoc/xedoc"
+  if ! brew trust --cask apohl79/xedoc/xedoc; then
+    printf 'WARNING: Could not trust the Xedoc Homebrew cask; the CLI remains installed.\n' >&2
     return 0
   fi
 
