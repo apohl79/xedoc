@@ -1271,6 +1271,39 @@ print_zshrc_app_server_instructions() {
   esac
 }
 
+install_macos_app() {
+  [ "$(uname -s)" = Darwin ] || return 0
+  [ "$RELEASE_REPO" = apohl79/xedoc ] || return 0
+  [ -z "$LOCAL_ZIP" ] || return 0
+  [ "$EXPERIMENTAL" = false ] || return 0
+  case "$tag" in
+    *-alpha* | *-beta*) return 0 ;;
+  esac
+  prompt_user_available || return 0
+  if ! prompt_yes_no "Install the Xedoc macOS app from Homebrew (adds the apohl79/xedoc tap)?"; then
+    step "Skipping Xedoc macOS app installation"
+    return 0
+  fi
+
+  if ! command -v brew >/dev/null 2>&1; then
+    printf 'WARNING: Homebrew is not installed; skipping the Xedoc macOS app.\n' >&2
+    return 0
+  fi
+
+  step "Adding Homebrew tap apohl79/xedoc"
+  if ! brew tap apohl79/xedoc; then
+    printf 'WARNING: Could not add the apohl79/xedoc Homebrew tap; the Xedoc CLI remains installed.\n' >&2
+    return 0
+  fi
+
+  step "Installing the Xedoc macOS app"
+  if ! brew install --cask xedoc; then
+    printf 'WARNING: Could not install the Xedoc macOS app; the Xedoc CLI remains installed.\n' >&2
+    return 0
+  fi
+  step "Xedoc macOS app installed"
+}
+
 install_ios_app() {
   [ "$(uname -s)" = Darwin ] || return 0
   prompt_user_available || return 0
@@ -1534,4 +1567,5 @@ if [ "$EXPERIMENTAL" = false ]; then
   print_zshrc_app_server_instructions
 fi
 printf 'Xedoc CLI %s installed successfully.\n' "$release_version"
+install_macos_app
 install_ios_app

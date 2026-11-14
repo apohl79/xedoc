@@ -14,6 +14,8 @@ import tempfile
 import textwrap
 
 from xedoc_ios_release import build_ios_release, upload_ios_testflight
+from xedoc_macos_release import build_macos_release
+from update_homebrew_cask import generate_cask, publish_cask
 from xedoc_package.targets import TARGET_SPECS
 from xedoc_package.targets import TargetSpec
 from xedoc_package.archive import write_archive
@@ -249,7 +251,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--skip-github-release",
         action="store_true",
-        help="Build the package without GitHub publication or macOS notarization.",
+        help="Build without GitHub publication; notarize the macOS app only with --notarize.",
     )
     ios_mode = parser.add_mutually_exclusive_group()
     ios_mode.add_argument(
@@ -261,6 +263,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--ios-only",
         action="store_true",
         help="Build and publish only the iPhone/iPad cable-install archive.",
+    )
+    macos_mode = parser.add_mutually_exclusive_group()
+    macos_mode.add_argument(
+        "--skip-macos-app",
+        action="store_true",
+        help="Skip the universal macOS host app built on macOS.",
+    )
+    macos_mode.add_argument(
+        "--macos-app-only",
+        action="store_true",
+        help="Build and publish only the universal macOS host app.",
     )
     parser.add_argument(
         "--skip-testflight",
@@ -285,6 +298,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
+    if args.ios_only and args.macos_app_only:
+        parser.error("--ios-only and --macos-app-only are mutually exclusive.")
     args.targets = resolve_release_targets(getattr(args, "target", None))
     # Keep the historical Namespace shape for callers that build a single target.
     args.target = args.targets[0]
@@ -352,10 +367,22 @@ def ensure_target_specific_paths_are_unambiguous(
 
 def build_release(args: argparse.Namespace) -> None:
     ios_only = getattr(args, "ios_only", False)
-    include_ios = not getattr(args, "skip_ios", False) and sys.platform == "darwin"
+    macos_only = getattr(args, "macos_app_only", False)
+    include_ios = (
+        not macos_only
+        and not getattr(args, "skip_ios", False)
+        and sys.platform == "darwin"
+    )
+    include_macos = (
+        not ios_only
+        and not getattr(args, "skip_macos_app", False)
+        and sys.platform == "darwin"
+    )
     if ios_only and not include_ios:
         raise RuntimeError("--ios-only requires macOS and Xcode.")
-    targets = [] if ios_only else release_targets(args)
+    if macos_only and not include_macos:
+        raise RuntimeError("--macos-app-only requires macOS and Xcode.")
+    targets = [] if ios_only or macos_only else release_targets(args)
     ensure_target_specific_paths_are_unambiguous(args, targets)
     if getattr(args, "allow_dirty", False) and not args.skip_github_release:
         raise RuntimeError(
@@ -365,7 +392,7 @@ def build_release(args: argparse.Namespace) -> None:
 
     codesign_identity = (
         resolve_codesign_identity(args.codesign_identity)
-        if any(target.endswith("apple-darwin") for target in targets)
+        if include_macos or any(target.endswith("apple-darwin") for target in targets)
         else None
     )
 
@@ -461,6 +488,21 @@ def build_release(args: argparse.Namespace) -> None:
         if include_ios
         else None
     )
+    macos_archive = (
+        build_macos_release(
+            source_root=source_root,
+            output_dir=output_dir,
+            version=version,
+            force=args.force,
+            codesign_identity=codesign_identity,
+            notarize=not args.skip_github_release or getattr(args, "notarize", False),
+            notarytool_keychain_profile=getattr(
+                args, "notarytool_keychain_profile", None
+            ),
+        )
+        if include_macos
+        else None
+    )
 
     if not args.skip_github_release:
         for package in release_packages:
@@ -483,7 +525,8 @@ def build_release(args: argparse.Namespace) -> None:
                 for package in release_packages
                 for archive_output in package.archive_outputs
             ]
-            + ([ios_archive] if ios_archive is not None else []),
+            + ([ios_archive] if ios_archive is not None else [])
+            + ([macos_archive] if macos_archive is not None else []),
             env=github_env,
             notes=generate_release_notes(
                 release_tag,
@@ -494,6 +537,20 @@ def build_release(args: argparse.Namespace) -> None:
                 target=release_target,
             ),
         )
+        if (
+            macos_archive is not None
+            and "-" not in version
+            and args.github_repo == DEFAULT_GITHUB_REPO
+        ):
+            publish_cask(
+                content=generate_cask(
+                    archive=macos_archive, version=version, repo=args.github_repo
+                ),
+                version=version,
+                gh=args.gh,
+                tap="apohl79/homebrew-xedoc",
+                env=github_env,
+            )
         if ios_archive is not None and not getattr(args, "skip_testflight", False):
             upload_ios_testflight(output_dir=output_dir)
 
@@ -502,6 +559,8 @@ def build_release(args: argparse.Namespace) -> None:
         print(f"GitHub release: {release_tag}")
     if ios_archive is not None:
         print(f"Archive (iOS/iPadOS, Ad Hoc distribution-signed): {ios_archive}")
+    if macos_archive is not None:
+        print(f"Archive (macOS, Developer ID-signed): {macos_archive}")
     for package in release_packages:
         print(f"Package directory ({package.target}): {package.package_dir}")
         for archive_output in package.archive_outputs:
