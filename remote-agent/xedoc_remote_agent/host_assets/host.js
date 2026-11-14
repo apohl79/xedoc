@@ -758,12 +758,12 @@
       }
       return;
     }
+    if (request === projectRequest && !projectActivityLoaded.has(cacheKey)) {
+      void refreshProjectActivity(selectedWorkspace).catch(() => {});
+    }
     if (selectedProject) {
       const project = projects.find((item) => item.name === selectedProject);
       if (project) await renderProject(project);
-    }
-    if (request === projectRequest && !projectActivityLoaded.has(cacheKey)) {
-      void refreshProjectActivity(selectedWorkspace).catch(() => {});
     }
   }
 
