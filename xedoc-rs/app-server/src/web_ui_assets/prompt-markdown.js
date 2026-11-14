@@ -96,6 +96,15 @@ window.XedocPromptMarkdown = (() => {
     return element;
   }
 
+  function arrow(text) {
+    const element = document.createElement("span");
+    element.className = "history-arrow editor-arrow";
+    element.textContent = text;
+    element.dataset.symbol = text === "->" ? "→" : "⇒";
+    element.setAttribute("aria-label", element.dataset.symbol);
+    return element;
+  }
+
   function link(destination, image) {
     destination = destination.replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g, "$1");
     let safe = false;
@@ -116,8 +125,8 @@ window.XedocPromptMarkdown = (() => {
     return element;
   }
 
-  function inline(parent, text, references) {
-    const pattern = /\\[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]|&(?:#\d+|#x[\da-fA-F]+|[a-zA-Z][a-zA-Z\d]+);|(`+)([^\n]*?)\1|!?\[([^\]\n]+)\]\(((?:\\.|[^()\\\n]|\((?:\\.|[^()\\\n])*\))+)\)|(\*\*|__|~~)(?=\S)(.+?)(?<!\\)\5|(\*|_)(?=\S)(.+?)(?<!\\)\7|(?:\$[\w][\w./:-]*|\[(?:Image|Doc) #\d+\])|<([a-zA-Z][a-zA-Z\d+.-]*:\/\/[^<>\s]+|mailto:[^<>\s]+)>|!?\[([^\]\n]+)\](?:\[([^\]\n]*)\])?/g;
+  function inline(parent, text, references, inLink = false) {
+    const pattern = /\\[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]|&(?:#\d+|#x[\da-fA-F]+|[a-zA-Z][a-zA-Z\d]+);|(`+)([^\n]*?)\1|!?\[([^\]\n]+)\]\(((?:\\.|[^()\\\n]|\((?:\\.|[^()\\\n])*\))+)\)|(\*\*|__|~~)(?=\S)(.+?)(?<!\\)\5|(\*|_)(?=\S)(.+?)(?<!\\)\7|(?:\$[\w][\w./:-]*|\[(?:Image|Doc) #\d+\])|<([a-zA-Z][a-zA-Z\d+.-]*:\/\/[^<>\s]+|mailto:[^<>\s]+)>|!?\[([^\]\n]+)\](?:\[([^\]\n]*)\])?|[a-z][a-z\d+.-]*:\/\/[^\s<>"'`]+|->|=>/gi;
     let offset = 0;
     for (const match of text.matchAll(pattern)) {
       parent.append(document.createTextNode(text.slice(offset, match.index)));
@@ -141,13 +150,13 @@ window.XedocPromptMarkdown = (() => {
         const destination = match[4].match(/^(?:<([^>]+)>|(\S+?))(?:\s+["'].*["'])?$/);
         element = link(destination?.[1] || destination?.[2] || match[4], image);
         element.append(marker(image ? "![" : "["));
-        inline(element, match[3], references);
+        inline(element, match[3], references, inLink || element.nodeName === "A");
         element.append(marker(`](${match[4]})`));
       } else if (match[5] || match[7]) {
         const delimiter = match[5] || match[7];
         element = document.createElement(delimiter === "~~" ? "s" : match[5] ? "strong" : "em");
         element.append(marker(delimiter));
-        inline(element, match[6] || match[8], references);
+        inline(element, match[6] || match[8], references, inLink);
         element.append(marker(delimiter));
       } else if (match[9]) {
         element = link(match[9], false);
@@ -160,11 +169,15 @@ window.XedocPromptMarkdown = (() => {
           const image = match[0].startsWith("!");
           element = link(reference, image);
           element.append(marker(image ? "![" : "["));
-          inline(element, match[10], references);
+          inline(element, match[10], references, inLink || element.nodeName === "A");
           element.append(marker(match[0].slice((image ? 2 : 1) + match[10].length)));
         } else {
           element = document.createTextNode(match[0]);
         }
+      } else if (match[0] === "->" || match[0] === "=>") {
+        element = inLink || parent.closest("a") ? document.createTextNode(match[0]) : arrow(match[0]);
+      } else if (/^[a-z][a-z\d+.-]*:\/\//i.test(match[0])) {
+        element = document.createTextNode(match[0]);
       } else {
         element = document.createElement("span");
         element.className = "editor-reference";

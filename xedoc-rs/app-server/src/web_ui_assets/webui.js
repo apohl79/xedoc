@@ -752,8 +752,7 @@
     }
     for (const node of nodes) {
       if (!node.data.includes("->") && !node.data.includes("=>")
-          || !node.parentElement.closest(".history-markdown, .history-plan")
-          || node.parentElement.closest("code, pre, a, .editor-reference")) continue;
+          || node.parentElement.closest("code, pre, a, .editor-code, .editor-reference, .history-arrow, .prompt-markdown")) continue;
       const fragment = document.createDocumentFragment();
       const arrowOrUrl = /[a-z][a-z\d+.-]*:\/\/[^\s<>"'`]+|->|=>/gi;
       let offset = 0;
