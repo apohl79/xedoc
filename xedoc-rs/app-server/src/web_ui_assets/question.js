@@ -65,6 +65,7 @@ window.XedocQuestion = class {
       this.serverNotes = state.notes;
       if (!this.composing && !this.pendingNotes.length && this.editor.text(this.notes) !== state.notes) {
         this.editor.render(state.notes, this.editor.selection(this.notes), this.notes);
+        this.editor.resetUndo(this.notes);
         this.closeSearch();
       }
       this.resizeNotes();

@@ -93,10 +93,12 @@
   const attachments = document.getElementById("attachments");
   const menu = document.getElementById("menu");
   const quoteSelection = document.getElementById("quote-selection");
+  const editorHistories = new WeakMap();
   const question = new window.XedocQuestion(document.getElementById("question"), send, {
     text: editorText,
     selection: editorSelection,
     render: renderEditor,
+    resetUndo: (root) => editorHistories.get(root)?.reset(),
   });
   let selectedQuote = "";
   let linkPreviewTimeout = null;
@@ -388,9 +390,15 @@
   }
 
   function renderEditor(text, selection = null, root = input) {
+    editorHistories.get(root)?.record(text, selection);
     const content = window.XedocPromptMarkdown.render(text);
     if (root.innerHTML !== content.innerHTML) root.replaceChildren(...content.childNodes);
     restoreSelection(selection, root);
+    if (!editorHistories.has(root)) {
+      editorHistories.set(root, new window.XedocPromptUndo(root, {
+        text: editorText, selection: editorSelection, render: renderEditor,
+      }));
+    }
   }
 
   function insertText(text) {
@@ -621,7 +629,9 @@
         }
       }
       renderEditor(state.text, selection);
+      editorHistories.get(input)?.reset();
     }
+    if (threadChanged) editorHistories.get(input)?.reset();
     for (const kind of ["model", "effort", "router", "routerTable"]) {
       const button = document.getElementById(kind);
       const value = kind === "model" ? state.displayModel ?? state.model
@@ -1261,6 +1271,7 @@
       if (action === "cut" && ready) insertText("");
     });
   }
+  renderEditor(editorText());
   window.XedocPromptMarkdown.bindSelectionWrapping(input, {
     text: editorText, selection: editorSelection, render: renderEditor,
   }, () => {

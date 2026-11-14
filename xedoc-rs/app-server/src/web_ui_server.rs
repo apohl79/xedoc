@@ -419,6 +419,8 @@ async fn script() -> Response {
             "\n",
             include_str!("web_ui_assets/prompt-markdown.js"),
             "\n",
+            include_str!("web_ui_assets/prompt-undo.js"),
+            "\n",
             include_str!("web_ui_assets/webui.js")
         ),
         "text/javascript; charset=utf-8",
