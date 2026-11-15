@@ -78,16 +78,28 @@ Keep `host.key` private on that host. Copy `frpc.example.toml`, replace the thre
 absolute certificate paths, and run `frpc -c /absolute/path/frpc.toml`.
 No inbound NAT port is required; the connector opens outbound TCP 7000.
 
-Configure Host GUI for loopback TLS port **50001**, advertised origin
-`https://sendnix.de:50001`, and paired-device access before starting the
-connector. Host GUI's listener and origin ports must match. Allocate a different
-port from the allowed range for each additional host, changing both frpc ports
-and the Host GUI listener/origin. Share pairing invites only over a trusted
+Keep the normal Host GUI listener and account login unchanged. On the trusted
+host, configure a **separate**, loopback-only TLS listener for the relay:
+
+```sh
+xedoc-remote-agentd device-pairing invite --bridge-origin https://sendnix.de:50001
+```
+
+Restart Host GUI **before** starting the connector. This creates bridge settings
+and host TLS material under `$XEDOC_HOME/bridge/host-gui/`; the bridge listener
+requires paired-device certificates, while the direct listener retains account
+login. First-time bridge setup also removes legacy app-managed certificate
+enforcement from the direct listener; it never removes a custom client CA.
+The private bridge TLS key stays on the host, not sendnix.
+
+Allocate a different port from the allowed range for each additional host,
+changing the invitation origin and both frpc ports. The bridge port must differ
+from the direct listener's port. Share pairing invites only over a trusted
 channel, never a page served by sendnix.
 
-On the trusted host, run `xedoc-remote-agentd device-pairing invite`, then restart
-Host GUI **before** exposing the connector. Add `--xedoc-home /path/to/home` if
-needed, or `--server-ca /path/to/ca.pem` for a custom server CA. Transfer the
+For subsequent invitations, run `xedoc-remote-agentd device-pairing invite` or
+use **File → Pair Device…** on a trusted Mac. Add `--xedoc-home /path/to/home` if
+needed. Transfer the
 printed invitation directly to the macOS/iOS app's **Pair a host** dialog.
 The invitation expires after ten minutes and works once; generate a separate
 one for each device. The app creates a Keychain key and pins the host without

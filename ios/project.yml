@@ -39,6 +39,9 @@ targets:
         NSBonjourServices: [_xedoc-gui._tcp]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            sendnix.de:
+              NSExceptionAllowsInsecureHTTPLoads: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft

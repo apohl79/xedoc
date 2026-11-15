@@ -34,6 +34,9 @@ targets:
         NSBonjourServices: [_xedoc-gui._tcp]
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            sendnix.de:
+              NSExceptionAllowsInsecureHTTPLoads: true
     preBuildScripts:
       - name: Reuse the iOS app icon
         script: |

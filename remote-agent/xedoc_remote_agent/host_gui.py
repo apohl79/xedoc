@@ -29,6 +29,7 @@ from .host_ca_discovery import HostCADiscovery, discover_shared_cas
 from .host_gui_bonjour import HostGuiBonjour
 from .host_gui_discovery import HostGuiDiscovery, discover_host_guis
 from .host_gui_config import HostGuiConfig
+from .host_gui_bridge import HostBridgeAccess
 from .host_gui_local import LocalHostAccess
 from .host_device_pairing import HostDevicePairing
 from .host_pairing_activation import can_invite_device, invite_device
@@ -134,6 +135,7 @@ class HostServer(ThreadingHTTPServer):
                 logging.warning("Host GUI LAN discovery is unavailable")
         try:
             self.local_access = LocalHostAccess(self, home)
+            self.bridge_access = HostBridgeAccess(self, home)
         except BaseException:
             self.server_close()
             self.workspaces.close()
@@ -144,6 +146,8 @@ class HostServer(ThreadingHTTPServer):
         return f"{scheme}://{authority}"
 
     def server_close(self):
+        if hasattr(self, "bridge_access"):
+            self.bridge_access.close()
         if hasattr(self, "local_access"):
             self.local_access.close()
         self.push.close()
@@ -363,6 +367,9 @@ class HostHandler(BaseHTTPRequestHandler):
             authority = self.headers.get("Host", "")
             if not authority or (
                 not self.server.secure and authority != self.server.authority
+            ) or (
+                getattr(self.server, "bridge_only", False)
+                and authority != self.server.authority
             ):
                 self.reply(403, {"error": "Unexpected host"})
                 return
@@ -852,22 +859,23 @@ class HostHandler(BaseHTTPRequestHandler):
                 self.reply(403, {"error": "Administrator access required"})
                 return
             pairing_server = getattr(self.server, "pairing_server", self.server)
-            pairing = pairing_server.device_pairing
+            bridge = pairing_server.bridge_access.server
+            pairing = bridge.device_pairing if bridge is not None else None
             if self.command == "GET" and path == "/api/device/pairing":
                 self.reply(200, {
-                    "enabled": pairing is not None and pairing_server.secure
-                    and pairing_server.tls_context is not None,
+                    "enabled": bridge is not None,
                     "canInvite": can_invite_device(pairing_server),
-                    "origin": pairing_server.origin,
+                    "origin": bridge.origin if bridge is not None else None,
                 })
                 return
             if self.command == "POST" and path in (
                 "/api/device/invite", "/api/device/pairing-status"
             ):
-                if not pairing_server.secure or pairing_server.tls_context is None:
+                if bridge is None:
                     self.reply(409, {
-                        "error": "Configure private-CA HTTPS on the host before inviting "
-                        "another device. This Mac does not need to be paired."
+                        "error": "Configure the sendnix bridge on the host with "
+                        "device-pairing invite --bridge-origin https://sendnix.de:50001, "
+                        "then restart Host GUI. Direct connections only need account login."
                     })
                     return
                 if path == "/api/device/pairing-status":
@@ -880,7 +888,7 @@ class HostHandler(BaseHTTPRequestHandler):
                     return
                 if body:
                     raise ValueError("Expected an empty invitation request")
-                self.reply(200, invite_device(pairing_server, self.connection))
+                self.reply(200, invite_device(pairing_server))
                 return
             if self.command == "POST" and path == "/api/project/open-folder":
                 directory = outside_directory(body.get("path"))

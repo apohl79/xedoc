@@ -10,6 +10,7 @@ struct PairedHost: Codable {
     let keyTag: String
     var certificate: Data?
     let storeID: UUID
+    let route: HostRoute?
 }
 
 struct HostInvitation: Decodable {
@@ -18,6 +19,7 @@ struct HostInvitation: Decodable {
     let serverCA: Data
     let serverCertificate: Data
     let token: String
+    let route: HostRoute?
 
     init(_ text: String) throws {
         let encoded = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -26,6 +28,9 @@ struct HostInvitation: Decodable {
         guard let data = Data(base64Encoded: base64 + String(repeating: "=", count: (4 - base64.count % 4) % 4))
         else { throw pairingError("Paste the invitation from your trusted host.") }
         self = try JSONDecoder().decode(Self.self, from: data)
+        guard route == .bridge else {
+            throw pairingError("Create a new bridge invitation. Directly reachable hosts only need sign-in.")
+        }
         guard version == 1, let url = DiscoveredHost.validatedURL(origin), url.scheme == "https",
               HostDevicePairing.origin(url) == origin, (32...128).contains(token.count),
               SecCertificateCreateWithData(nil, serverCA as CFData) != nil,
@@ -57,7 +62,36 @@ final class HostDevicePairing: NSObject, URLSessionTaskDelegate {
     static var hosts: [DiscoveredHost] {
         (UserDefaults.standard.stringArray(forKey: "pairedHosts") ?? []).prefix(128).compactMap {
             guard let url = DiscoveredHost.validatedURL($0) else { return nil }
-            return DiscoveredHost(hostname: url.host ?? $0, url: url)
+            return DiscoveredHost(hostname: url.host ?? $0, url: url,
+                                  route: (try? stored(for: url))?.route ?? .direct)
+        }
+    }
+
+    static func availableHost(_ host: DiscoveredHost) async -> DiscoveredHost? {
+        guard let record = try? stored(for: host.url) else { return nil }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 3
+        configuration.timeoutIntervalForResource = 4
+        let session = URLSession(configuration: configuration, delegate: HostDevicePairing(trust: record),
+                                 delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        var request = URLRequest(url: host.url.appendingPathComponent("api/host-info"))
+        request.httpShouldHandleCookies = false
+        do {
+            let (bytes, response) = try await session.bytes(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            var data = Data()
+            for try await byte in bytes {
+                guard data.count < 4096 else { return nil }
+                data.append(byte)
+            }
+            guard let info = try JSONSerialization.jsonObject(with: data) as? [String: String],
+                  let hostname = info["hostname"], !hostname.isEmpty, hostname.count <= 255,
+                  !hostname.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+            else { return nil }
+            return DiscoveredHost(hostname: hostname, url: host.url, route: record.route ?? .direct)
+        } catch {
+            return nil
         }
     }
 
@@ -118,7 +152,8 @@ final class HostDevicePairing: NSObject, URLSessionTaskDelegate {
               let publicData = SecKeyCopyExternalRepresentation(publicKey, &keyError) as Data?
         else { throw pairingError("Could not create a device key in Keychain.") }
         var record = PairedHost(origin: invitation.origin, serverCA: invitation.serverCA,
-                                serverCertificate: invitation.serverCertificate, keyTag: tag, storeID: UUID())
+                                serverCertificate: invitation.serverCertificate, keyTag: tag, storeID: UUID(),
+                                route: invitation.route)
         var saved = false
         defer {
             if !saved { removeIdentity(for: record) }

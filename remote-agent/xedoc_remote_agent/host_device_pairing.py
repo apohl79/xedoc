@@ -15,6 +15,7 @@ import ssl
 import stat
 import sys
 import time
+from urllib.parse import urlsplit
 
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
@@ -132,7 +133,7 @@ class HostDevicePairing:
                 (digest, expires),
             )
         value = {
-            "version": 1, "origin": config.origin, "token": token,
+            "version": 1, "origin": config.origin, "token": token, "route": "bridge",
             "serverCA": base64.b64encode(ca.public_bytes(serialization.Encoding.DER)).decode(),
             "serverCertificate": base64.b64encode(
                 leaf.public_bytes(serialization.Encoding.DER)
@@ -254,24 +255,60 @@ def main(argv=None) -> int:
         os.environ.get("XEDOC_HOME", Path.home() / ".xedoc")
     ))
     parser.add_argument("--server-ca", type=Path)
+    parser.add_argument("--bridge-origin", help="Public HTTPS origin of this host's TCP bridge")
     args = parser.parse_args(argv)
     try:
         pairing = HostDevicePairing(args.xedoc_home)
         if args.action == "invite":
-            config = HostGuiConfig.load(args.xedoc_home)
+            from .host_gui_bridge import load_bridge_config
+
+            bridge_home = args.xedoc_home / "bridge"
+            direct = HostGuiConfig.load(args.xedoc_home)
+            config = load_bridge_config(args.xedoc_home)
+            if args.bridge_origin is not None:
+                if config is not None and config.origin != args.bridge_origin:
+                    raise ValueError("A different bridge is already configured")
+                if config is None:
+                    origin = urlsplit(args.bridge_origin)
+                    directory = bridge_home / "host-gui"
+                    config = HostGuiConfig(
+                        "127.0.0.1", origin.port or 443, args.bridge_origin,
+                        directory / "server-cert.pem", directory / "server-key.pem",
+                        pairing.ca_path.resolve(),
+                    )
+                    config.validate()
+                    if origin.scheme != "https":
+                        raise ValueError("The bridge origin must use HTTPS")
+                    if direct.port == config.port:
+                        raise ValueError("The bridge must use a different port from direct host access")
+                    cert, key, _ = HostGuiConfig.generate_tls_material(
+                        bridge_home, origin.hostname
+                    )
+                    config = replace(config, tls_cert=cert.resolve(), tls_key=key.resolve())
+            if config is None:
+                raise ValueError(
+                    "Pairing is only needed through the bridge. Configure it with "
+                    "device-pairing invite --bridge-origin https://sendnix.de:50001"
+                )
+            if direct.port == config.port:
+                raise ValueError("The bridge must use a different port from direct host access")
             invitation = pairing.invite(
-                config, args.server_ca or args.xedoc_home / "host-gui" / "ca-cert.pem"
+                config, args.server_ca or bridge_home / "host-gui" / "ca-cert.pem"
             )
-            config = replace(config, tls_client_ca=pairing.ca_path.resolve())
             config.create_tls_context()
-            config.save(args.xedoc_home)
+            config.save(bridge_home)
+            if (
+                direct.tls_client_ca is not None
+                and direct.tls_client_ca.resolve() == pairing.ca_path.resolve()
+            ):
+                replace(direct, tls_client_ca=None).save(args.xedoc_home)
             print(invitation)
             fingerprint = x509.load_pem_x509_certificate(
                 config.tls_cert.read_bytes()
             ).fingerprint(hashes.SHA256()).hex(":")
             print(f"Host: {config.origin}", file=sys.stderr)
             print(f"Host certificate SHA-256: {fingerprint}", file=sys.stderr)
-            print("Restart Host GUI to apply device certificate protection.", file=sys.stderr)
+            print("Restart Host GUI to start the bridge listener. Direct login stays available.", file=sys.stderr)
         elif args.action == "list":
             print(json.dumps(pairing.devices()))
         else:

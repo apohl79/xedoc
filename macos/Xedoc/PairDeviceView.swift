@@ -56,19 +56,14 @@ struct PairDeviceView: View {
                                 .foregroundStyle(.orange)
                         }
                     } else if enabled == true {
-                        Text("On this Mac: create a single-use invitation for the connected host. Keep this window open while you pair the other device.")
+                        Text("Create a single-use invitation to reach this host through its sendnix bridge. Direct connections only need sign-in.")
                         Text("Next, you’ll transfer the invitation and compare the host fingerprint on both devices.")
-                    } else if canInvite {
-                        Label("Pair your other device", systemImage: "iphone.and.arrow.forward")
-                            .font(.headline)
-                        Text("On this Mac: choose Create invitation. Xedoc will enable certificate protection for other devices. You do not need to pair this Mac or install a certificate profile.")
-                        Text("Local access on the host Mac stays unchanged. Existing unpaired remote connections will be disconnected.")
-                            .font(.callout).foregroundStyle(.secondary)
-                        Text("Next, open Xedoc on the other device to receive the invitation and verify the host.")
                     } else if enabled == false {
-                        Label("Host setup required", systemImage: "network").font(.headline)
-                        Text("On the host computer: configure private-CA HTTPS with an address the other device can reach. Then return here and choose Check again. Local access on this Mac does not need pairing.")
-                        Text("If HTTPS is already configured, update the host to enable invitation creation from this app.")
+                        Label("Bridge setup required", systemImage: "network").font(.headline)
+                        Text("Directly reachable hosts only need sign-in. To reach this host through sendnix, configure its TCP connector and run on the host:")
+                        Text("xedoc-remote-agentd device-pairing invite --bridge-origin https://sendnix.de:50001")
+                            .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                        Text("Use this host’s allocated bridge port. Restart Host GUI and start the connector, then choose Check again. Direct host sign-in stays unchanged.")
                     } else if failure == nil {
                         ProgressView("Checking host protection…")
                     }

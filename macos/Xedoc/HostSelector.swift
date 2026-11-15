@@ -6,7 +6,6 @@ struct HostSelector: View {
     @State private var address = ""
     @State private var invalidAddress = false
     @State private var pairing = false
-    @State private var pairedHosts = HostDevicePairing.hosts
     @State private var localHost = Self.readLocalHost()
 
     var body: some View {
@@ -44,10 +43,7 @@ struct HostSelector: View {
                             .foregroundStyle(HostSelectorPalette.secondary)
                         hostRow(localHost)
                     }
-                    ForEach(pairedHosts) { host in
-                        hostRow(host)
-                    }
-                    Text("NEARBY HOSTS")
+                    Text("AVAILABLE HOSTS")
                         .font(.system(size: 11, weight: .semibold))
                         .tracking(0.8)
                         .foregroundStyle(HostSelectorPalette.secondary)
@@ -103,7 +99,7 @@ struct HostSelector: View {
         .preferredColorScheme(.dark)
         .task { discovery.scan() }
         .onDisappear { discovery.stop() }
-        .sheet(isPresented: $pairing, onDismiss: { pairedHosts = HostDevicePairing.hosts }) {
+        .sheet(isPresented: $pairing, onDismiss: { discovery.scan() }) {
             HostPairingView { url in select(DiscoveredHost(hostname: url.host ?? "Host", url: url)) }
         }
         .alert("Enter an HTTPS host URL, or HTTP for localhost", isPresented: $invalidAddress) {
@@ -185,6 +181,9 @@ struct HostSelector: View {
                         .truncationMode(.middle)
                 }
                 Spacer(minLength: 8)
+                Text(host.route.label)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(HostSelectorPalette.secondary)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(HostSelectorPalette.secondary)

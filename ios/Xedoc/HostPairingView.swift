@@ -25,13 +25,14 @@ struct HostPairingView: View {
                         Text(HostDevicePairing.origin(pairedURL)).textSelection(.enabled)
                         Text("On this device: connect, then sign in with your host account. No certificate profile is needed in Settings.")
                     } else if step == 0 {
+                        Text("Directly reachable hosts only need sign-in. Pair a host to reach it through the sendnix bridge.")
                         Label("On a trusted Mac connected to the host", systemImage: "desktopcomputer")
                             .font(.headline)
                         Text("In Xedoc, open the host and sign in as an administrator. Choose File → Pair Device… and create an invitation.")
                         Text("If you only have terminal access to the host, run this command there:")
                         Text("xedoc-remote-agentd device-pairing invite")
                             .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
-                        Text("For first-time setup, follow the host wizard’s certificate-protection and restart instructions before continuing.")
+                        Text("For first-time setup, configure the host’s sendnix bridge before creating an invitation.")
                         Label("Then return to this device", systemImage: "iphone.and.arrow.forward")
                             .font(.headline)
                         Text("Transfer the invitation directly using AirDrop or another trusted channel. Never get it from sendnix or the bridge.")
@@ -50,7 +51,7 @@ struct HostPairingView: View {
                     } else if let preview {
                         Label("Compare both devices", systemImage: "checkmark.shield")
                             .font(.headline)
-                        Text("Check that this host address and certificate fingerprint match those shown on the trusted Mac, or printed beside the invitation in the host terminal.")
+                        Text("Check that this bridge address and host certificate fingerprint match those shown on the trusted Mac, or printed beside the invitation in the host terminal.")
                         Text(preview.origin).font(.headline).textSelection(.enabled)
                         Text("Host certificate · SHA-256").font(.caption).foregroundStyle(.secondary)
                         Text(preview.fingerprint).font(.system(.caption, design: .monospaced))
@@ -61,7 +62,7 @@ struct HostPairingView: View {
                     }
                     if let failure {
                         Text(failure).foregroundStyle(.red).font(.callout)
-                        Text("On the trusted Mac: create a new invitation if it expired or was already used. On this device: go Back and paste it, then verify again.")
+                        Text("Check that the host’s bridge connector is running. If the invitation expired or was already used, create another on the trusted Mac and paste it here. Direct host sign-in is unchanged.")
                             .font(.callout)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)

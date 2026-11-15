@@ -47,21 +47,13 @@ private struct HostSelector: View {
     @State private var address = ""
     @State private var invalidAddress = false
     @State private var pairing = false
-    @State private var pairedHosts = HostDevicePairing.hosts
 
     var body: some View {
         List {
             Section {
                 Button("Pair a host", systemImage: "key") { pairing = true }
             }
-            if !pairedHosts.isEmpty {
-                Section("Paired hosts") {
-                    ForEach(pairedHosts) { host in
-                        Button(host.url.absoluteString) { select(host) }
-                    }
-                }
-            }
-            Section("Nearby hosts") {
+            Section("Available hosts") {
                 ForEach(discovery.hosts) { host in
                     Button {
                         select(host)
@@ -71,6 +63,7 @@ private struct HostSelector: View {
                             VStack(alignment: .leading) {
                                 Text(host.hostname).foregroundStyle(.primary)
                                 Text(host.url.absoluteString).font(.caption).foregroundStyle(.secondary)
+                                Text(host.route.label).font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             Image(systemName: "chevron.right").foregroundStyle(.secondary)
@@ -98,7 +91,7 @@ private struct HostSelector: View {
         .toolbar {
             Button("Refresh hosts", systemImage: "arrow.clockwise") { discovery.scan() }
         }
-        .sheet(isPresented: $pairing, onDismiss: { pairedHosts = HostDevicePairing.hosts }) {
+        .sheet(isPresented: $pairing, onDismiss: { discovery.scan() }) {
             HostPairingView { url in select(DiscoveredHost(hostname: url.host ?? "Host", url: url)) }
         }
         .refreshable { discovery.scan() }
