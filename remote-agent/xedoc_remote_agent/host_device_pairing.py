@@ -255,7 +255,10 @@ def main(argv=None) -> int:
         os.environ.get("XEDOC_HOME", Path.home() / ".xedoc")
     ))
     parser.add_argument("--server-ca", type=Path)
-    parser.add_argument("--bridge-origin", help="Public HTTPS origin of this host's TCP bridge")
+    parser.add_argument(
+        "--bridge-origin",
+        help="Public HTTPS origin with a bridge port allocated to this host only",
+    )
     args = parser.parse_args(argv)
     try:
         pairing = HostDevicePairing(args.xedoc_home)
@@ -267,7 +270,11 @@ def main(argv=None) -> int:
             config = load_bridge_config(args.xedoc_home)
             if args.bridge_origin is not None:
                 if config is not None and config.origin != args.bridge_origin:
-                    raise ValueError("A different bridge is already configured")
+                    origin = urlsplit(args.bridge_origin)
+                    if origin.hostname != urlsplit(config.origin).hostname:
+                        raise ValueError("A different bridge hostname is already configured")
+                    config = replace(config, port=origin.port or 443, origin=args.bridge_origin)
+                    config.validate()
                 if config is None:
                     origin = urlsplit(args.bridge_origin)
                     directory = bridge_home / "host-gui"
@@ -287,8 +294,9 @@ def main(argv=None) -> int:
                     config = replace(config, tls_cert=cert.resolve(), tls_key=key.resolve())
             if config is None:
                 raise ValueError(
-                    "Pairing is only needed through the bridge. Configure it with "
-                    "device-pairing invite --bridge-origin https://sendnix.de:50001"
+                    "Pairing is only needed through the bridge. Use Pair Device to check "
+                    "for an unused port, then run device-pairing invite --bridge-origin "
+                    "https://sendnix.de:PORT with that port. Each public port serves one host."
                 )
             if direct.port == config.port:
                 raise ValueError("The bridge must use a different port from direct host access")

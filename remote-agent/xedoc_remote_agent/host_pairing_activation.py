@@ -2,6 +2,8 @@
 
 import ssl
 
+from .host_bridge_setup import check_bridge_route
+
 def can_invite_device(server) -> bool:
     return server.bridge_access.server is not None
 
@@ -11,6 +13,11 @@ def invite_device(server) -> dict:
         if not can_invite_device(server):
             raise ValueError("Configure and start the sendnix bridge before inviting a device")
         bridge = server.bridge_access.server
+        if check_bridge_route(bridge) != "ready":
+            raise ValueError(
+                "The public bridge does not present this host's certificate. "
+                "Choose Check again in Pair Device to check the route and find an unused port."
+            )
         config = bridge.tls_config
         if config.tls_cert.read_bytes() != bridge.tls_certificate:
             raise ValueError(

@@ -85,6 +85,15 @@ host, configure a **separate**, loopback-only TLS listener for the relay:
 xedoc-remote-agentd device-pairing invite --bridge-origin https://sendnix.de:50001
 ```
 
+`50001` is an example, not a shared port for every host. In **File → Pair
+Device…**, Xedoc checks `50001–50010` and suggests the first port that appears
+unused. Use that port in the command and in the connector's `localPort` and
+`remotePort`, with a unique proxy name such as `xedoc-host-50002`. The check
+does not reserve the port: an offline connector can look unused. Confirm frpc
+reports `start proxy success`, then choose **Check again** before creating an
+invitation. The wizard also verifies the public route presents this host's
+certificate; it will not invite devices to another host's route.
+
 Restart Host GUI **before** starting the connector. This creates bridge settings
 and host TLS material under `$XEDOC_HOME/bridge/host-gui/`; the bridge listener
 requires paired-device certificates, while the direct listener retains account
@@ -96,6 +105,9 @@ Allocate a different port from the allowed range for each additional host,
 changing the invitation origin and both frpc ports. The bridge port must differ
 from the direct listener's port. Share pairing invites only over a trusted
 channel, never a page served by sendnix.
+To change an existing host's port on the same bridge hostname, rerun the command
+with its new origin, update its connector, and restart both Host GUI and frpc.
+Create fresh invitations for devices previously paired to the old port.
 
 For subsequent invitations, run `xedoc-remote-agentd device-pairing invite` or
 use **File → Pair Device…** on a trusted Mac. Add `--xedoc-home /path/to/home` if

@@ -33,6 +33,7 @@ from .host_gui_bridge import HostBridgeAccess
 from .host_gui_local import LocalHostAccess
 from .host_device_pairing import HostDevicePairing
 from .host_pairing_activation import can_invite_device, invite_device
+from .host_bridge_setup import bridge_setup
 from .host_hostname import host_hostname
 from .host_workspace import HostWorkspaces
 from .host_outside_projects import OTHER_WORKSPACE, outside_directory, session_inventory
@@ -861,6 +862,9 @@ class HostHandler(BaseHTTPRequestHandler):
             pairing_server = getattr(self.server, "pairing_server", self.server)
             bridge = pairing_server.bridge_access.server
             pairing = bridge.device_pairing if bridge is not None else None
+            if self.command == "GET" and path == "/api/device/bridge-setup":
+                self.reply(200, bridge_setup(bridge))
+                return
             if self.command == "GET" and path == "/api/device/pairing":
                 self.reply(200, {
                     "enabled": bridge is not None,
@@ -873,9 +877,10 @@ class HostHandler(BaseHTTPRequestHandler):
             ):
                 if bridge is None:
                     self.reply(409, {
-                        "error": "Configure the sendnix bridge on the host with "
-                        "device-pairing invite --bridge-origin https://sendnix.de:50001, "
-                        "then restart Host GUI. Direct connections only need account login."
+                        "error": "Use Pair Device to check for an unused bridge port, "
+                        "configure this host and its connector with that port, then restart "
+                        "Host GUI. Each public port serves one host. "
+                        "Direct connections only need account login."
                     })
                     return
                 if path == "/api/device/pairing-status":

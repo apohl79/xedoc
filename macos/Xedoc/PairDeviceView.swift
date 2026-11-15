@@ -7,6 +7,8 @@ struct PairDeviceView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var enabled: Bool?
     @State private var canInvite = false
+    @State private var bridgeStatus = ""
+    @State private var suggestedPort: Int?
     @State private var localPairing = LocalDevicePairing()
     @State private var invitation = ""
     @State private var invitationID = ""
@@ -55,15 +57,43 @@ struct PairDeviceView: View {
                                  : "Another invitation replaced this one. Use the newest invitation, or create another here.")
                                 .foregroundStyle(.orange)
                         }
-                    } else if enabled == true {
+                    } else if canInvite {
                         Text("Create a single-use invitation to reach this host through its sendnix bridge. Direct connections only need sign-in.")
                         Text("Next, you’ll transfer the invitation and compare the host fingerprint on both devices.")
-                    } else if enabled == false {
+                    } else if enabled != nil {
                         Label("Bridge setup required", systemImage: "network").font(.headline)
-                        Text("Directly reachable hosts only need sign-in. To reach this host through sendnix, configure its TCP connector and run on the host:")
-                        Text("xedoc-remote-agentd device-pairing invite --bridge-origin https://sendnix.de:50001")
-                            .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
-                        Text("Use this host’s allocated bridge port. Restart Host GUI and start the connector, then choose Check again. Direct host sign-in stays unchanged.")
+                        if bridgeStatus == "mismatch" {
+                            Text("The public bridge presents another host’s certificate. Do not pair using that route.")
+                                .foregroundStyle(.orange)
+                        } else if bridgeStatus == "unreachable" {
+                            Text("This host’s bridge route could not be verified. Check its connector, or configure another port.")
+                        }
+                        Text("Each public bridge port serves one Mac. All devices pairing with that Mac share its port. Direct connections only need sign-in.")
+                        if working {
+                            ProgressView("Checking bridge ports 50001–50010…")
+                        } else if let suggestedPort {
+                            let port = String(suggestedPort)
+                            Text("Port \(port) appears unused on sendnix.de.")
+                                .font(.headline)
+                            Text("1. Run on the host you want to reach:")
+                            Text("xedoc-remote-agentd device-pairing invite --bridge-origin https://sendnix.de:\(port)")
+                                .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                            Text("2. Edit that host’s existing frpc proxy entry (keep its transport/TLS settings):")
+                            Text("""
+                                [[proxies]]
+                                name = "xedoc-host-\(port)"
+                                type = "tcp"
+                                localIP = "127.0.0.1"
+                                localPort = \(port)
+                                remotePort = \(port)
+                                """)
+                                .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                            Text("3. Restart that host’s Host GUI and connector. Confirm the connector reports “start proxy success”, then choose Check again here and create a new invitation.")
+                            Text("This check does not reserve the port. An offline connector can look unused; if the name or port is already claimed, check again. Changing a host’s port requires its devices to pair again. Direct host sign-in stays unchanged.")
+                                .font(.callout).foregroundStyle(.secondary)
+                        } else {
+                            Text("No unused port could be confirmed in 50001–50010. Ports may be occupied or unreachable. Check the relay and connectors, then choose Check again. Do not reuse another host’s port.")
+                        }
                     } else if failure == nil {
                         ProgressView("Checking host protection…")
                     }
@@ -132,10 +162,29 @@ struct PairDeviceView: View {
                 guard let protection = result["enabled"] as? Bool else {
                     throw pairingError("Update the host to a version that supports device pairing.")
                 }
+                let setup = try await request("device/bridge-setup", body: nil)
+                guard let routeStatus = setup["status"] as? String,
+                      ["ready", "mismatch", "unreachable", "unconfigured"].contains(routeStatus)
+                else { throw pairingError("Update the host to check bridge port availability.") }
+                try Task.checkCancellation()
+                bridgeStatus = routeStatus
+                suggestedPort = nil
+                if let text = setup["suggestedOrigin"] as? String,
+                   let url = DiscoveredHost.validatedURL(text),
+                   url.scheme == "https", url.host == "sendnix.de",
+                   let port = url.port, (50001...50010).contains(port),
+                   HostDevicePairing.origin(url) == text {
+                    suggestedPort = port
+                }
                 enabled = protection
-                canInvite = result["canInvite"] as? Bool ?? protection
+                canInvite = (result["canInvite"] as? Bool ?? protection) && routeStatus == "ready"
             }
         } catch {
+            if create {
+                canInvite = false
+                invitation = ""
+                invitationID = ""
+            }
             failure = error.localizedDescription
         }
     }
