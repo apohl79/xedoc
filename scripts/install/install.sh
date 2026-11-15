@@ -1289,7 +1289,7 @@ install_macos_app() {
     *-alpha* | *-beta*) return 0 ;;
   esac
   prompt_user_available || return 0
-  if ! prompt_yes_no "Install the Xedoc macOS app from Homebrew (adds the apohl79/xedoc tap and trusts its cask)?"; then
+  if ! prompt_yes_no "Install or update the Xedoc macOS app from Homebrew (adds the apohl79/xedoc tap and trusts its cask)?"; then
     step "Skipping Xedoc macOS app installation"
     return 0
   fi
@@ -1305,15 +1305,25 @@ install_macos_app() {
     return 0
   fi
 
+  step "Updating Homebrew metadata"
+  if ! brew update; then
+    printf 'WARNING: Could not update Homebrew metadata; skipping the Xedoc macOS app. The Xedoc CLI remains installed.\n' >&2
+    return 0
+  fi
+
   step "Trusting Homebrew cask apohl79/xedoc/xedoc"
   if ! brew trust --cask apohl79/xedoc/xedoc; then
     printf 'WARNING: Could not trust the Xedoc Homebrew cask; the CLI remains installed.\n' >&2
     return 0
   fi
 
-  step "Installing the Xedoc macOS app"
-  if ! brew install --cask xedoc; then
-    printf 'WARNING: Could not install the Xedoc macOS app; the Xedoc CLI remains installed.\n' >&2
+  brew_action=install
+  if brew list --cask xedoc >/dev/null 2>&1; then
+    brew_action=upgrade
+  fi
+  step "Installing or updating the Xedoc macOS app"
+  if ! brew "$brew_action" --cask apohl79/xedoc/xedoc; then
+    printf 'WARNING: Could not install or update the Xedoc macOS app; the Xedoc CLI remains installed.\n' >&2
     return 0
   fi
   step "Xedoc macOS app installed"
