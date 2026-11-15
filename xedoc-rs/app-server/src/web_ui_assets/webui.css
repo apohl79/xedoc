@@ -39,6 +39,12 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .history-image-trigger.is-truncated { mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); }
 .history-image-trigger:hover:not(:disabled) { background: transparent; }
 .history-image-trigger img { display: block; width: 100%; height: auto; border-radius: 6px; cursor: zoom-in; }
+.history-user-images::before { display: none; }
+.history-user > .history-user-image-list { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin: 0 -8px 0 -18px; }
+.history-user-image { flex: 0 1 180px; min-width: 0; max-width: calc((100% - 8px) / 2); }
+.history-user-image .history-image { width: 100%; max-width: 100%; margin: 0; }
+.history-user-image .history-image-trigger { width: 100%; height: 136px; max-height: none; }
+.history-user-image .history-image-trigger img { height: 100%; object-fit: cover; }
 .history-image figcaption { margin-top: 6px; color: #75838e; font-size: .78rem; line-height: 1.3; }
 .image-viewer { position: relative; width: fit-content; max-width: 96vw; max-height: 96dvh; margin: auto; padding: 48px 16px 12px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-prompt); color: inherit; }
 .image-viewer::backdrop { background: #1a2128ed; }

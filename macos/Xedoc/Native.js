@@ -1,5 +1,8 @@
 (() => {
   const send = (body) => window.webkit.messageHandlers.xedocDesktop.postMessage(body);
+  window.addEventListener("xedoc-host-view", (event) => send({
+    kind: "viewState", view: event.detail,
+  }));
   const originalFetch = window.fetch;
   window.fetch = async (...args) => {
     const response = await originalFetch(...args);

@@ -122,23 +122,31 @@ pub(crate) fn history_cell_html(
             .remote_image_urls
             .len()
             .saturating_add(user.local_image_paths.len());
-        for image_index in usize::from(page_start).saturating_sub(pages.len())
-            ..usize::from(page_end)
-                .saturating_sub(pages.len())
-                .min(image_count)
-        {
-            let _ = write!(
-                html,
-                "<div class=\"history-user\"><div class=\"image-anchor\">[Image #{}]</div>",
-                image_index + 1
+        let image_start = usize::from(page_start)
+            .saturating_sub(pages.len())
+            .min(image_count);
+        let image_end = usize::from(page_end)
+            .saturating_sub(pages.len())
+            .min(image_count);
+        if image_start < image_end {
+            html.push_str(
+                "<div class=\"history-user history-user-images\"><div class=\"history-user-image-list\">",
             );
-            let source = crate::web_ui_images::history_image_source(cell, image_index);
-            html.push_str(&crate::web_ui_images::image_html(
-                source.as_deref().unwrap_or_default(),
-                cell_index,
-                image_index,
-            ));
-            html.push_str("</div>");
+            for image_index in image_start..image_end {
+                let _ = write!(
+                    html,
+                    "<div class=\"history-user-image\"><div class=\"image-anchor\">[Image #{}]</div>",
+                    image_index + 1
+                );
+                let source = crate::web_ui_images::history_image_source(cell, image_index);
+                html.push_str(&crate::web_ui_images::image_html(
+                    source.as_deref().unwrap_or_default(),
+                    cell_index,
+                    image_index,
+                ));
+                html.push_str("</div>");
+            }
+            html.push_str("</div></div>");
         }
         return html;
     }

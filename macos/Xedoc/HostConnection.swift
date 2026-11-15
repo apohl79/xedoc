@@ -17,10 +17,13 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published private(set) var certificateError = false
     private var username: String?
     private var pendingRoute: SessionRoute?
+    private let viewStateKey: String
 
     init(url: URL) {
         self.url = url
         let defaults = UserDefaults.standard
+        let isLocalHost = HostSelector.readLocalHost()?.url.appendingPathComponent("") == url
+        viewStateKey = "hostView:\(isLocalHost ? "local" : url.absoluteString)"
         let key = "hostStore:\(url.absoluteString)"
         let identifier = defaults.string(forKey: key).flatMap(UUID.init(uuidString:)) ?? UUID()
         defaults.set(identifier.uuidString, forKey: key)
@@ -37,6 +40,24 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
             in: .defaultClient))
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
+        if let data = defaults.data(forKey: viewStateKey),
+           let view = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let encoded = String(data: data, encoding: .utf8),
+           let originData = try? JSONSerialization.data(withJSONObject: [url.absoluteString]),
+           let origin = String(data: originData, encoding: .utf8) {
+            pendingRoute = SessionRoute(info: view.merging(["host": url.absoluteString]) { _, new in new })
+            let restore = """
+            if (location.origin === new URL(\(origin)[0]).origin) {
+                try {
+                    if (!sessionStorage.getItem("xedoc-host-view-v1")) {
+                        sessionStorage.setItem("xedoc-host-view-v1", JSON.stringify(\(encoded)));
+                    }
+                } catch {}
+            }
+            """
+            configuration.userContentController.addUserScript(WKUserScript(
+                source: restore, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         configuration.userContentController.add(DesktopBridge(connection: self), name: "xedocDesktop")
         configuration.userContentController.add(WebsiteBridge(connection: self),
                                                 contentWorld: .defaultClient, name: "xedocWebsite")
@@ -71,6 +92,16 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
               sameOrigin(source), let event = message.body as? [String: Any]
         else { return }
         switch event["kind"] as? String {
+        case "viewState":
+            guard let view = event["view"] as? [String: Any],
+                  let name = view["username"] as? String, !name.isEmpty, name.count <= 64,
+                  ["workspaceId", "projectName", "threadId"].allSatisfy({ key in
+                      view[key] is NSNull || (view[key] as? String).map { $0.utf8.count <= 1024 } == true
+                  }) else { return }
+            let saved = view.filter { ["username", "workspaceId", "projectName", "threadId"].contains($0.key) }
+            if let data = try? JSONSerialization.data(withJSONObject: saved) {
+                UserDefaults.standard.set(data, forKey: viewStateKey)
+            }
         case "authenticated":
             guard let name = event["username"] as? String, !name.isEmpty, name.count <= 64 else { return }
             let changed = username != name
@@ -247,7 +278,9 @@ struct HostScreen: View {
 
     var body: some View {
         HSplitView {
-            DesktopWebView(view: connection.webView).frame(minWidth: 320)
+            DesktopWebView(view: connection.webView)
+                .frame(minWidth: 320)
+                .ignoresSafeArea(.container, edges: .top)
             if !connection.websites.isEmpty { WebsitePane(connection: connection).padding(.top, 32) }
         }
             .ignoresSafeArea()

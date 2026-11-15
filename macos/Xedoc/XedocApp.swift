@@ -60,6 +60,7 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             return
         }
         let window = makeWindow(title: "Hosts", size: NSSize(width: 520, height: 480))
+        window.setFrameAutosaveName("Hosts")
         window.isMovableByWindowBackground = true
         window.contentView = NSHostingView(rootView: HostSelector { [weak self] host in
             self?.openHost(host.url)
@@ -84,6 +85,8 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         let window = makeWindow(title: url.host ?? "Xedoc", size: NSSize(width: 1200, height: 800))
         if let port = url.port { window.title += ":\(port)" }
         window.minSize = NSSize(width: 720, height: 480)
+        let isLocalHost = HostSelector.readLocalHost()?.url.appendingPathComponent("") == url
+        window.setFrameAutosaveName(isLocalHost ? "LocalHost" : "Host:\(key)")
         connection.window = window
         connection.showHosts = { [weak self] in self?.showHosts() }
         connection.openHost = { [weak self] in self?.openHost($0) }
@@ -151,6 +154,9 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             if !isTerminating {
                 let hosts = defaults.stringArray(forKey: "connectedHosts") ?? []
                 defaults.set(hosts.filter { $0 != key }, forKey: "connectedHosts")
+                if HostSelector.readLocalHost()?.url.appendingPathComponent("").absoluteString == key {
+                    defaults.set(false, forKey: "connectedLocalHost")
+                }
             }
             connections.removeValue(forKey: key)?.close()
         }

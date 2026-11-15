@@ -191,6 +191,10 @@
     } catch {
       // Keep navigation usable when browser storage is unavailable.
     }
+    if (Object.values(view).every((value) => value === null
+      || (typeof value === "string" && value.length <= 1024))) {
+      window.dispatchEvent(new CustomEvent("xedoc-host-view", { detail: view }));
+    }
   }
   function workspaceView(workspaceId) {
     const workspaceKey = projectCacheKey(workspaceId);
