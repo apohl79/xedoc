@@ -515,7 +515,6 @@ class HostWorkspaces:
         _validate_workspace_id(workspace_id)
         with self._lock:
             roots, _ = self._config()
-            closed = set(self._closed_sessions.get(username, []))
             if workspace_id not in roots:
                 raise BrokerError.not_found()
             projects = WorkspaceRegistry.from_mapping(roots).projects(workspace_id)
@@ -543,8 +542,6 @@ class HostWorkspaces:
                     if not isinstance(thread, dict) or not _is_root_session(thread):
                         continue
                     thread_id = thread.get("id")
-                    if isinstance(thread_id, str) and thread_id in closed:
-                        continue
                     cwd, updated = thread.get("cwd"), thread.get("updatedAt")
                     if not isinstance(updated, int) or updated < cutoff:
                         recent_window_exhausted = True
@@ -574,11 +571,7 @@ class HostWorkspaces:
             for thread in self.active_loaded_sessions():
                 cwd = thread.get("cwd")
                 thread_id = thread.get("id")
-                if (
-                    not isinstance(cwd, str)
-                    or not isinstance(thread_id, str)
-                    or thread_id in closed
-                ):
+                if not isinstance(cwd, str) or not isinstance(thread_id, str):
                     continue
                 key = os.path.normcase(os.path.realpath(cwd))
                 updated = thread.get("updatedAt")

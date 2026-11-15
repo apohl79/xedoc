@@ -210,14 +210,22 @@
   }
   window.addEventListener("pagehide", saveView);
 
-  function projectPins() {
+  function projectPins(username = state?.account?.username, workspaceId = selectedWorkspace) {
+    if (!username || !workspaceId) return [];
     try {
-      const pins = JSON.parse(localStorage.getItem(`xedoc-pins:${state.account.username}:${selectedWorkspace}`));
+      const pins = JSON.parse(localStorage.getItem(`xedoc-pins:${username}:${workspaceId}`));
       return Array.isArray(pins) ? pins.filter((name) => typeof name === "string") : [];
     } catch {
       return [];
     }
   }
+
+  window.addEventListener("storage", (event) => {
+    const username = state?.account?.username;
+    const workspaceId = selectedWorkspace;
+    if (!username || !workspaceId || event.key !== `xedoc-pins:${username}:${workspaceId}`) return;
+    applyProjectPinOrder(projectCache.get(projectCacheKey(workspaceId, username)) || []);
+  });
 
   function applyProjectFilter() {
     const query = byId("project-search").value.trim().toLowerCase();
@@ -230,6 +238,32 @@
       if (matches) visible++;
     }
     byId("project-search-empty").hidden = !query || rows.length === 0 || visible > 0;
+  }
+
+  function applyProjectPinOrder(projects) {
+    const pins = new Set(projectPins());
+    const rows = new Map([...byId("projects").children].map((row) => {
+      const project = row.querySelector(".project");
+      return [project?.dataset.name, row];
+    }));
+    for (const [name, row] of rows) {
+      const pin = row.querySelector(".project-pin");
+      if (!pin) continue;
+      const pinned = pins.has(name);
+      pin.textContent = pinned ? "★" : "☆";
+      pin.title = `${pinned ? "Unpin" : "Pin"} ${row.querySelector(".project-label").textContent}`;
+      pin.setAttribute("aria-label", pin.title);
+      pin.setAttribute("aria-pressed", String(pinned));
+    }
+    const sorted = [...projects].sort((left, right) =>
+      Number(pins.has(right.name)) - Number(pins.has(left.name))
+      || (right.updatedAt || 0) - (left.updatedAt || 0)
+      || left.name.localeCompare(right.name));
+    for (const project of sorted) {
+      const row = rows.get(project.name);
+      if (row) byId("projects").append(row);
+    }
+    activity.paint();
   }
 
   function setSidebarOpen(open) {
@@ -568,20 +602,7 @@
       void renderWorkspace().catch((error) => notice(error.message));
       return;
     }
-    const rows = new Map([...byId("projects").children].map((row) => {
-      const project = row.querySelector(".project");
-      return [project?.dataset.name, row];
-    }));
-    const pins = new Set(projectPins());
-    const sorted = [...projects].sort((left, right) =>
-      Number(pins.has(right.name)) - Number(pins.has(left.name))
-      || (right.updatedAt || 0) - (left.updatedAt || 0)
-      || left.name.localeCompare(right.name));
-    for (const project of sorted) {
-      const row = rows.get(project.name);
-      if (row) byId("projects").append(row);
-    }
-    activity.paint();
+    applyProjectPinOrder(projects);
   }
 
   async function refreshProjectActivity(workspaceId, force = false) {
@@ -738,11 +759,19 @@
       element.dataset.name = project.name;
       element.append(text("span", project.label || project.name, "project-label"));
       activity.attach(element, selectedWorkspace, project.name);
-      const pin = button(pins.has(project.name) ? "★" : "☆", async () => {
-        if (pins.has(project.name)) pins.delete(project.name);
-        else pins.add(project.name);
-        localStorage.setItem(`xedoc-pins:${state.account.username}:${selectedWorkspace}`, JSON.stringify([...pins]));
-        await renderWorkspace();
+      const username = state.account.username;
+      const workspaceId = selectedWorkspace;
+      const pin = button(pins.has(project.name) ? "★" : "☆", () => {
+        const currentPins = new Set(projectPins(username, workspaceId));
+        if (currentPins.has(project.name)) currentPins.delete(project.name);
+        else currentPins.add(project.name);
+        localStorage.setItem(
+          `xedoc-pins:${username}:${workspaceId}`,
+          JSON.stringify([...currentPins]),
+        );
+        if (state?.account?.username === username && selectedWorkspace === workspaceId) {
+          applyProjectPinOrder(projectCache.get(projectCacheKey(workspaceId, username)) || []);
+        }
       });
       pin.className = "project-pin";
       pin.title = `${pins.has(project.name) ? "Unpin" : "Pin"} ${project.label || project.name}`;
@@ -1082,7 +1111,6 @@
     sessionTabOrders.set(key, (sessionTabOrders.get(key) || []).filter((id) => id !== threadId));
     pluginPanels.removeSession(threadId);
     activity.releaseLive(threadId);
-    projectCache.delete(projectCacheKey(workspaceId));
     sessionCache.delete(projectSessionKey(workspaceId, projectName));
     if (threadId === activeThread) {
       activeThread = null;
