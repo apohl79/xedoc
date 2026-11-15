@@ -4,7 +4,8 @@ import WebKit
 
 @MainActor
 final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
-    let url: URL
+    private(set) var url: URL
+    let isLocalHost: Bool
     let webView: WKWebView
     var window: NSWindow?
     var showHosts: (() -> Void)?
@@ -18,34 +19,72 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var username: String?
     private var pendingRoute: SessionRoute?
     private let viewStateKey: String
+    private var localAccessToken: String?
+    private var localMonitor: Task<Void, Never>?
+    private var retryLocalConnection = false
 
     init(url: URL) {
         self.url = url
         let defaults = UserDefaults.standard
-        let isLocalHost = HostSelector.readLocalHost()?.url.appendingPathComponent("") == url
+        isLocalHost = HostSelector.readLocalHost()?.url.appendingPathComponent("") == url
         viewStateKey = "hostView:\(isLocalHost ? "local" : url.absoluteString)"
         let key = "hostStore:\(url.absoluteString)"
         let identifier = defaults.string(forKey: key).flatMap(UUID.init(uuidString:)) ?? UUID()
         defaults.set(identifier.uuidString, forKey: key)
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = HostDevicePairing.dataStore(for: url) ?? WKWebsiteDataStore(forIdentifier: identifier)
+        webView = WKWebView(frame: .zero, configuration: configuration)
+        super.init()
+        configuration.userContentController.add(DesktopBridge(connection: self), name: "xedocDesktop")
+        configuration.userContentController.add(WebsiteBridge(connection: self),
+                                                contentWorld: .defaultClient, name: "xedocWebsite")
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
+        if isLocalHost {
+            localMonitor = Task { [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(2)) }
+                    catch { return }
+                    guard let self else { return }
+                    guard let local = HostSelector.localAccess() else { continue }
+                    if local.url.appendingPathComponent("") != self.url
+                        || local.token != self.localAccessToken || self.retryLocalConnection {
+                        self.load()
+                    }
+                }
+            }
+        }
+    }
+
+    func load() {
+        error = nil
+        certificateError = false
+        retryLocalConnection = false
+        (window as? HostWindow)?.headerDragStart = nil
+        if isLocalHost, let local = HostSelector.localAccess() {
+            url = local.url.appendingPathComponent("")
+            localAccessToken = local.token
+            window?.title = url.host.map { "\($0):\(url.port ?? 80)" } ?? "Xedoc"
+        }
+        let controller = webView.configuration.userContentController
+        controller.removeAllUserScripts()
         let scriptURL = Bundle.main.url(forResource: "Native", withExtension: "js")!
         let script = try! String(contentsOf: scriptURL, encoding: .utf8)
-        configuration.userContentController.addUserScript(WKUserScript(
+        controller.addUserScript(WKUserScript(
             source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let linksURL = Bundle.main.url(forResource: "WebsiteLinks", withExtension: "js")!
         let links = try! String(contentsOf: linksURL, encoding: .utf8)
-        configuration.userContentController.addUserScript(WKUserScript(
+        controller.addUserScript(WKUserScript(
             source: links, injectionTime: .atDocumentStart, forMainFrameOnly: false,
             in: .defaultClient))
-        webView = WKWebView(frame: .zero, configuration: configuration)
-        super.init()
-        if let data = defaults.data(forKey: viewStateKey),
+        if let data = UserDefaults.standard.data(forKey: viewStateKey),
            let view = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let encoded = String(data: data, encoding: .utf8),
            let originData = try? JSONSerialization.data(withJSONObject: [url.absoluteString]),
            let origin = String(data: originData, encoding: .utf8) {
-            pendingRoute = SessionRoute(info: view.merging(["host": url.absoluteString]) { _, new in new })
+            if pendingRoute == nil {
+                pendingRoute = SessionRoute(info: view.merging(["host": url.absoluteString]) { _, new in new })
+            }
             let restore = """
             if (location.origin === new URL(\(origin)[0]).origin) {
                 try {
@@ -55,20 +94,9 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
                 } catch {}
             }
             """
-            configuration.userContentController.addUserScript(WKUserScript(
+            controller.addUserScript(WKUserScript(
                 source: restore, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
-        configuration.userContentController.add(DesktopBridge(connection: self), name: "xedocDesktop")
-        configuration.userContentController.add(WebsiteBridge(connection: self),
-                                                contentWorld: .defaultClient, name: "xedocWebsite")
-        webView.navigationDelegate = self
-        webView.uiDelegate = self
-    }
-
-    func load() {
-        error = nil
-        certificateError = false
-        (window as? HostWindow)?.headerDragStart = nil
         var request = URLRequest(url: url)
         if let local = HostSelector.localAccess(), sameOrigin(local.url) {
             request.setValue("Bearer \(local.token)", forHTTPHeaderField: "Authorization")
@@ -77,6 +105,8 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func close() {
+        localMonitor?.cancel()
+        localMonitor = nil
         webView.stopLoading()
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "xedocDesktop")
         webView.configuration.userContentController.removeScriptMessageHandler(
@@ -175,6 +205,7 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
     private func showError(_ error: Error) {
         let code = (error as NSError).code
         guard code != NSURLErrorCancelled else { return }
+        retryLocalConnection = isLocalHost && (error as NSError).domain == NSURLErrorDomain
         certificateError = [NSURLErrorServerCertificateUntrusted, NSURLErrorServerCertificateHasBadDate,
                             NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorServerCertificateNotYetValid].contains(code)
         self.error = certificateError

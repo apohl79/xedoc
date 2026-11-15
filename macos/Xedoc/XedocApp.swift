@@ -71,7 +71,8 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
     func openHost(_ url: URL, route: SessionRoute? = nil, restoring: Bool = false) {
         guard let url = DiscoveredHost.validatedURL(url.absoluteString)?.appendingPathComponent("") else { return }
-        let key = url.absoluteString
+        let isLocalHost = HostSelector.readLocalHost()?.url.appendingPathComponent("") == url
+        let key = isLocalHost ? "local" : url.absoluteString
         if let connection = connections[key], let store = HostDevicePairing.dataStore(for: url),
            connection.webView.configuration.websiteDataStore.identifier != store.identifier {
             connection.window?.close()
@@ -85,7 +86,6 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         let window = makeWindow(title: url.host ?? "Xedoc", size: NSSize(width: 1200, height: 800))
         if let port = url.port { window.title += ":\(port)" }
         window.minSize = NSSize(width: 720, height: 480)
-        let isLocalHost = HostSelector.readLocalHost()?.url.appendingPathComponent("") == url
         window.setFrameAutosaveName(isLocalHost ? "LocalHost" : "Host:\(key)")
         connection.window = window
         connection.showHosts = { [weak self] in self?.showHosts() }
@@ -94,7 +94,7 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             guard let self, let connection else { return }
             var hosts = defaults.stringArray(forKey: "connectedHosts") ?? []
             hosts.removeAll { $0 == key }
-            if HostSelector.readLocalHost()?.url.appendingPathComponent("") == url {
+            if connection.isLocalHost {
                 defaults.set(authenticated, forKey: "connectedLocalHost")
             } else if authenticated {
                 hosts.append(key)
@@ -154,7 +154,7 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             if !isTerminating {
                 let hosts = defaults.stringArray(forKey: "connectedHosts") ?? []
                 defaults.set(hosts.filter { $0 != key }, forKey: "connectedHosts")
-                if HostSelector.readLocalHost()?.url.appendingPathComponent("").absoluteString == key {
+                if connections[key]?.isLocalHost == true {
                     defaults.set(false, forKey: "connectedLocalHost")
                 }
             }
