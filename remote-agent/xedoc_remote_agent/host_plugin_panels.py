@@ -57,10 +57,10 @@ class HostPluginPanels:
             raise BrokerError.not_found("Open the session in the host GUI first")
         return session
 
-    def catalog(self, project, *, refresh=False):
+    def catalog(self, project, *, plugin_id=None):
         key = str(project)
         cached = self.catalogs.get(key)
-        if not refresh and cached and time.monotonic() - cached[0] < 30:
+        if plugin_id is None and cached and time.monotonic() - cached[0] < 30:
             return cached[1]
         result = self.workspaces._request("plugin/installed", {"cwds": [key]})
         panels = {}
@@ -70,6 +70,8 @@ class HostPluginPanels:
                 continue
             for summary in marketplace.get("plugins", [])[:128]:
                 if not summary.get("installed") or not summary.get("enabled"):
+                    continue
+                if plugin_id is not None and summary["id"] != plugin_id:
                     continue
                 detail = self.workspaces._request(
                     "plugin/read",
@@ -93,9 +95,16 @@ class HostPluginPanels:
                         panels[(summary["id"], panel["id"])] = panel
                 except (OSError, ValueError, TypeError, KeyError):
                     continue
-        self.catalogs[key] = (time.monotonic(), panels)
-        if len(self.catalogs) > 64:
-            self.catalogs.pop(next(iter(self.catalogs)))
+        if plugin_id is None:
+            self.catalogs[key] = (time.monotonic(), panels)
+            if len(self.catalogs) > 64:
+                self.catalogs.pop(next(iter(self.catalogs)))
+        elif cached:
+            updated = {
+                identity: panel for identity, panel in cached[1].items()
+                if identity[0] != plugin_id
+            }
+            self.catalogs[key] = (cached[0], {**updated, **panels})
         return panels
 
     @staticmethod
@@ -226,7 +235,7 @@ class HostPluginPanels:
     def open(self, account, workspace, project_name, thread_id, plugin_id, panel_id, target, handler_id=None):
         with self.lock:
             session = self._session(account, workspace, project_name, thread_id)
-            panels = self.catalog(session["project"], refresh=True)
+            panels = self.catalog(session["project"], plugin_id=plugin_id)
             panel = panels.get((plugin_id, panel_id))
             if panel is None:
                 raise BrokerError.not_found("The enabled plugin does not declare this panel")

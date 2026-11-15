@@ -382,7 +382,7 @@ class HostHandler(BaseHTTPRequestHandler):
                     authorization, f"Bearer {local_token}"
                 ):
                     self.local_session_cookie = self.server.auth.local_login()
-                else:
+                elif not path.startswith("/plugin-ui/"):
                     cookies = SimpleCookie(self.headers.get("Cookie", ""))
                     token = cookies["xedoc_host"].value if "xedoc_host" in cookies else ""
                     self.server.auth.account(token)
