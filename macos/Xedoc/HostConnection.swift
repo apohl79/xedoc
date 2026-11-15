@@ -78,13 +78,10 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
             source: links, injectionTime: .atDocumentStart, forMainFrameOnly: false,
             in: .defaultClient))
         if let data = UserDefaults.standard.data(forKey: viewStateKey),
-           let view = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let _ = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let encoded = String(data: data, encoding: .utf8),
            let originData = try? JSONSerialization.data(withJSONObject: [url.absoluteString]),
            let origin = String(data: originData, encoding: .utf8) {
-            if pendingRoute == nil {
-                pendingRoute = SessionRoute(info: view.merging(["host": url.absoluteString]) { _, new in new })
-            }
             let restore = """
             if (location.origin === new URL(\(origin)[0]).origin) {
                 try {
