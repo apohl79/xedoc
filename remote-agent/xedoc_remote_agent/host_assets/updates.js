@@ -103,9 +103,6 @@ window.XedocHostUpdates = class {
         this.job = job;
         this.cursor = 0;
         this.terminal?.reset();
-        if (["starting", "running"].includes(result.status) && !this.byId("dialog").open) {
-          this.byId("dialog").showModal();
-        }
         if (requestedCursor > 0) return;
       }
       const wasRunning = this.running;
