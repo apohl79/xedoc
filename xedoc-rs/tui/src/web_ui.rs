@@ -228,6 +228,8 @@ impl WebUiSession {
         if let Some(mut frame) =
             previous.and_then(|frame| serde_json::from_str::<serde_json::Value>(&frame).ok())
         {
+            frame["viewports"] = serde_json::Value::Null;
+            frame["width"] = buffer.area.width.into();
             frame["live"] = crate::web_ui_html::buffer_html(buffer, None).into();
             frame["overlay"] = true.into();
             frame["composer"]["dialog"] = true.into();
