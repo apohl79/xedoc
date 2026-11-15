@@ -6,6 +6,7 @@ import WebKit
 @MainActor
 final class PushSubscription: ObservableObject {
     static let shared = PushSubscription()
+    private static let pendingRevocationNotice = "An old push subscription will be removed when its host is reachable."
     @Published var notice: String?
     private(set) var usesRemotePush = false
     private var token: String?
@@ -15,6 +16,7 @@ final class PushSubscription: ObservableObject {
     private var appleRegistrationFailed = false
     private var switching = false
     private var storageError: Error?
+    private var revocationTask: Task<Void, Never>?
     private var record = Record()
     private let session = URLSession(configuration: .ephemeral, delegate: PushRedirectGuard(), delegateQueue: nil)
     private let keychain: [String: Any] = [
@@ -24,9 +26,35 @@ final class PushSubscription: ObservableObject {
     ]
 
     private struct Record: Codable {
-        var installationId = UUID().uuidString
+        var installationId: String
         var origin: String?
         var subscriptionId: String?
+        var pendingRevocations: [PendingRevocation]
+
+        private enum CodingKeys: String, CodingKey {
+            case installationId
+            case origin
+            case subscriptionId
+            case pendingRevocations
+        }
+
+        init() {
+            installationId = UUID().uuidString
+            pendingRevocations = []
+        }
+
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            installationId = try values.decode(String.self, forKey: .installationId)
+            origin = try values.decodeIfPresent(String.self, forKey: .origin)
+            subscriptionId = try values.decodeIfPresent(String.self, forKey: .subscriptionId)
+            pendingRevocations = try values.decodeIfPresent([PendingRevocation].self, forKey: .pendingRevocations) ?? []
+        }
+    }
+
+    private struct PendingRevocation: Codable, Equatable {
+        let origin: String
+        let subscriptionId: String
     }
 
     private init() {
@@ -61,8 +89,14 @@ final class PushSubscription: ObservableObject {
         if let storageError { throw storageError }
         let next = url.map(Self.origin)
         if record.origin != next {
-            try await revoke()
             var updated = record
+            if let origin = record.origin, let subscriptionId = record.subscriptionId {
+                guard updated.pendingRevocations.count < 256 else {
+                    throw failure("Too many old push subscriptions are waiting for removal. Reconnect to a previous host, then retry.")
+                }
+                updated.pendingRevocations.append(PendingRevocation(origin: origin, subscriptionId: subscriptionId))
+                updated.subscriptionId = nil
+            }
             updated.origin = next
             try persist(updated)
             usesRemotePush = false
@@ -71,11 +105,13 @@ final class PushSubscription: ObservableObject {
             UNUserNotificationCenter.current().removeAllDeliveredNotifications()
             UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
         }
+        retryPendingRevocations()
     }
 
     func ready(_ view: WKWebView) {
         guard !switching, let url = view.url, Self.origin(url) == record.origin else { return }
         webView = view
+        retryPendingRevocations()
         guard refreshTask == nil else { return }
         refreshTask = Task {
             defer {
@@ -190,16 +226,52 @@ final class PushSubscription: ObservableObject {
     }
 
     private func revoke() async throws {
-        guard let secret = record.subscriptionId, let origin = record.origin, let url = URL(string: origin) else { return }
-        let cookies = await (HostDevicePairing.dataStore(for: url) ?? WKWebsiteDataStore.default()).httpCookieStore.allCookies()
-        let response = try await request("/api/push/unregister", origin: url, cookies: cookies,
-                                         body: ["subscriptionId": secret])
-        guard response.code == 200 else {
-            throw failure("The old host could not confirm push removal. Stay connected and retry before switching hosts.")
-        }
+        guard let secret = record.subscriptionId, let origin = record.origin else { return }
+        try await revoke(PendingRevocation(origin: origin, subscriptionId: secret))
         var updated = record
         updated.subscriptionId = nil
         try persist(updated)
+    }
+
+    private func revoke(_ pending: PendingRevocation) async throws {
+        guard let url = URL(string: pending.origin) else {
+            throw failure("The previous host URL is invalid.")
+        }
+        let cookies = await (HostDevicePairing.dataStore(for: url) ?? WKWebsiteDataStore.default())
+            .httpCookieStore.allCookies()
+        let response = try await request("/api/push/unregister", origin: url, cookies: cookies,
+                                         body: ["subscriptionId": pending.subscriptionId])
+        guard response.code == 200 else {
+            throw failure("The old host could not confirm push removal. Stay connected and retry before switching hosts.")
+        }
+    }
+
+    private func retryPendingRevocations() {
+        guard revocationTask == nil, !record.pendingRevocations.isEmpty else { return }
+        revocationTask = Task {
+            defer { revocationTask = nil }
+            while let pending = record.pendingRevocations.first {
+                do {
+                    try await revoke(pending)
+                } catch {
+                    if notice == nil {
+                        notice = Self.pendingRevocationNotice
+                    }
+                    do { try await Task.sleep(for: .seconds(60)) }
+                    catch { return }
+                    continue
+                }
+                var updated = record
+                updated.pendingRevocations.removeFirst()
+                do {
+                    try persist(updated)
+                } catch {
+                    notice = "Could not save the old push subscription cleanup status."
+                    return
+                }
+            }
+            if notice == Self.pendingRevocationNotice { notice = nil }
+        }
     }
 
     private func persist(_ updated: Record) throws {
