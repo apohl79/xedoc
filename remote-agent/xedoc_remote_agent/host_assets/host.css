@@ -342,6 +342,12 @@ aside button.project {
 .plugin-panel-open:hover { color: var(--text); }
 #plugin-panel-frames { display: flex; flex: 1; min-height: 0; }
 .plugin-panel-frame { width: 100%; height: 100%; border: 0; background: var(--canvas); }
+.website-panel { display: flex; flex-direction: column; min-width: 0; }
+.website-toolbar { display: flex; align-items: center; gap: 4px; padding: 6px; border-bottom: 1px solid var(--border); }
+.website-toolbar button { flex: none; padding: 3px 8px; }
+.website-toolbar input { flex: 1; min-width: 0; }
+.website-error { padding: 8px; color: var(--text); }
+.website-viewport { flex: 1; min-height: 0; }
 .session-frame { display: block; width: 100%; height: 100%; flex: 1; border: 0; background: var(--canvas); }
 .project-source { display: flex; gap: 3px; margin: 9px 0; }
 .project-source button { flex: 1; }

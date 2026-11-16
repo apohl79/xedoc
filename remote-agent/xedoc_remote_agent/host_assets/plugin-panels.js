@@ -31,6 +31,11 @@ window.XedocPluginPanels = class {
       entry.error.hidden = !state.error;
       this.render();
     };
+    const syncOverlay = () => this.layoutWebsite();
+    new MutationObserver(syncOverlay).observe(document.body, {
+      subtree: true, childList: true, attributes: true, attributeFilter: ["open", "aria-modal"],
+    });
+    document.addEventListener("toggle", syncOverlay, true);
     new ResizeObserver(() => this.layoutWebsite()).observe(this.frames);
     window.addEventListener("resize", () => this.layoutWebsite());
     const layout = document.getElementById("session-layout");
@@ -271,7 +276,10 @@ window.XedocPluginPanels = class {
 
   layoutWebsite() {
     const entry = this.entries.get(this.selected.get(this.key));
-    const rect = entry?.website && !this.container.hidden && !entry.frame.hidden
+    const overlayOpen = [...document.querySelectorAll("dialog[open], [aria-modal='true'], [popover]")]
+      .some((element) => element.matches("dialog[open], [aria-modal='true']")
+        || element.matches(":popover-open"));
+    const rect = entry?.website && !overlayOpen && !this.container.hidden && !entry.frame.hidden
       ? entry.viewport.getBoundingClientRect() : null;
     this.websiteCommand("layout", {
       id: rect ? entry.panelId : null,

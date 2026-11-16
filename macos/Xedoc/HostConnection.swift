@@ -13,8 +13,7 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
     var authenticationChanged: ((Bool) -> Void)?
     @Published var error: String?
     @Published var pairingDevice = false
-    @Published var websites: [WebsitePanel] = []
-    @Published var selectedWebsite: UUID?
+    var websites: [String: WebsitePanel] = [:]
     @Published private(set) var certificateError = false
     private var username: String?
     private var pendingRoute: SessionRoute?
@@ -57,6 +56,8 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func load() {
+        websites.values.forEach { $0.close() }
+        websites.removeAll()
         error = nil
         certificateError = false
         retryLocalConnection = false
@@ -108,7 +109,7 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "xedocDesktop")
         webView.configuration.userContentController.removeScriptMessageHandler(
             forName: "xedocWebsite", contentWorld: .defaultClient)
-        websites.forEach { $0.close() }
+        websites.values.forEach { $0.close() }
         websites.removeAll()
         window?.contentView = nil
         window = nil
@@ -158,6 +159,8 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
             guard let window = window as? HostWindow,
                   let start = event["dragStart"] as? Double, start.isFinite, start >= 80 else { return }
             window.headerDragStart = start
+        case "website":
+            receiveWebsiteCommand(event)
         default:
             DesktopNotifications.shared.receive(event, host: url, username: username)
         }
@@ -221,16 +224,8 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
             NSWorkspace.shared.open(url)
             return
         }
-        let panel = WebsitePanel()
-        websites.append(panel)
-        selectedWebsite = panel.id
-        panel.load(url)
-    }
-
-    func closeWebsite(_ panel: WebsitePanel) {
-        panel.close()
-        websites.removeAll { $0.id == panel.id }
-        if selectedWebsite == panel.id { selectedWebsite = websites.last?.id }
+        webView.callAsyncJavaScript("window.xedocOpenWebsite?.(url)",
+                                   arguments: ["url": url.absoluteString], in: nil, in: .page) { _ in }
     }
 
     func receiveWebsite(_ message: WKScriptMessage) {
@@ -305,12 +300,8 @@ struct HostScreen: View {
     @ObservedObject var connection: HostConnection
 
     var body: some View {
-        HSplitView {
-            DesktopWebView(view: connection.webView)
-                .frame(minWidth: 320)
-                .ignoresSafeArea(.container, edges: .top)
-            if !connection.websites.isEmpty { WebsitePane(connection: connection).padding(.top, 32) }
-        }
+        DesktopWebView(view: connection.webView)
+            .frame(minWidth: 320)
             .ignoresSafeArea()
             .sheet(isPresented: $connection.pairingDevice) {
                 PairDeviceView(connection: connection)
@@ -338,6 +329,12 @@ struct HostScreen: View {
 
 private struct DesktopWebView: NSViewRepresentable {
     let view: WKWebView
-    func makeNSView(context: Context) -> WKWebView { view }
-    func updateNSView(_ nsView: WKWebView, context: Context) {}
+    func makeNSView(context: Context) -> NSView {
+        let container = NSView()
+        view.frame = container.bounds
+        view.autoresizingMask = [.width, .height]
+        container.addSubview(view)
+        return container
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }

@@ -12,6 +12,8 @@ final class WebsitePanel: NSObject, ObservableObject, Identifiable, WKNavigation
     @Published private(set) var canGoForward = false
     @Published private(set) var error: String?
     private var observations: [NSKeyValueObservation] = []
+    var changed: (() -> Void)?
+    var openNew: ((URL) -> Void)?
 
     override init() {
         let configuration = WKWebViewConfiguration()
@@ -22,16 +24,28 @@ final class WebsitePanel: NSObject, ObservableObject, Identifiable, WKNavigation
         webView.uiDelegate = self
         observations = [
             webView.observe(\.title, options: [.new]) { [weak self] view, _ in
-                self?.title = view.title ?? view.url?.host ?? "Website"
+                MainActor.assumeIsolated {
+                    self?.title = view.title ?? view.url?.host ?? "Website"
+                    self?.changed?()
+                }
             },
             webView.observe(\.url, options: [.new]) { [weak self] view, _ in
-                self?.address = view.url?.absoluteString ?? ""
+                MainActor.assumeIsolated {
+                    self?.address = view.url?.absoluteString ?? ""
+                    self?.changed?()
+                }
             },
             webView.observe(\.canGoBack, options: [.new]) { [weak self] view, _ in
-                self?.canGoBack = view.canGoBack
+                MainActor.assumeIsolated {
+                    self?.canGoBack = view.canGoBack
+                    self?.changed?()
+                }
             },
             webView.observe(\.canGoForward, options: [.new]) { [weak self] view, _ in
-                self?.canGoForward = view.canGoForward
+                MainActor.assumeIsolated {
+                    self?.canGoForward = view.canGoForward
+                    self?.changed?()
+                }
             },
         ]
     }
@@ -65,6 +79,7 @@ final class WebsitePanel: NSObject, ObservableObject, Identifiable, WKNavigation
         observations.removeAll()
         webView.navigationDelegate = nil
         webView.uiDelegate = nil
+        webView.removeFromSuperview()
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
@@ -86,89 +101,85 @@ final class WebsitePanel: NSObject, ObservableObject, Identifiable, WKNavigation
                  for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         guard let url = action.request.url, Self.validatedURL(url.absoluteString) != nil else { return nil }
         if action.modifierFlags.contains(.command) { NSWorkspace.shared.open(url) }
-        else { load(url) }
+        else { openNew?(url) }
         return nil
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        if (error as NSError).code != NSURLErrorCancelled { self.error = error.localizedDescription }
+        if (error as NSError).code != NSURLErrorCancelled {
+            self.error = error.localizedDescription
+            changed?()
+        }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        if (error as NSError).code != NSURLErrorCancelled { self.error = error.localizedDescription }
-    }
-}
-
-struct WebsitePane: View {
-    @ObservedObject var connection: HostConnection
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 4) {
-                    ForEach(connection.websites) { panel in
-                        WebsiteTab(panel: panel, selected: connection.selectedWebsite == panel.id,
-                                   select: { connection.selectedWebsite = panel.id },
-                                   close: { connection.closeWebsite(panel) })
-                    }
-                }.padding(6)
-            }
-            if let panel = connection.websites.first(where: { $0.id == connection.selectedWebsite }) {
-                WebsiteContent(panel: panel).id(panel.id)
-            }
-        }
-        .frame(minWidth: 320, idealWidth: 520)
-        .background(.background)
-    }
-}
-
-private struct WebsiteTab: View {
-    @ObservedObject var panel: WebsitePanel
-    let selected: Bool
-    let select: () -> Void
-    let close: () -> Void
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Button(action: select) { Text(panel.title).lineLimit(1).frame(maxWidth: 180) }
-                .buttonStyle(.plain)
-            Button(action: close) { Image(systemName: "xmark") }
-                .buttonStyle(.borderless).help("Close website")
-        }
-        .padding(6)
-        .background(selected ? Color.primary.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 4))
-    }
-}
-
-private struct WebsiteContent: View {
-    @ObservedObject var panel: WebsitePanel
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Button { panel.webView.goBack() } label: { Image(systemName: "chevron.left") }
-                    .disabled(!panel.canGoBack).help("Back")
-                Button { panel.webView.goForward() } label: { Image(systemName: "chevron.right") }
-                    .disabled(!panel.canGoForward).help("Forward")
-                Button { panel.webView.reload() } label: { Image(systemName: "arrow.clockwise") }
-                    .help("Reload website")
-                TextField("Website address", text: $panel.address).onSubmit { panel.submitAddress() }
-                    .textFieldStyle(.roundedBorder)
-                Button {
-                    if let url = WebsitePanel.validatedURL(panel.address) { NSWorkspace.shared.open(url) }
-                } label: { Image(systemName: "arrow.up.right.square") }
-                    .help("Open in browser")
-            }.buttonStyle(.borderless).padding(8)
-            if let error = panel.error {
-                Text(error).foregroundStyle(.red).textSelection(.enabled).padding(8)
-            }
-            WebsiteWebView(view: panel.webView)
+        if (error as NSError).code != NSURLErrorCancelled {
+            self.error = error.localizedDescription
+            changed?()
         }
     }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        error = nil
+        changed?()
+    }
 }
 
-private struct WebsiteWebView: NSViewRepresentable {
-    let view: WKWebView
-    func makeNSView(context: Context) -> WKWebView { view }
-    func updateNSView(_ nsView: WKWebView, context: Context) {}
+extension HostConnection {
+    func receiveWebsiteCommand(_ event: [String: Any]) {
+        let id = event["id"] as? String ?? ""
+        switch event["command"] as? String {
+        case "open":
+            guard websites.count < 64, websites[id] == nil, UUID(uuidString: id) != nil,
+                  let container = webView.superview,
+                  let text = event["url"] as? String, let url = WebsitePanel.validatedURL(text) else { return }
+            let panel = WebsitePanel()
+            websites[id] = panel
+            panel.openNew = { [weak self, weak panel] url in
+                guard panel?.webView.isHidden == false else { return }
+                self?.openWebsite(url)
+            }
+            panel.webView.isHidden = true
+            container.addSubview(panel.webView)
+            panel.changed = { [weak self, weak panel] in
+                guard let self, let panel else { return }
+                let state: [String: Any] = [
+                    "id": id, "title": panel.title, "address": panel.address,
+                    "canGoBack": panel.canGoBack, "canGoForward": panel.canGoForward,
+                    "error": panel.error as Any? ?? NSNull(),
+                ]
+                self.webView.callAsyncJavaScript("window.xedocWebsiteState?.(state)",
+                    arguments: ["state": state], in: nil, in: .page) { _ in }
+            }
+            panel.load(url)
+        case "layout":
+            for (key, panel) in websites { panel.webView.isHidden = key != id }
+            guard let panel = websites[id], let rect = event["rect"] as? [String: Double],
+                  let x = rect["x"], let y = rect["y"],
+                  let width = rect["width"], let height = rect["height"],
+                  [x, y, width, height].allSatisfy(\.isFinite),
+                  x >= 0, y >= 0, width > 0, height > 0 else { return }
+            let frame = NSRect(x: x, y: webView.isFlipped ? y : webView.bounds.height - y - height,
+                               width: width, height: height)
+            panel.webView.frame = webView.convert(frame, to: webView.superview)
+        case "close":
+            websites.removeValue(forKey: id)?.close()
+        case "clear":
+            websites.values.forEach { $0.close() }
+            websites.removeAll()
+        case "back": websites[id]?.webView.goBack()
+        case "forward": websites[id]?.webView.goForward()
+        case "reload": websites[id]?.webView.reload()
+        case "external":
+            if let text = websites[id]?.address, let url = WebsitePanel.validatedURL(text) {
+                NSWorkspace.shared.open(url)
+            }
+        case "navigate":
+            guard let panel = websites[id], let text = event["url"] as? String else { return }
+            panel.address = text
+            panel.submitAddress()
+            panel.changed?()
+        default: break
+        }
+    }
 }
