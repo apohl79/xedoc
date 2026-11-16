@@ -10,7 +10,7 @@
     event.preventDefault();
     event.stopImmediatePropagation();
     window.webkit.messageHandlers.xedocWebsite.postMessage({
-      url: target.href, external: event.metaKey,
+      url: target.href, external: event.metaKey || anchor.classList.contains("plugin-panel-open"),
     });
   }, true);
 })();
