@@ -66,7 +66,9 @@ struct PairDeviceView: View {
                             Text("The public bridge presents another host’s certificate. Do not pair using that route.")
                                 .foregroundStyle(.orange)
                         } else if bridgeStatus == "unreachable" {
-                            Text("This host’s bridge route could not be verified. Check its connector, or configure another port.")
+                            Text("This host’s bridge route could not be verified. Run setup on that host to install or repair its outbound connector. Restarting Host GUI alone does not start the tunnel.")
+                            Text("xedoc-remote-agentd device-pairing setup")
+                                .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
                         }
                         Text("Each public bridge port serves one Mac. All devices pairing with that Mac share its port. Direct connections only need sign-in.")
                         if working {
@@ -75,20 +77,11 @@ struct PairDeviceView: View {
                             let port = String(suggestedPort)
                             Text("Port \(port) appears unused on sendnix.de.")
                                 .font(.headline)
-                            Text("1. Run on the host you want to reach:")
-                            Text("xedoc-remote-agentd device-pairing invite --bridge-origin https://sendnix.de:\(port)")
+                            Text(bridgeStatus == "unreachable" ? "Only if you intend to change this host’s port:" : "Run on the host you want to reach:")
+                            Text("xedoc-remote-agentd device-pairing setup --bridge-origin https://sendnix.de:\(port)")
                                 .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
-                            Text("2. Edit that host’s existing frpc proxy entry (keep its transport/TLS settings):")
-                            Text("""
-                                [[proxies]]
-                                name = "xedoc-host-\(port)"
-                                type = "tcp"
-                                localIP = "127.0.0.1"
-                                localPort = \(port)
-                                remotePort = \(port)
-                                """)
-                                .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
-                            Text("3. Restart that host’s Host GUI and connector. Confirm the connector reports “start proxy success”, then choose Check again here and create a new invitation.")
+                            Text("Setup installs frpc, configures this host’s proxy and automatic startup, and verifies the public route. It requires this host’s transport certificate, private key, and the public bridge CA in ~/.xedoc/bridge/transport; use --transport-ca, --transport-cert, and --transport-key for other paths. Obtain them through a trusted channel, never from the bridge. Keep the transport CA’s private key off the host.")
+                            Text("Once setup reports the bridge is ready, choose Check again here and create a new invitation.")
                             Text("This check does not reserve the port. An offline connector can look unused; if the name or port is already claimed, check again. Changing a host’s port requires its devices to pair again. Direct host sign-in stays unchanged.")
                                 .font(.callout).foregroundStyle(.secondary)
                         } else {

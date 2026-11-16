@@ -72,41 +72,57 @@ digest. Review/pin upgrades explicitly.
 
 ## NAT host
 
-Install upstream `frpc` v0.72.0 for the host OS from the
-[official release](https://github.com/fatedier/frp/releases/tag/v0.72.0).
-Keep `host.key` private on that host. Copy `frpc.example.toml`, replace the three
-absolute certificate paths, and run `frpc -c /absolute/path/frpc.toml`.
-No inbound NAT port is required; the connector opens outbound TCP 7000.
+On macOS or Linux, provision the host's **own** transport certificate and key
+and the public bridge CA through a trusted channel. The default paths are
+`$XEDOC_HOME/bridge/transport/host.crt`, `host.key`, and `bridge-ca.crt`
+(`XEDOC_HOME` defaults to `~/.xedoc`). Keep the transport CA signing key off the
+host and relay. Do not reuse another host's private key.
 
-Keep the normal Host GUI listener and account login unchanged. On the trusted
-host, configure a **separate**, loopback-only TLS listener for the relay:
+Run setup on the host:
 
 ```sh
-xedoc-remote-agentd device-pairing invite --bridge-origin https://sendnix.de:50001
+xedoc-remote-agentd device-pairing setup --bridge-origin https://sendnix.de:50002
 ```
 
-`50001` is an example, not a shared port for every host. In **File → Pair
-Device…**, Xedoc checks `50001–50010` and suggests the first port that appears
-unused. Use that port in the command and in the connector's `localPort` and
-`remotePort`, with a unique proxy name such as `xedoc-host-50002`. The check
-does not reserve the port: an offline connector can look unused. Confirm frpc
-reports `start proxy success`, then choose **Check again** before creating an
-invitation. The wizard also verifies the public route presents this host's
-certificate; it will not invite devices to another host's route.
+Use `--transport-ca`, `--transport-cert`, and `--transport-key` for other
+credential paths. Without `--bridge-origin`, setup keeps the host's configured
+origin, or selects an apparently unused port for first-time setup.
+An already-working route retains its existing connector instead of starting a
+second one.
 
-Restart Host GUI **before** starting the connector. This creates bridge settings
-and host TLS material under `$XEDOC_HOME/bridge/host-gui/`; the bridge listener
+Setup installs upstream `frpc` v0.72.0 with pinned archive checksums, writes
+the matching proxy configuration, activates the loopback-only Host GUI bridge,
+and starts a persistent user connector (LaunchAgent on macOS, systemd user
+service on Linux). It checks the public host certificate before reporting
+ready. Missing credentials or a failed tunnel are an incomplete setup, not a
+successful invitation. User services start at login; boot without login needs
+separate administrator-managed daemon or systemd linger configuration.
+The installer runs this setup for configured bridges and offers it as an
+opt-in for first-time NAT access. Directly reachable hosts do not need it.
+No inbound NAT port is required; the connector opens outbound TCP 7000.
+
+Each public port is for one host, not shared by every host. In **File → Pair
+Device…**, Xedoc checks `50001–50010` and suggests the first port that appears
+unused. Use that port in the setup command; setup generates a unique proxy
+name and matching local/remote ports. The check does not reserve a port: an
+offline connector can look unused. If a configured route is unreachable,
+rerun setup without changing its port first. Choose **Check again** after
+setup reports ready, then create an invitation. The wizard verifies the
+public route presents this host's certificate; it will not invite devices to
+another host's route.
+
+Bridge settings and host TLS material live under
+`$XEDOC_HOME/bridge/host-gui/`; the bridge listener
 requires paired-device certificates, while the direct listener retains account
-login. First-time bridge setup also removes legacy app-managed certificate
-enforcement from the direct listener; it never removes a custom client CA.
-The private bridge TLS key stays on the host, not sendnix.
+login. Setup leaves the direct listener configuration unchanged. The private
+bridge TLS key stays on the host, not sendnix.
 
 Allocate a different port from the allowed range for each additional host,
-changing the invitation origin and both frpc ports. The bridge port must differ
+changing the setup origin. The bridge port must differ
 from the direct listener's port. Share pairing invites only over a trusted
 channel, never a page served by sendnix.
-To change an existing host's port on the same bridge hostname, rerun the command
-with its new origin, update its connector, and restart both Host GUI and frpc.
+To change an existing host's port on the same bridge hostname, rerun setup
+with its new origin. Setup updates the listener and connector together.
 Create fresh invitations for devices previously paired to the old port.
 
 For subsequent invitations, run `xedoc-remote-agentd device-pairing invite` or

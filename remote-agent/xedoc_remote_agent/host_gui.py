@@ -29,7 +29,7 @@ from .host_ca_discovery import HostCADiscovery, discover_shared_cas
 from .host_gui_bonjour import HostGuiBonjour
 from .host_gui_discovery import HostGuiDiscovery, discover_host_guis
 from .host_gui_config import HostGuiConfig
-from .host_gui_bridge import HostBridgeAccess
+from .host_gui_bridge import HostBridgeAccess, load_bridge_config
 from .host_gui_local import LocalHostAccess
 from .host_device_pairing import HostDevicePairing
 from .host_pairing_activation import can_invite_device, invite_device
@@ -862,6 +862,25 @@ class HostHandler(BaseHTTPRequestHandler):
             pairing_server = getattr(self.server, "pairing_server", self.server)
             bridge = pairing_server.bridge_access.server
             pairing = bridge.device_pairing if bridge is not None else None
+            if self.command == "POST" and path == "/api/device/bridge-reload":
+                if local_token is None:
+                    self.reply(403, {"error": "Run bridge setup on the host itself"})
+                    return
+                if body:
+                    raise ValueError("Expected an empty bridge reload request")
+                with pairing_server.pairing_lock:
+                    home = pairing_server.workspaces.home
+                    config = load_bridge_config(home)
+                    if config is None:
+                        raise ValueError("Configure the bridge before starting its connector")
+                    config.create_tls_context()
+                    pairing_server.bridge_access.close()
+                    pairing_server.bridge_access = HostBridgeAccess(pairing_server, home)
+                    bridge = pairing_server.bridge_access.server
+                    if bridge is None:
+                        raise ValueError("Could not start the configured bridge listener")
+                    self.reply(200, {"enabled": True, "origin": bridge.origin})
+                return
             if self.command == "GET" and path == "/api/device/bridge-setup":
                 self.reply(200, bridge_setup(bridge))
                 return
@@ -878,8 +897,8 @@ class HostHandler(BaseHTTPRequestHandler):
                 if bridge is None:
                     self.reply(409, {
                         "error": "Use Pair Device to check for an unused bridge port, "
-                        "configure this host and its connector with that port, then restart "
-                        "Host GUI. Each public port serves one host. "
+                        "then run device-pairing setup on this host to install and start "
+                        "its connector. Each public port serves one host. "
                         "Direct connections only need account login."
                     })
                     return

@@ -1201,6 +1201,27 @@ configure_remote_agent() {
   fi
 }
 
+configure_host_bridge() (
+  bridge_release="$CURRENT_LINK"
+  [ "$EXPERIMENTAL" = false ] || bridge_release="$EXPERIMENTAL_LINK"
+  bridge_command="$bridge_release/bin/xedoc-remote-agentd"
+  [ -x "$bridge_command" ] || return 0
+  "$bridge_command" device-pairing --help 2>/dev/null | grep -q 'setup' || return 0
+  if [ ! -f "$XEDOC_HOME_DIR/bridge/host-gui/server.json" ]; then
+    prompt_user_available || return 0
+    if ! prompt_yes_no "Configure a sendnix bridge for this host behind NAT (requires its transport certificate and key)?"; then
+      return 0
+    fi
+  fi
+  step "Setting up the host bridge connector and verifying its public route"
+  if "$bridge_command" device-pairing setup --xedoc-home "$XEDOC_HOME_DIR"; then
+    step "Host bridge connector is ready"
+  else
+    printf 'WARNING: Bridge setup is incomplete. Direct host login is unchanged. Provision this host'\''s transport credentials, then run:\n  "%s" device-pairing setup --xedoc-home "%s"\n' \
+      "$bridge_command" "$XEDOC_HOME_DIR" >&2
+  fi
+)
+
 configure_host_push() (
   set +x
   push_release="$CURRENT_LINK"
@@ -1550,6 +1571,7 @@ fi
 configure_host_push
 configure_remote_agent
 restart_app_server_through_launch_agent
+configure_host_bridge
 
 # Deploy statusline script
 STATUSLINE_DST="$XEDOC_HOME_DIR/statusline.sh"

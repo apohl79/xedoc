@@ -32,7 +32,7 @@ struct HostPairingView: View {
                         Text("If you only have terminal access to the host, run this command there:")
                         Text("xedoc-remote-agentd device-pairing invite")
                             .font(.system(.callout, design: .monospaced)).textSelection(.enabled)
-                        Text("For first-time setup, use Pair Device on a trusted Mac to check for an unused sendnix bridge port. Each public port serves one host; all devices pairing with that host share it.")
+                        Text("For first-time setup, use Pair Device on a trusted Mac to check for an unused sendnix bridge port, then run device-pairing setup on the host to install and start its connector. Each public port serves one host; all devices pairing with that host share it.")
                         Label("Then return to this device", systemImage: "iphone.and.arrow.forward")
                             .font(.headline)
                         Text("Transfer the invitation directly using AirDrop or another trusted channel. Never get it from sendnix or the bridge.")

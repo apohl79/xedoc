@@ -247,9 +247,46 @@ class HostDevicePairing:
             connection.execute("DELETE FROM devices WHERE fingerprint=?", (fingerprint,))
 
 
+def _bridge_config(home, pairing, bridge_origin):
+    from .host_gui_bridge import load_bridge_config
+
+    bridge_home = home / "bridge"
+    direct = HostGuiConfig.load(home)
+    config = load_bridge_config(home)
+    if bridge_origin is not None:
+        origin = urlsplit(bridge_origin)
+        if config is not None and config.origin != bridge_origin:
+            if origin.hostname != urlsplit(config.origin).hostname:
+                raise ValueError("A different bridge hostname is already configured")
+            config = replace(config, port=origin.port or 443, origin=bridge_origin)
+            config.validate()
+        if config is None:
+            directory = bridge_home / "host-gui"
+            config = HostGuiConfig(
+                "127.0.0.1", origin.port or 443, bridge_origin,
+                directory / "server-cert.pem", directory / "server-key.pem",
+                pairing.ca_path.resolve(),
+            )
+            config.validate()
+            if origin.scheme != "https":
+                raise ValueError("The bridge origin must use HTTPS")
+            if direct.port == config.port:
+                raise ValueError("The bridge must use a different port from direct host access")
+            cert, key, _ = HostGuiConfig.generate_tls_material(bridge_home, origin.hostname)
+            config = replace(config, tls_cert=cert.resolve(), tls_key=key.resolve())
+    if config is None:
+        raise ValueError(
+            "Pairing is only needed through the bridge. Use device-pairing setup "
+            "to configure an unused port and its connector. Each public port serves one host."
+        )
+    if direct.port == config.port:
+        raise ValueError("The bridge must use a different port from direct host access")
+    return config
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="xedoc-remote-agentd device-pairing")
-    parser.add_argument("action", choices=("invite", "list", "revoke"))
+    parser.add_argument("action", choices=("setup", "invite", "list", "revoke"))
     parser.add_argument("fingerprint", nargs="?")
     parser.add_argument("--xedoc-home", type=Path, default=Path(
         os.environ.get("XEDOC_HOME", Path.home() / ".xedoc")
@@ -259,47 +296,27 @@ def main(argv=None) -> int:
         "--bridge-origin",
         help="Public HTTPS origin with a bridge port allocated to this host only",
     )
+    parser.add_argument("--transport-ca", type=Path, help="Public bridge transport CA PEM")
+    parser.add_argument("--transport-cert", type=Path, help="Bridge transport client certificate PEM")
+    parser.add_argument("--transport-key", type=Path, help="Bridge transport client private key PEM")
     args = parser.parse_args(argv)
     try:
+        if args.action == "setup":
+            from .host_bridge_connector import setup_connector
+
+            result = setup_connector(
+                args.xedoc_home, args.bridge_origin,
+                args.transport_ca, args.transport_cert, args.transport_key,
+            )
+            print(json.dumps(result))
+            return 0
+        if any((args.transport_ca, args.transport_cert, args.transport_key)):
+            raise ValueError("Transport credential options require device-pairing setup")
         pairing = HostDevicePairing(args.xedoc_home)
         if args.action == "invite":
-            from .host_gui_bridge import load_bridge_config
-
             bridge_home = args.xedoc_home / "bridge"
             direct = HostGuiConfig.load(args.xedoc_home)
-            config = load_bridge_config(args.xedoc_home)
-            if args.bridge_origin is not None:
-                if config is not None and config.origin != args.bridge_origin:
-                    origin = urlsplit(args.bridge_origin)
-                    if origin.hostname != urlsplit(config.origin).hostname:
-                        raise ValueError("A different bridge hostname is already configured")
-                    config = replace(config, port=origin.port or 443, origin=args.bridge_origin)
-                    config.validate()
-                if config is None:
-                    origin = urlsplit(args.bridge_origin)
-                    directory = bridge_home / "host-gui"
-                    config = HostGuiConfig(
-                        "127.0.0.1", origin.port or 443, args.bridge_origin,
-                        directory / "server-cert.pem", directory / "server-key.pem",
-                        pairing.ca_path.resolve(),
-                    )
-                    config.validate()
-                    if origin.scheme != "https":
-                        raise ValueError("The bridge origin must use HTTPS")
-                    if direct.port == config.port:
-                        raise ValueError("The bridge must use a different port from direct host access")
-                    cert, key, _ = HostGuiConfig.generate_tls_material(
-                        bridge_home, origin.hostname
-                    )
-                    config = replace(config, tls_cert=cert.resolve(), tls_key=key.resolve())
-            if config is None:
-                raise ValueError(
-                    "Pairing is only needed through the bridge. Use Pair Device to check "
-                    "for an unused port, then run device-pairing invite --bridge-origin "
-                    "https://sendnix.de:PORT with that port. Each public port serves one host."
-                )
-            if direct.port == config.port:
-                raise ValueError("The bridge must use a different port from direct host access")
+            config = _bridge_config(args.xedoc_home, pairing, args.bridge_origin)
             invitation = pairing.invite(
                 config, args.server_ca or bridge_home / "host-gui" / "ca-cert.pem"
             )
