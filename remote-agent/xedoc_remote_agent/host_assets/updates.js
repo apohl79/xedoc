@@ -132,6 +132,10 @@ window.XedocHostUpdates = class {
           this.terminal.open(this.byId("terminal"));
           this.terminal.onData((data) => this.send(data));
         }
+        if (this.running && !wasRunning) {
+          if (!this.byId("dialog").open) this.byId("dialog").showModal();
+          this.terminal.focus();
+        }
         this.fitTerminal();
         if (result.reset) this.terminal.reset();
         const bytes = Uint8Array.from(atob(result.output), (character) => character.charCodeAt(0));
