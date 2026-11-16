@@ -116,7 +116,7 @@
         button.type = "button";
         button.title = declaration.title;
         button.setAttribute("aria-label", declaration.title);
-        button.textContent = declaration.icon || "⚙";
+        button.textContent = `${declaration.icon || "⚙"} ${declaration.title}`;
         if (declaration.mode === "menu") {
           button.setAttribute("aria-haspopup", "menu");
           button.setAttribute("aria-expanded", "false");

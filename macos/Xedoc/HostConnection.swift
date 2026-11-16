@@ -243,8 +243,13 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
             decisionHandler(.allow)
         } else {
             decisionHandler(.cancel)
-            if action.navigationType == .linkActivated, ["https", "http"].contains(target.scheme) {
-                openWebsite(target, external: action.modifierFlags.contains(.command))
+            if action.navigationType == .linkActivated {
+                if target.scheme?.lowercased() == "slack",
+                   let source = action.sourceFrame.request.url, sameOrigin(source) {
+                    NSWorkspace.shared.open(target)
+                } else if ["https", "http"].contains(target.scheme) {
+                    openWebsite(target, external: action.modifierFlags.contains(.command))
+                }
             }
         }
     }
