@@ -13,8 +13,11 @@ import sys
 import threading
 import time
 from urllib.parse import unquote, urlsplit
+from urllib.request import url2pathname
 
 from .errors import BrokerError, ErrorCode
+from .host_plugin_composer import declarations as composer_declarations
+from .host_plugin_composer import invoke as invoke_composer
 from .workspaces import load_bootstrap_descriptor
 
 
@@ -152,6 +155,7 @@ class HostPluginPanels:
         return {
             "id": panel_id, "title": title, "executable": executable,
             "interpreter": interpreter, "root": root, "handlers": handlers,
+            "composerButtons": composer_declarations(root, declaration.get("composerButtons", [])),
         }
 
     def snapshot(self, account, workspace, project_name, thread_id):
@@ -167,9 +171,20 @@ class HostPluginPanels:
                     self._close_entry(token)
             return {
                 "actions": [action for panel in panels.values() for action in panel["handlers"]],
+                "composerButtons": [
+                    {"pluginId": plugin_id, "panelId": panel_id,
+                     **{key: button[key] for key in ("buttonId", "title", "icon", "mode")}}
+                    for (plugin_id, panel_id), panel in panels.items()
+                    for button in panel["composerButtons"]
+                ],
                 "panels": [self._public(token, entry) for token, entry in self.entries.items()
                            if entry["owner"] == owner],
             }
+
+    def composer(self, account, workspace, project_name, thread_id, plugin_id, panel_id, button_id, target=None):
+        return invoke_composer(
+            self, account, workspace, project_name, thread_id, plugin_id, panel_id, button_id, target,
+        )
 
     def actions(self, account, workspace, project_name, thread_id, target):
         with self.lock:
@@ -207,8 +222,9 @@ class HostPluginPanels:
             raise BrokerError.invalid_request("Only local file URLs are supported")
         local = scheme in ("", "file") or bool(re.match(r"^[A-Za-z]:[\\/]", raw))
         if local:
-            path = Path(_SOURCE_RANGE.sub("", unquote(
-                parsed.path if scheme in ("", "file") else path_reference
+            path = Path(_SOURCE_RANGE.sub("", (
+                url2pathname(parsed.path) if scheme == "file"
+                else unquote(parsed.path if scheme == "" else path_reference)
             )))
             target_path = (project / path).resolve()
             if not target_path.is_file():

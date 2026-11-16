@@ -9,6 +9,7 @@ window.XedocPluginPanels = class {
     this.selected = new Map();
     this.fullscreen = new Set();
     this.actions = [];
+    this.composerButtons = [];
     this.key = null;
     this.refreshing = new Set();
     this.opening = new Map();
@@ -17,6 +18,21 @@ window.XedocPluginPanels = class {
     this.tabs = document.getElementById("plugin-panel-tabs");
     this.frames = document.getElementById("plugin-panel-frames");
     this.divider = document.getElementById("plugin-panel-divider");
+    window.xedocOpenWebsite = (url) => this.openWebsite(url);
+    window.xedocWebsiteState = (state) => {
+      const entry = this.entries.get(state.id);
+      if (!entry?.website) return;
+      entry.title = state.title;
+      entry.url = state.address;
+      entry.address.value = state.address;
+      entry.back.disabled = !state.canGoBack;
+      entry.forward.disabled = !state.canGoForward;
+      entry.error.textContent = state.error || "";
+      entry.error.hidden = !state.error;
+      this.render();
+    };
+    new ResizeObserver(() => this.layoutWebsite()).observe(this.frames);
+    window.addEventListener("resize", () => this.layoutWebsite());
     const layout = document.getElementById("session-layout");
     const resize = (percentage) => {
       const width = Math.min(80, Math.max(20, percentage));
@@ -63,6 +79,9 @@ window.XedocPluginPanels = class {
       if (event.data?.type === "xedoc-plugin-check") {
         this.checkTarget(current, event.data);
       }
+      if (event.data?.type === "xedoc-plugin-composer") {
+        this.run(() => this.composer(current, event.data));
+      }
     });
     setInterval(() => this.refresh(), 2000);
   }
@@ -86,6 +105,7 @@ window.XedocPluginPanels = class {
     if (key === this.key) return;
     this.key = key;
     this.actions = [];
+    this.composerButtons = [];
     this.render();
     this.publish(this.context());
     this.refresh();
@@ -93,7 +113,7 @@ window.XedocPluginPanels = class {
 
   publish(context) {
     context?.frame.contentWindow.postMessage({
-      type: "xedoc-plugin-actions", actions: this.actions,
+      type: "xedoc-plugin-actions", actions: this.actions, composerButtons: this.composerButtons,
     }, location.origin);
   }
 
@@ -113,6 +133,42 @@ window.XedocPluginPanels = class {
     }, location.origin);
   }
 
+  async composer(current, data) {
+    if (typeof data.requestId !== "string" || data.requestId.length > 128) return;
+    const button = this.composerButtons.find((item) => item.pluginId === data.pluginId
+      && item.panelId === data.panelId && item.buttonId === data.buttonId);
+    if (!button) return;
+    const key = this.contextKey(current);
+    const launch = JSON.stringify([key, button.pluginId, button.panelId, button.buttonId, data.target]);
+    if (this.opening.has(launch)) return;
+    this.opening.set(launch, key);
+    try {
+      const result = await this.api("plugin/composer", {
+        ...this.params(current), pluginId: button.pluginId, panelId: button.panelId,
+        buttonId: button.buttonId, ...(data.target === undefined ? {} : { target: data.target }),
+      });
+      if (key !== this.contextKey(this.context())) return;
+      if (result.panel) {
+        this.browserPanels.delete(result.panel.panelId);
+        this.add(result.panel, key);
+        this.selected.set(key, result.panel.panelId);
+        this.render();
+      }
+      current.frame.contentWindow.postMessage({
+        type: "xedoc-plugin-composer-result", requestId: data.requestId, ...result,
+      }, location.origin);
+    } catch (error) {
+      if (key === this.contextKey(this.context())) {
+        current.frame.contentWindow.postMessage({
+          type: "xedoc-plugin-composer-result", requestId: data.requestId, error: error.message,
+        }, location.origin);
+      }
+      throw error;
+    } finally {
+      this.opening.delete(launch);
+    }
+  }
+
   async refresh() {
     const current = this.context();
     const key = this.contextKey(current);
@@ -122,6 +178,7 @@ window.XedocPluginPanels = class {
       const result = await this.api(`plugin/panels?${new URLSearchParams(this.params(current))}`);
       if (key !== this.contextKey(this.context()) || [...this.opening.values()].includes(key)) return;
       this.actions = Array.isArray(result.actions) ? result.actions : [];
+      this.composerButtons = Array.isArray(result.composerButtons) ? result.composerButtons : [];
       const panels = Array.isArray(result.panels) ? result.panels : [];
       const ids = new Set(panels.map((panel) => panel.panelId));
       for (const [id, owner] of this.browserPanels) {
@@ -129,7 +186,7 @@ window.XedocPluginPanels = class {
       }
       let changed = false;
       for (const [id, entry] of this.entries) {
-        if (entry.key === key && !ids.has(id)) {
+        if (entry.key === key && !entry.website && !ids.has(id)) {
           entry.frame.remove();
           this.entries.delete(id);
           changed = true;
@@ -161,6 +218,65 @@ window.XedocPluginPanels = class {
     this.frames.append(frame);
     this.selected.set(key, panel.panelId);
     return true;
+  }
+
+  websiteCommand(command, detail = {}) {
+    window.webkit?.messageHandlers?.xedocDesktop?.postMessage({ kind: "website", command, ...detail });
+  }
+
+  openWebsite(url) {
+    const key = this.contextKey(this.context());
+    if (!key || [...this.entries.values()].filter((entry) => entry.website).length >= 64) return;
+    const panelId = crypto.randomUUID();
+    const frame = document.createElement("div");
+    frame.className = "plugin-panel-frame website-panel";
+    const toolbar = document.createElement("form");
+    toolbar.className = "website-toolbar";
+    const button = (label, text, command) => {
+      const control = document.createElement("button");
+      control.type = "button";
+      control.title = label;
+      control.setAttribute("aria-label", label);
+      control.textContent = text;
+      control.addEventListener("click", () => this.websiteCommand(command, { id: panelId }));
+      toolbar.append(control);
+      return control;
+    };
+    const back = button("Back", "‹", "back");
+    const forward = button("Forward", "›", "forward");
+    button("Reload website", "↻", "reload");
+    const address = document.createElement("input");
+    address.setAttribute("aria-label", "Website address");
+    address.value = url;
+    toolbar.append(address);
+    toolbar.addEventListener("submit", (event) => {
+      event.preventDefault();
+      this.websiteCommand("navigate", { id: panelId, url: address.value });
+    });
+    const error = document.createElement("div");
+    error.className = "website-error";
+    error.hidden = true;
+    const viewport = document.createElement("div");
+    viewport.className = "website-viewport";
+    frame.append(toolbar, error, viewport);
+    this.entries.set(panelId, {
+      panelId, title: new URL(url).hostname, url, key, frame, website: true,
+      address, back, forward, error, viewport,
+    });
+    this.frames.append(frame);
+    this.selected.set(key, panelId);
+    this.websiteCommand("open", { id: panelId, url });
+    this.render();
+  }
+
+  layoutWebsite() {
+    const entry = this.entries.get(this.selected.get(this.key));
+    const rect = entry?.website && !this.container.hidden && !entry.frame.hidden
+      ? entry.viewport.getBoundingClientRect() : null;
+    this.websiteCommand("layout", {
+      id: rect ? entry.panelId : null,
+      rect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
+    });
   }
 
   render() {
@@ -211,7 +327,8 @@ window.XedocPluginPanels = class {
           if (this.contextKey(current) !== entry.key) return;
           close.disabled = true;
           try {
-            await this.api("plugin/close", { ...this.params(current), panelId: entry.panelId });
+            if (entry.website) this.websiteCommand("close", { id: entry.panelId });
+            else await this.api("plugin/close", { ...this.params(current), panelId: entry.panelId });
             entry.frame.remove();
             this.entries.delete(entry.panelId);
             this.render();
@@ -228,7 +345,13 @@ window.XedocPluginPanels = class {
       browser.className = "plugin-panel-open";
       browser.textContent = "↗";
       browser.setAttribute("aria-label", `Open ${entry.title || "plugin panel"} in browser`);
-      browser.addEventListener("click", (event) => event.stopPropagation());
+      browser.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (entry.website) {
+          event.preventDefault();
+          this.websiteCommand("external", { id: entry.panelId });
+        }
+      });
       const expand = document.createElement("button");
       expand.type = "button";
       expand.className = "plugin-panel-expand";
@@ -254,6 +377,7 @@ window.XedocPluginPanels = class {
     }
     this.container.hidden = !visible.length;
     this.divider.hidden = !visible.length || fullscreen;
+    this.layoutWebsite();
   }
 
   async open(current, data) {
@@ -297,6 +421,7 @@ window.XedocPluginPanels = class {
     }
     for (const [id, entry] of this.entries) {
       if (JSON.parse(entry.key)[3] !== threadId) continue;
+      if (entry.website) this.websiteCommand("close", { id });
       entry.frame.remove();
       this.entries.delete(id);
     }
@@ -305,6 +430,7 @@ window.XedocPluginPanels = class {
   }
 
   clear() {
+    this.websiteCommand("clear");
     this.entries.clear();
     this.selected.clear();
     this.fullscreen.clear();

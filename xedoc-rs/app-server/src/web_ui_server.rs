@@ -429,7 +429,9 @@ async fn script() -> Response {
             "\n",
             include_str!("web_ui_assets/prompt-undo.js"),
             "\n",
-            include_str!("web_ui_assets/webui.js")
+            include_str!("web_ui_assets/webui.js"),
+            "\n",
+            include_str!("web_ui_assets/plugin-composer.js")
         ),
         "text/javascript; charset=utf-8",
     )

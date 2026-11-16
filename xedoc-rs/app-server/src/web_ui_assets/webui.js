@@ -473,6 +473,7 @@
     if (menuKind) document.getElementById(menuKind).setAttribute("aria-expanded", "false");
     menuKind = null;
   }
+  document.addEventListener("xedoc-plugin-menu", closeMenu);
 
   function positionMenu() {
     if (menu.hidden || !menuKind) return;

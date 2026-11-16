@@ -241,6 +241,15 @@ a { color: #8fc4e7; }
 }
 #menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; font-size: 13px; }
 #menu button[aria-checked="true"] { color: #c9b3eb; background: #364250; }
+#plugin-tools { display: inline-flex; align-items: center; gap: 3px; }
+#plugin-tools:empty { display: none; }
+#plugin-tools button { min-width: 28px; }
+#plugin-tools button[aria-busy="true"] { opacity: .6; cursor: wait; }
+#plugin-composer-menu { position: fixed; z-index: 12; width: min(360px, calc(100vw - 16px)); padding: 8px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-prompt); box-shadow: 0 12px 36px #0006; font-size: 13px; overflow-wrap: anywhere; }
+#plugin-composer-menu summary { padding: 7px 4px; cursor: pointer; }
+#plugin-composer-menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; font-size: inherit; overflow-wrap: anywhere; }
+#plugin-composer-menu :is(summary, button):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.plugin-menu-children { padding-left: 14px; }
 #link-target-preview { position: fixed; z-index: 10000; max-width: min(720px, calc(100vw - 32px)); padding: 7px 10px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-prompt); color: inherit; box-shadow: 0 8px 26px #0007; font-family: var(--mono); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; pointer-events: none; }
 #link-target-preview.link-actions { pointer-events: auto; width: min(200px, calc(100vw - 16px)); padding: 4px; background: var(--bg-prompt); color: inherit; font: 13px/1.4 var(--sans); }
 .link-actions button { display: block; width: 100%; padding: 7px 10px; text-align: left; }

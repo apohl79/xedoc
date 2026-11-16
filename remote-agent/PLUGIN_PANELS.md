@@ -29,6 +29,66 @@ Python) or `node` (from `PATH`); otherwise the entrypoint is executed directly.
 Launching an action runs trusted plugin code as the host user, without a shell.
 Hover and focus only discover actions; they never execute plugin code.
 
+## Composer buttons
+
+A panel may declare up to 16 `composerButtons`. The host displays them to the
+left of the composer router/model controls:
+
+```json
+{
+  "composerButtons": [{
+    "id": "documents",
+    "title": "Discuss a document",
+    "icon": "▤",
+    "mode": "menu",
+    "entrypoint": "./runtime/bin/xedoc-composer",
+    "interpreter": "python"
+  }]
+}
+```
+
+Place this property inside the panel declaration. IDs are unique within a panel.
+Titles contain 1–120 characters; optional icons contain 1–4 characters.
+Entrypoint containment and interpreter rules match panel entrypoints.
+The session's `/api/plugin/panels` snapshot exposes `composerButtons` with
+`pluginId`, `panelId`, `buttonId`, `title`, `icon`, and `mode`, never executable
+paths. Discovery, polling, hover, and focus do not run composer commands.
+
+Explicit clicks call `POST /api/plugin/composer` with `workspaceId`,
+`projectName`, `threadId`, `pluginId`, `panelId`, and `buttonId`. The host
+rechecks enabled-plugin status and runs the declared command without a shell,
+with the project as working directory and one JSON line on stdin:
+
+```json
+{"protocol":"xedoc.plugin-composer/v1","pluginId":"inline-discussion@e47","panelId":"discussion","buttonId":"documents","threadId":"the-open-main-thread","projectRoot":"/absolute/project"}
+```
+
+This input contains no inference snapshot, socket credentials, or session
+capabilities. Like panel entrypoints, commands are trusted local plugin code.
+They must exit successfully within 10 seconds and write exactly one JSON line
+of at most 256 KiB to stdout. Use stderr for diagnostics, not stdout.
+The host discards composer stderr; launch failures remain explicit errors.
+
+`mode: "menu"` returns a tree:
+
+```json
+{"items":[{"title":"docs","expanded":true,"children":[{"title":"guide.md","target":"docs/guide.md"}]}],"emptyMessage":"No Markdown documents"}
+```
+
+Branches have `children` and optional boolean `expanded` (default false);
+leaves have `target`. Menus are limited to 1000 total nodes and 16 levels.
+Node titles and the optional `emptyMessage` are limited to 255 characters;
+targets to 4096. Control characters are not accepted.
+Selecting a leaf calls the same endpoint with its `target`, without rerunning
+the command. The host repeats project-access, existence, extension/scheme,
+and enabled-plugin checks through the existing panel launch path.
+
+`mode: "action"` runs immediately on click and returns either `{}` for a
+completed action or `{"target":"docs/guide.md"}` to open that panel.
+Actions cannot receive browser-supplied targets. A launch response is
+`{"panel":{...}}`, using the same public panel object as the session snapshot.
+Composer commands do not hold the shared panel lock while running.
+
 Before offering a link action, the GUI calls `POST /api/plugin/actions` with
 `workspaceId`, `projectName`, `threadId`, and `target` for its open session.
 The response is `{"actions":[...]}`, containing only declared handlers that

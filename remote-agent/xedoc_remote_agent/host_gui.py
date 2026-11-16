@@ -648,6 +648,7 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/api/session/rebind",
                 "/api/plugin/panels",
                 "/api/plugin/actions",
+                "/api/plugin/composer",
                 "/api/plugin/open",
                 "/api/plugin/close",
             ):
@@ -675,6 +676,12 @@ class HostHandler(BaseHTTPRequestHandler):
                     elif self.command == "POST" and path == "/api/plugin/actions":
                         self.reply(200, panels.actions(
                             account, workspace_id, project_name, thread_id, body.get("target")
+                        ))
+                    elif self.command == "POST" and path == "/api/plugin/composer":
+                        self.reply(200, panels.composer(
+                            account, workspace_id, project_name, thread_id,
+                            body.get("pluginId"), body.get("panelId"), body.get("buttonId"),
+                            body.get("target"),
                         ))
                     elif self.command == "POST" and path == "/api/plugin/open":
                         self.reply(200, panels.open(
