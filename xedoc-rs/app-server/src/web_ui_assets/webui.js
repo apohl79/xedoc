@@ -3,6 +3,7 @@
 (() => {
   const history = document.getElementById("history");
   const active = document.getElementById("active");
+  const toolSummary = document.createElement("div");
   let followingHistory = true;
   history.addEventListener("scroll", () => {
     followingHistory = history.scrollHeight - history.scrollTop - history.clientHeight < 80;
@@ -1182,11 +1183,13 @@
       }
     }
     if (activeStreamKind === null) {
-      const activeHtml = `${frame.active || ""}${frame.toolSummary || ""}`;
+      const activeHtml = frame.active || "";
       if (active.innerHTML !== activeHtml) active.innerHTML = activeHtml;
     }
+    const toolSummaryHtml = frame.toolSummary || "";
+    if (toolSummary.innerHTML !== toolSummaryHtml) toolSummary.innerHTML = toolSummaryHtml;
     decorateProseArrows(active);
-    history.append(active);
+    history.append(active, toolSummary);
     for (const anchor of history.querySelectorAll("a[data-xedoc-target]")) {
       const parsed = window.XedocPromptMarkdown.protocolUrl(anchor.dataset.xedocTarget);
       if (parsed) anchor.href = parsed.href;
