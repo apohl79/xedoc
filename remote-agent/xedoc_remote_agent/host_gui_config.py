@@ -16,6 +16,13 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 
+DEFAULT_INSTANT_CHAT_DIRECTORY = (
+    str(Path(tempfile.gettempdir()) / "xedoc-instant")
+    if os.name == "nt"
+    else "/tmp/xedoc-instant"
+)
+
+
 @dataclass(frozen=True)
 class HostGuiConfig:
     listen_address: str
@@ -24,6 +31,7 @@ class HostGuiConfig:
     tls_cert: Path | None = None
     tls_key: Path | None = None
     tls_client_ca: Path | None = None
+    instant_chat_directory: str = DEFAULT_INSTANT_CHAT_DIRECTORY
 
     @classmethod
     def local_only(cls) -> "HostGuiConfig":
@@ -40,17 +48,28 @@ class HostGuiConfig:
         if not isinstance(value, dict):
             raise ValueError("Host GUI settings must be an object")
         config = cls(
-            listen_address=value["listen_address"],
-            port=value["port"],
-            origin=value["origin"],
+            listen_address=value.get("listen_address", "127.0.0.1"),
+            port=value.get("port", 50000),
+            origin=value.get("origin", "http://127.0.0.1:50000"),
             tls_cert=Path(value["tls_cert"]) if value.get("tls_cert") else None,
             tls_key=Path(value["tls_key"]) if value.get("tls_key") else None,
             tls_client_ca=Path(value["tls_client_ca"]) if value.get("tls_client_ca") else None,
+            instant_chat_directory=value.get(
+                "instant_chat_directory", DEFAULT_INSTANT_CHAT_DIRECTORY
+            ),
         )
         config.validate()
         return config
 
     def validate(self) -> None:
+        if (
+            not isinstance(self.instant_chat_directory, str)
+            or not self.instant_chat_directory
+            or len(self.instant_chat_directory) > 16384
+            or "\0" in self.instant_chat_directory
+            or not Path(self.instant_chat_directory).is_absolute()
+        ):
+            raise ValueError("Instant chat directory must be an absolute path")
         if not isinstance(self.origin, str):
             raise ValueError("Host GUI origin must be a string")
         origin = urlsplit(self.origin)

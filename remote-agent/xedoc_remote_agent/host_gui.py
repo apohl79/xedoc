@@ -1,6 +1,7 @@
 """Authenticated host workspace inventory, separate from session relays."""
 
 import argparse
+from dataclasses import replace
 import getpass
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -921,8 +922,17 @@ class HostHandler(BaseHTTPRequestHandler):
                     raise ValueError("Expected an empty invitation request")
                 self.reply(200, invite_device(pairing_server))
                 return
-            if self.command == "POST" and path == "/api/project/open-folder":
-                directory = outside_directory(body.get("path"))
+            if self.command == "POST" and path in (
+                "/api/project/open-folder", "/api/session/instant"
+            ):
+                if path == "/api/session/instant":
+                    directory = Path(
+                        HostGuiConfig.load(service.home).instant_chat_directory
+                    )
+                    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    directory = outside_directory(str(directory))
+                else:
+                    directory = outside_directory(body.get("path"))
                 roots, _ = service._config()
                 workspace_id = next(
                     (
@@ -1227,12 +1237,16 @@ def main(argv=None) -> int:
                     tls_cert,
                     tls_key,
                     previous_config.tls_client_ca,
+                    previous_config.instant_chat_directory,
                 )
                 config.create_tls_context()
             else:
                 if previous_config.tls_client_ca is not None:
                     raise ValueError("Paired device access requires HTTPS")
-                config = HostGuiConfig.local_only()
+                config = replace(
+                    HostGuiConfig.local_only(),
+                    instant_chat_directory=previous_config.instant_chat_directory,
+                )
             config.save(args.xedoc_home)
         except (OSError, ValueError, ssl.SSLError) as error:
             parser.error(str(error))
@@ -1284,6 +1298,7 @@ def main(argv=None) -> int:
         Path(args.tls_cert) if args.tls_cert else None,
         Path(args.tls_key) if args.tls_key else None,
         saved.tls_client_ca,
+        saved.instant_chat_directory,
     )
     with HostServer(
         (args.listen, args.port), args.origin, args.xedoc_home, tls_config=tls_config

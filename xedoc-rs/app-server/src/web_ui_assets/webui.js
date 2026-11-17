@@ -41,6 +41,7 @@
     const trigger = event.target.closest(".history-image-trigger");
     const image = trigger?.querySelector("img");
     if (!trigger || !image) return;
+    event.preventDefault();
     imageViewerImage.src = image.src;
     imageViewerImage.alt = image.alt;
     imageViewerCaption.textContent = trigger.nextElementSibling?.textContent || "";

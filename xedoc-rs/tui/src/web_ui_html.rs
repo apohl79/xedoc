@@ -349,11 +349,44 @@ fn markdown_html(source: &str) -> String {
     let source = normalize_blockquote_continuations(&source);
     let mut blockquote_depth = 0;
     let mut suppress_next_block_margin = false;
-    for event in Parser::new_ext(
+    let mut image_budget = 512 * 1024;
+    let mut image_count = 0;
+    let mut events = Parser::new_ext(
         &source,
         Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH,
-    ) {
+    );
+    while let Some(event) = events.next() {
         match event {
+            Event::Start(Tag::Image { dest_url, .. }) => {
+                let mut alt = String::new();
+                let mut depth = 1;
+                for event in events.by_ref() {
+                    match event {
+                        Event::Start(Tag::Image { .. }) => depth += 1,
+                        Event::End(pulldown_cmark::TagEnd::Image) => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        Event::Text(text) | Event::Code(text) => alt.push_str(&text),
+                        Event::SoftBreak | Event::HardBreak => alt.push(' '),
+                        _ => {}
+                    }
+                }
+                image_count += 1;
+                if image_count <= 4 {
+                    html.push_str(&crate::web_ui_images::markdown_image_html(
+                        &dest_url,
+                        &alt,
+                        &mut image_budget,
+                    ));
+                } else {
+                    html.push_str(
+                        "<span class=\"history-tool\">Image preview limit reached</span>",
+                    );
+                }
+            }
             Event::Start(tag) => {
                 let starts_blockquote = matches!(&tag, Tag::BlockQuote);
                 if starts_blockquote {
@@ -583,7 +616,7 @@ fn normalize_blockquote_continuations(source: &str) -> String {
     normalized
 }
 
-fn escape_html(html: &mut String, text: &str) {
+pub(crate) fn escape_html(html: &mut String, text: &str) {
     for ch in text.chars() {
         match ch {
             '&' => html.push_str("&amp;"),

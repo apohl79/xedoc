@@ -517,6 +517,7 @@
     const admin = state.account.role === "admin";
     updates.setAccount(state.account);
     byId("users-button").hidden = !admin;
+    byId("instant-chat").hidden = !admin;
     byId("add-workspace").hidden = !admin;
     if (!state.workspaces.some((entry) => entry.workspaceId === selectedWorkspace)) {
       selectedWorkspace = state.workspaces[0]?.workspaceId || null;
@@ -1129,6 +1130,27 @@
     }
     await renderWorkspace();
   }
+
+  byId("instant-chat").addEventListener("click", () => run(async () => {
+    const control = byId("instant-chat");
+    control.disabled = true;
+    const generation = accountGeneration;
+    try {
+      const result = await api("session/instant", {});
+      if (!state || generation !== accountGeneration) return;
+      saveView();
+      sessionRequest++;
+      selectedWorkspace = result.workspaceId;
+      selectedProject = result.projectName;
+      activeThread = result.threadId;
+      const key = projectSessionKey(selectedWorkspace, selectedProject);
+      sessionCache.set(key, [result, ...(sessionCache.get(key) || [])]);
+      projectCache.delete(projectCacheKey(selectedWorkspace));
+      await renderWorkspace();
+    } finally {
+      control.disabled = false;
+    }
+  }));
 
   async function startNewSession() {
     byId("session-menu").hidePopover();

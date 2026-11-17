@@ -5,6 +5,48 @@ use std::io::Read;
 
 use base64::Engine;
 
+pub(crate) fn markdown_image_html(destination: &str, alt: &str, budget: &mut usize) -> String {
+    let mut html = String::new();
+    let source = if destination.starts_with("data:") {
+        Some(destination.to_owned())
+    } else {
+        let path = if destination.starts_with("file:") {
+            url::Url::parse(destination)
+                .ok()
+                .filter(|url| url.host_str().is_none_or(|host| host == "localhost"))
+                .and_then(|url| url.to_file_path().ok())
+        } else {
+            let path = std::path::Path::new(destination);
+            (path.is_absolute()
+                && !destination.starts_with("//")
+                && !destination.starts_with("\\\\"))
+            .then(|| path.to_path_buf())
+        };
+        path.and_then(|path| file_source(&path))
+    };
+    let preview = source.as_deref().and_then(preview);
+    if let Some(preview) = preview
+        && preview.data_url.len() <= *budget
+    {
+        *budget -= preview.data_url.len();
+        html.push_str("<span class=\"history-markdown-image\"><button class=\"history-image-trigger\" type=\"button\" aria-label=\"View image preview\"><img loading=\"lazy\" src=\"");
+        html.push_str(&preview.data_url);
+        html.push_str("\" alt=\"");
+        crate::web_ui_html::escape_html(&mut html, alt);
+        html.push_str("\"></button><span class=\"muted\">");
+        crate::web_ui_html::escape_html(&mut html, alt);
+        html.push_str("</span></span>");
+    } else {
+        html.push_str("<span class=\"history-tool\">Image preview unavailable");
+        if !alt.is_empty() {
+            html.push_str(": ");
+            crate::web_ui_html::escape_html(&mut html, alt);
+        }
+        html.push_str("</span>");
+    }
+    html
+}
+
 pub(crate) fn history_image_source(
     cell: &dyn crate::history_cell::HistoryCell,
     image_index: usize,
@@ -25,6 +67,14 @@ pub(crate) fn history_image_source(
     let path = user
         .local_image_paths
         .get(image_index.checked_sub(user.remote_image_urls.len())?)?;
+    file_source(path).map(std::borrow::Cow::Owned)
+}
+
+fn file_source(path: &std::path::Path) -> Option<String> {
+    let metadata = std::fs::metadata(path).ok()?;
+    if !metadata.is_file() || metadata.len() > 8 * 1024 * 1024 {
+        return None;
+    }
     let file = std::fs::File::open(path).ok()?;
     let mut bytes = Vec::new();
     file.take(8 * 1024 * 1024 + 1)
@@ -33,9 +83,7 @@ pub(crate) fn history_image_source(
     if bytes.len() > 8 * 1024 * 1024 {
         return None;
     }
-    Some(std::borrow::Cow::Owned(
-        base64::engine::general_purpose::STANDARD.encode(bytes),
-    ))
+    Some(base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
 pub(crate) fn image_html(source: &str, cell_index: Option<usize>, image_index: usize) -> String {

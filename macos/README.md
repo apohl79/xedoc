@@ -16,6 +16,17 @@ Certificates use normal system trust; discovery does not grant trust.
 Host windows have edge-to-edge session tabs, native window controls, and no
 browser toolbar. Reload Host (`⌘R`) reloads the active connection.
 
+The sidebar’s lightning button starts an instant chat (administrators only).
+Set `"instant_chat_directory": "/absolute/project/path"` in the host’s
+`$XEDOC_HOME/host-gui/server.json` (`~/.xedoc/host-gui/server.json` by default).
+An omitted setting uses `/tmp/xedoc-instant` (the system temporary directory’s
+`xedoc-instant` folder on Windows). The host creates the directory if needed
+and reads this setting on each click, without a restart.
+
+Assistant Markdown images support absolute host paths, `file:` URLs, and embedded
+PNG/JPEG/GIF/WebP data. Previews are bounded and open in the image viewer.
+Remote image URLs are not fetched automatically.
+
 Allow notifications when connecting. Input/approval and turn-end alerts contain
 only host/project names. Clicking an alert opens its exact session, after
 sign-in if needed. An alert cannot navigate a different account. Notifications

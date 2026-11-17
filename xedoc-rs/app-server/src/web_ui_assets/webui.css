@@ -39,6 +39,9 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .history-image-trigger.is-truncated { mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); }
 .history-image-trigger:hover:not(:disabled) { background: transparent; }
 .history-image-trigger img { display: block; width: 100%; height: auto; border-radius: 6px; cursor: zoom-in; }
+.history-markdown-image { display: block; margin-block: 8px; }
+.history-markdown-image .history-image-trigger { width: fit-content; max-width: 100%; }
+.history-markdown-image img { width: auto; max-width: 100%; }
 .history-user-images::before { display: none; }
 .history-user > .history-user-image-list { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin: 0 -8px 0 -18px; }
 .history-user-image { flex: 0 1 180px; min-width: 0; max-width: calc((100% - 8px) / 2); }
