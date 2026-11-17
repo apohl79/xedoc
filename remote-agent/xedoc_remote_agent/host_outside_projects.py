@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 from .errors import BrokerError, ErrorCode
+from .host_project_paths import main_project
 
 
 OTHER_WORKSPACE = "@other"
@@ -113,6 +114,7 @@ def session_inventory(service, username: str, roots: dict, *, include_outside: b
     result = {key: [] for key in roots}
     if include_outside:
         result[OTHER_WORKSPACE] = []
+    main_projects = {}
     for thread_id, thread in threads.items():
         cwd = thread.get("cwd")
         if (
@@ -123,17 +125,25 @@ def session_inventory(service, username: str, roots: dict, *, include_outside: b
         ):
             continue
         directory = Path(os.path.realpath(cwd))
-        workspace_id = next(
-            (
-                key
-                for key, root in canonical_roots.items()
-                if directory.parent == root and not directory.name.startswith(".")
-            ),
-            None,
-        )
+        if directory not in main_projects:
+            main_projects[directory] = main_project(directory)
+        project = main_projects[directory]
+        workspace_id = None
         project_name = directory.name
-        if workspace_id is None and directory in linked_projects:
-            workspace_id, project_name = linked_projects[directory]
+        for candidate in dict.fromkeys((project, directory)):
+            workspace_id = next(
+                (
+                    key
+                    for key, root in canonical_roots.items()
+                    if candidate.parent == root and not candidate.name.startswith(".")
+                ),
+                None,
+            )
+            project_name = candidate.name
+            if workspace_id is None and candidate in linked_projects:
+                workspace_id, project_name = linked_projects[candidate]
+            if workspace_id is not None:
+                break
         status = thread.get("status")
         status = status if isinstance(status, dict) else {}
         updated = thread.get("updatedAt")

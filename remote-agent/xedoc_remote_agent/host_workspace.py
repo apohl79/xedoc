@@ -14,6 +14,7 @@ from urllib.parse import unquote, urlsplit
 from .controller import _LiveTurnItems, _default_client_factory
 from .errors import BrokerError, ErrorCode, map_controller_error
 from .host_outside_projects import OTHER_WORKSPACE, outside_directory, outside_projects
+from .host_project_paths import main_project, project_worktrees
 from .work_admission import WorkAdmissionGate
 from .workspaces import WorkspaceRegistry, _validate_workspace_id, load_bootstrap_descriptor
 
@@ -821,7 +822,8 @@ class HostWorkspaces:
         ):
             raise BrokerError.not_found()
         try:
-            if Path(cwd).resolve(strict=True) != project:
+            directory = Path(cwd).resolve(strict=True)
+            if directory != project and main_project(directory) != project:
                 raise BrokerError.not_found()
         except (OSError, ValueError, RuntimeError) as error:
             raise BrokerError.not_found() from error
@@ -837,6 +839,13 @@ class HostWorkspaces:
     ) -> list[dict]:
         with self._lock:
             project = self._project_path(workspace_id, project_name)
+            directories = (
+                [project]
+                if workspace_id == OTHER_WORKSPACE
+                else project_worktrees(project)
+            )
+            if directories[0] != project:
+                directories = [project]
             closed = set(self._closed_sessions.get(username, []))
             if workspace_id == OTHER_WORKSPACE and not include_history:
                 return [
@@ -860,7 +869,7 @@ class HostWorkspaces:
                         "cursor": cursor,
                         "sortKey": "updated_at",
                         "sortDirection": "desc",
-                        "cwd": str(project),
+                        "cwd": [str(directory) for directory in directories],
                         "modelProviders": [],
                         "sourceKinds": _THREAD_SOURCES,
                         "archived": archived,
@@ -891,7 +900,7 @@ class HostWorkspaces:
                         ):
                             continue
                         try:
-                            if Path(cwd).resolve(strict=True) != project:
+                            if Path(cwd).resolve(strict=True) not in directories:
                                 continue
                         except (OSError, ValueError, RuntimeError):
                             continue
@@ -938,7 +947,7 @@ class HostWorkspaces:
                     ):
                         continue
                     try:
-                        if Path(cwd).resolve(strict=True) != project:
+                        if Path(cwd).resolve(strict=True) not in directories:
                             continue
                     except (OSError, ValueError, RuntimeError):
                         continue
