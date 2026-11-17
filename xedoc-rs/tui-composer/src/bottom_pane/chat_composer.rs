@@ -1156,6 +1156,7 @@ impl ChatComposer {
     ///
     /// Behavior:
     ///
+    /// - Continues the current line's blockquote prefix across pasted newlines.
     /// - If the paste is larger than `LARGE_PASTE_CHAR_THRESHOLD` chars, inserts a placeholder
     ///   element (expanded on submit) and stores the full text in `pending_pastes`.
     /// - Otherwise, if the paste looks like an image path, attaches the image and inserts a
@@ -1167,6 +1168,19 @@ impl ChatComposer {
     pub fn handle_paste(&mut self, pasted: String) -> bool {
         let pasted = pasted.replace("\r\n", "\n").replace('\r', "\n");
         let pasted = sanitize_user_text(&pasted);
+        let before_cursor = &self.draft.textarea.text()[..self.draft.textarea.cursor()];
+        let line = before_cursor.rsplit('\n').next().unwrap_or_default();
+        let prefix_len = line
+            .trim_start_matches([' ', '\t'])
+            .starts_with('>')
+            .then(|| line.len() - line.trim_start_matches([' ', '\t', '>']).len());
+        let pasted = if let Some(prefix_len) = prefix_len {
+            let prefix = &line[..prefix_len];
+            let separator = if prefix.ends_with('>') { " " } else { "" };
+            pasted.replace('\n', &format!("\n{prefix}{separator}"))
+        } else {
+            pasted
+        };
         let char_count = pasted.chars().count();
         if char_count > LARGE_PASTE_CHAR_THRESHOLD {
             let placeholder = self.next_large_paste_placeholder(char_count);
