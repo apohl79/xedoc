@@ -9,7 +9,7 @@
   let chooseDirectory = null;
   let activeThread = null;
   const savedViewKey = "xedoc-host-view-v1";
-  const workspaceViews = new Map();
+  const savedViews = new Map();
   let pendingView = (() => {
     try {
       const view = JSON.parse(sessionStorage.getItem(savedViewKey) || "null");
@@ -182,10 +182,14 @@
       threadId: activeThread,
     };
     const workspaceKey = projectCacheKey(selectedWorkspace);
-    if (selectedWorkspace) workspaceViews.set(workspaceKey, view);
+    const projectKey = selectedProject
+      ? projectSessionKey(selectedWorkspace, selectedProject) : null;
+    if (selectedWorkspace) savedViews.set(workspaceKey, view);
+    if (projectKey) savedViews.set(projectKey, view);
     try {
       const encoded = JSON.stringify(view);
       if (selectedWorkspace) localStorage.setItem(`${savedViewKey}:workspace:${workspaceKey}`, encoded);
+      if (projectKey) localStorage.setItem(`${savedViewKey}:project:${projectKey}`, encoded);
       localStorage.setItem(`${savedViewKey}:${state.account.username}`, encoded);
       sessionStorage.setItem(savedViewKey, encoded);
     } catch {
@@ -196,15 +200,18 @@
       window.dispatchEvent(new CustomEvent("xedoc-host-view", { detail: view }));
     }
   }
-  function workspaceView(workspaceId) {
-    const workspaceKey = projectCacheKey(workspaceId);
-    let view = workspaceViews.get(workspaceKey);
+  function workspaceView(workspaceId, projectName = null) {
+    const key = projectName === null
+      ? projectCacheKey(workspaceId) : projectSessionKey(workspaceId, projectName);
+    const scope = projectName === null ? "workspace" : "project";
+    let view = savedViews.get(key);
     try {
-      view ||= JSON.parse(localStorage.getItem(`${savedViewKey}:workspace:${workspaceKey}`) || "null");
+      view ||= JSON.parse(localStorage.getItem(`${savedViewKey}:${scope}:${key}`) || "null");
     } catch {
       // The in-memory view remains available when browser storage is unavailable.
     }
     return view?.username === state.account.username && view.workspaceId === workspaceId
+      && (projectName === null || view.projectName === projectName)
       && (view.projectName === null || typeof view.projectName === "string")
       && (view.threadId === null || typeof view.threadId === "string") ? view : null;
   }
@@ -415,7 +422,7 @@
     projectCache.clear();
     sessionCache.clear();
     sessionTabOrders.clear();
-    workspaceViews.clear();
+    savedViews.clear();
     projectActivityLoaded.clear();
     projectActivityRefreshAt.clear();
     byId("session-frames").replaceChildren();
@@ -571,8 +578,8 @@
     if (state.restartRequired) {
       notice("Workspace configuration saved. The broker will restart automatically after active turns finish.");
     }
-    await renderWorkspace();
     void refreshWorkspaceActivity().catch(() => {});
+    await renderWorkspace();
     window.dispatchEvent(new CustomEvent("xedoc-host-ready", {
       detail: { username: state.account.username },
     }));
@@ -746,7 +753,10 @@
     byId("host-view").classList.toggle("has-project", Boolean(selectedProject));
     byId("projects").replaceChildren(...projects.map((project) => {
       const element = button("", async () => {
-        if (selectedProject !== project.name) activeThread = null;
+        if (selectedProject !== project.name) {
+          saveView();
+          activeThread = workspaceView(selectedWorkspace, project.name)?.threadId || null;
+        }
         selectedProject = project.name;
         document.querySelectorAll(".project").forEach((item) => {
           item.classList.toggle("selected", item.dataset.name === selectedProject);
@@ -889,15 +899,16 @@
   function applyProjectSessions(items) {
     byId("session-menu").hidePopover();
     const sessions = projectSessions(items);
+    if (!sessions.some((session) => session.threadId === activeThread)) {
+      activeThread = sessions[0]?.threadId || null;
+    }
     byId("sessions").replaceChildren(...sessions.map((session) => sessionTab(session)));
     byId("session-empty").classList.remove("loading");
     byId("session-empty").textContent = sessions.length
       ? ""
       : "No recent sessions. Start a new session or resume one.";
     byId("session-empty").hidden = sessions.length > 0;
-    if (!sessions.some((session) => session.threadId === activeThread)) {
-      activeThread = sessions[0]?.threadId || null;
-    }
+    activity.paint();
     saveView();
     return activeThread;
   }

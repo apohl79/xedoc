@@ -251,8 +251,12 @@ window.XedocQuestion = class {
     const cancel = this.button("Cancel", "cancel", "question-cancel");
     footer.prepend(cancel);
     this.element.append(footer);
-    const focusTarget = this.element.querySelector(`.question-option[data-index="${state.selected ?? 0}"]`)
-      || this.notes || footer.querySelector("button:not(.question-cancel)");
+    this.focus();
+  }
+
+  focus() {
+    const focusTarget = this.element.querySelector(`.question-option[data-index="${this.state.selected ?? 0}"]`)
+      || this.notes || this.element.querySelector(".question-actions button:not(.question-cancel)");
     focusTarget?.focus({ preventScroll: true });
   }
 

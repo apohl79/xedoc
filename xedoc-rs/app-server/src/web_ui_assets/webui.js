@@ -1624,7 +1624,10 @@
   }
   window.addEventListener("message", (event) => {
     if (window.parent === window || event.origin !== location.origin || event.source !== window.parent) return;
-    if (event.data?.type === "xedoc-focus-prompt") input.focus({ preventScroll: true });
+    if (event.data?.type === "xedoc-focus-prompt") {
+      if (question.state) question.focus();
+      else (composerState?.dialog ? live : input).focus({ preventScroll: true });
+    }
     if (event.data?.type === "xedoc-plugin-actions") {
       const actions = Array.isArray(event.data.actions) ? event.data.actions : [];
       if (JSON.stringify(actions) !== JSON.stringify(pluginActions)) {
