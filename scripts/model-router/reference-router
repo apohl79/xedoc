@@ -216,12 +216,13 @@ def bundled_routing_tables(model_roles=None):
         if any(not isinstance(model, str) or not model or len(model) > 128 for model in roles.values()):
             raise ValueError("Invalid managed routing model")
         luna, terra, sol, astra = (roles[role] for role in ("fast", "balanced", "strong", "flagship"))
+        simple = terra if provider == "anthropic" else luna
         for name, curve, slots in (
             ("balanced", "balanced", [
                 (model, effort) for model in (luna, terra, sol) for effort in efforts
             ]),
             ("smart", "aggressive", [
-                (model, effort) for model in (luna, sol, astra) for effort in efforts
+                (model, effort) for model in (simple, sol, astra) for effort in efforts
             ]),
             ("cheap", "conservative",
              [(luna, effort) for effort in (
