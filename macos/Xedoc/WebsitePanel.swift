@@ -17,7 +17,8 @@ final class WebsitePanel: NSObject, ObservableObject, Identifiable, WKNavigation
 
     override init() {
         let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
+        // Panels share the persistent default store so logins carry across panels and launches.
+        configuration.websiteDataStore = WKWebsiteDataStore.default()
         webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
         webView.navigationDelegate = self
