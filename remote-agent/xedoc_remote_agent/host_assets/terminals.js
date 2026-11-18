@@ -1,9 +1,8 @@
 "use strict";
-// Colors and font mirror the City Lights theme in cmux's Ghostty config.
+// Colors mirror the City Lights theme in cmux's Ghostty config; the font matches the session view's --mono.
 const XEDOC_TERMINAL_OPTIONS = {
-  fontFamily: '"IosevkaTerm Nerd Font Mono", "Symbols Nerd Font", "Apple Symbols", Menlo, monospace',
+  fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
   fontSize: 13,
-  fontWeight: "500",
   cursorStyle: "block",
   cursorBlink: false,
   scrollback: 5000,

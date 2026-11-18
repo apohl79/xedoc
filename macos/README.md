@@ -14,7 +14,9 @@ saved login, discovery opens first. Each origin has its own persistent website
 data store, including when hosts share a hostname but use different ports.
 Certificates use normal system trust; discovery does not grant trust.
 Host windows have edge-to-edge session tabs, native window controls, and no
-browser toolbar. Reload Host (`⌘R`) reloads the active connection.
+browser toolbar. Reload Host (`⌘R`) reloads the active connection. New Tab
+(`⌘T`) opens the session “+” menu with its first entry selected; use the arrow
+keys and Return to choose an entry.
 
 The sidebar’s lightning button starts an instant chat (administrators only).
 Set `"instant_chat_directory": "/absolute/project/path"` in the host’s

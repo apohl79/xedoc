@@ -1446,6 +1446,7 @@
   byId("picker").addEventListener("close", () => {
     chooseDirectory = null;
   });
+  let openMenuWithKeyboard = false;
   byId("session-menu").addEventListener("beforetoggle", (event) => {
     if (event.newState !== "open") return;
     if (!selectedProject) event.preventDefault();
@@ -1464,8 +1465,19 @@
     menu.style.left = `${Math.max(8, Math.min(anchor.left, innerWidth - bounds.width - 8))}px`;
     menu.style.top = `${Math.max(8, Math.min(anchor.bottom + 4, innerHeight - bounds.height - 8))}px`;
     menu.style.visibility = "visible";
-    byId("new-session").focus();
+    byId("new-session").focus({ focusVisible: openMenuWithKeyboard });
+    openMenuWithKeyboard = false;
   });
+  window.xedocOpenSessionMenu = () => {
+    const menu = byId("session-menu");
+    if (menu.matches(":popover-open")) {
+      byId("new-session").focus({ focusVisible: true });
+      return;
+    }
+    openMenuWithKeyboard = true;
+    menu.showPopover();
+    if (!menu.matches(":popover-open")) openMenuWithKeyboard = false;
+  };
   byId("session-menu").addEventListener("keydown", (event) => {
     if (event.key === "Tab") {
       event.currentTarget.hidePopover();

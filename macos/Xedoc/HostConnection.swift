@@ -228,6 +228,11 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
                                    arguments: ["url": url.absoluteString], in: nil, in: .page) { _ in }
     }
 
+    func openSessionMenu() {
+        window?.makeFirstResponder(webView)
+        webView.callAsyncJavaScript("window.xedocOpenSessionMenu?.()", arguments: [:], in: nil, in: .page) { _ in }
+    }
+
     func receiveWebsite(_ message: WKScriptMessage) {
         guard let source = message.frameInfo.request.url, sameOrigin(source),
               let body = message.body as? [String: Any]

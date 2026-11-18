@@ -12,6 +12,7 @@ struct XedocApp: App {
                     Button("Hosts…") { delegate.showHosts() }.keyboardShortcut("n")
                 }
                 CommandGroup(after: .newItem) {
+                    Button("New Tab…") { delegate.openSessionMenu() }.keyboardShortcut("t")
                     Button("Reload Host") { delegate.reloadHost() }.keyboardShortcut("r")
                     Button("Pair Device…") { delegate.pairDevice() }
                     Button("Open Website…") { delegate.openWebsite() }.keyboardShortcut("l")
@@ -117,6 +118,10 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
     func reloadHost() {
         connections.values.first { $0.window === NSApp.keyWindow }?.load()
+    }
+
+    func openSessionMenu() {
+        connections.values.first { $0.window === NSApp.keyWindow }?.openSessionMenu()
     }
 
     func pairDevice() {
