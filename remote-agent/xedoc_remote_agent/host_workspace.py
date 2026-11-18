@@ -590,6 +590,18 @@ class HostWorkspaces:
                         ),
                         "updatedAt": updated,
                     }
+            # Sessions in a linked worktree belong to its main project, as in project_sessions.
+            for key in list(activity):
+                try:
+                    main_key = os.path.normcase(str(main_project(Path(key))))
+                except OSError:
+                    continue
+                if main_key == key:
+                    continue
+                activity[main_key] = max(activity.get(main_key, 0), activity[key])
+                session_activity.setdefault(main_key, {}).update(
+                    session_activity.get(key, {})
+                )
         for project in projects:
             key = os.path.normcase(os.path.realpath(project["path"]))
             project["updatedAt"] = activity.get(key, 0)
