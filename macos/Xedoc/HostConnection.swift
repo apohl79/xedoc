@@ -6,7 +6,7 @@ import WebKit
 final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WKUIDelegate {
     private(set) var url: URL
     let isLocalHost: Bool
-    let webView: WKWebView
+    let webView: HostWebView
     var window: NSWindow?
     var showHosts: (() -> Void)?
     var openHost: ((URL) -> Void)?
@@ -32,7 +32,7 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
         defaults.set(identifier.uuidString, forKey: key)
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = HostDevicePairing.dataStore(for: url) ?? WKWebsiteDataStore(forIdentifier: identifier)
-        webView = WKWebView(frame: .zero, configuration: configuration)
+        webView = HostWebView(frame: .zero, configuration: configuration)
         super.init()
         configuration.userContentController.add(DesktopBridge(connection: self), name: "xedocDesktop")
         configuration.userContentController.add(WebsiteBridge(connection: self),
@@ -230,10 +230,14 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func receiveWebsite(_ message: WKScriptMessage) {
         guard let source = message.frameInfo.request.url, sameOrigin(source),
-              let body = message.body as? [String: Any],
-              let text = body["url"] as? String, let url = WebsitePanel.validatedURL(text)
+              let body = message.body as? [String: Any]
         else { return }
-        openWebsite(url, external: body["external"] as? Bool ?? false)
+        let url = (body["url"] as? String).flatMap(WebsitePanel.validatedURL)
+        if body["kind"] as? String == "contextLink" {
+            webView.contextLink = url
+        } else if let url {
+            openWebsite(url, external: body["external"] as? Bool ?? false)
+        }
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
@@ -280,6 +284,29 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
         if let window {
             alert.beginSheetModal(for: window) { completionHandler($0 == .alertFirstButtonReturn) }
         } else { completionHandler(false) }
+    }
+}
+
+@MainActor
+final class HostWebView: WKWebView {
+    // Set from the page's contextmenu event, which WebKit sends before it opens the native menu; each menu uses and clears it.
+    var contextLink: URL?
+
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        super.willOpenMenu(menu, with: event)
+        let link = contextLink
+        contextLink = nil
+        guard let link else { return }
+        let item = NSMenuItem(title: "Open Link in External Browser",
+                              action: #selector(openContextLink(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = link
+        menu.insertItem(item, at: menu.items.firstIndex(where: \.isSeparatorItem) ?? menu.items.count)
+    }
+
+    @objc private func openContextLink(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        NSWorkspace.shared.open(url)
     }
 }
 

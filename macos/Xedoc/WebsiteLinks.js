@@ -13,4 +13,11 @@
       url: target.href, external: event.metaKey || anchor.classList.contains("plugin-panel-open"),
     });
   }, true);
+  document.addEventListener("contextmenu", (event) => {
+    if (!event.isTrusted) return;
+    const anchor = event.composedPath().find((node) => node instanceof HTMLAnchorElement);
+    window.webkit.messageHandlers.xedocWebsite.postMessage({
+      kind: "contextLink", url: anchor?.href || null,
+    });
+  }, true);
 })();
