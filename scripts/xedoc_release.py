@@ -1764,24 +1764,32 @@ def download_published_runtime_archive(
         return None
 
     archive_path.parent.mkdir(parents=True, exist_ok=True)
-    run(
-        [
-            gh,
-            "release",
-            "download",
-            tag,
-            "--repo",
-            repo,
-            "--pattern",
-            asset_name,
-            "--dir",
-            str(archive_path.parent),
-            "--clobber",
-        ],
-        cwd=REPO_ROOT,
-        env=env,
-    )
-    reference = runtime_reference(spec, archive_path, signing_identity)
+    reference = None
+    if archive_path.is_file():
+        cached_reference = runtime_reference(spec, archive_path, signing_identity)
+        if cached_reference.sha256 == expected_digest:
+            reference = cached_reference
+            print(f"Using verified cached model-router runtime archive {archive_path}.")
+
+    if reference is None:
+        run(
+            [
+                gh,
+                "release",
+                "download",
+                tag,
+                "--repo",
+                repo,
+                "--pattern",
+                asset_name,
+                "--dir",
+                str(archive_path.parent),
+                "--clobber",
+            ],
+            cwd=REPO_ROOT,
+            env=env,
+        )
+        reference = runtime_reference(spec, archive_path, signing_identity)
     if reference.sha256 != expected_digest:
         raise RuntimeError(
             f"Downloaded immutable runtime {asset_name} digest mismatch: "

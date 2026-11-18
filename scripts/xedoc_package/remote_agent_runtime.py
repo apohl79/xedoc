@@ -4,17 +4,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import http.client
 import json
 from pathlib import Path
 from pathlib import PurePosixPath
 import shutil
 import stat
 import subprocess
+import sys
 import tarfile
 import tempfile
+import time
 from typing import Any
 from typing import Callable
 from typing import Iterable
+import urllib.error
 from urllib.parse import urlparse
 import urllib.request
 import zipfile
@@ -30,6 +34,8 @@ DEPENDENCY_LOCK_PATH = (
     Path(__file__).resolve().parents[2] / "remote-agent" / "dependency-lock.json"
 )
 DOWNLOAD_TIMEOUT_SECONDS = 300
+DOWNLOAD_MAX_RETRIES = 3
+DOWNLOAD_RETRY_BASE_DELAY_SECONDS = 1
 MAX_WHEEL_BYTES = 64 * 1024 * 1024
 MAX_WHEEL_ENTRIES = 16 * 1024
 MAX_WHEEL_UNPACKED_BYTES = 128 * 1024 * 1024
@@ -670,27 +676,62 @@ def _download_file(
     max_bytes: int | None = None,
     expected_host: str | None = None,
 ) -> None:
-    digest = hashlib.sha256()
-    total = 0
-    try:
-        with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
-            if expected_host is not None:
-                actual = urlparse(response.geturl())
-                if actual.scheme != "https" or actual.hostname != expected_host:
-                    raise RuntimeError("Remote-agent dependency download redirected")
-            with destination.open("xb") as output:
-                while chunk := response.read(1024 * 1024):
-                    total += len(chunk)
-                    if max_bytes is not None and total > max_bytes:
+    for attempt in range(DOWNLOAD_MAX_RETRIES + 1):
+        digest = hashlib.sha256()
+        total = 0
+        output_created = False
+        download_error: Exception | None = None
+        try:
+            with urllib.request.urlopen(
+                url, timeout=DOWNLOAD_TIMEOUT_SECONDS
+            ) as response:
+                if expected_host is not None:
+                    actual = urlparse(response.geturl())
+                    if actual.scheme != "https" or actual.hostname != expected_host:
                         raise RuntimeError(
-                            "Remote-agent dependency download exceeds its size bound"
+                            "Remote-agent dependency download redirected"
                         )
-                    digest.update(chunk)
-                    output.write(chunk)
-    except RuntimeError:
-        raise
-    except OSError as error:
-        raise RuntimeError(f"Could not download remote-agent runtime: {url}") from error
+                with destination.open("xb") as output:
+                    output_created = True
+                    while chunk := response.read(1024 * 1024):
+                        total += len(chunk)
+                        if max_bytes is not None and total > max_bytes:
+                            raise RuntimeError(
+                                "Remote-agent dependency download exceeds its size bound"
+                            )
+                        digest.update(chunk)
+                        output.write(chunk)
+        except RuntimeError:
+            raise
+        except urllib.error.HTTPError as error:
+            error.close()
+            if error.code not in {408, 429} and not 500 <= error.code < 600:
+                raise RuntimeError(
+                    f"Could not download remote-agent runtime: {url}"
+                ) from error
+            download_error = error
+        except (http.client.HTTPException, OSError) as error:
+            download_error = error
+
+        if download_error is None:
+            break
+        if output_created:
+            destination.unlink(missing_ok=True)
+        if attempt == DOWNLOAD_MAX_RETRIES:
+            raise RuntimeError(
+                f"Could not download remote-agent runtime: {url}"
+            ) from download_error
+
+        delay_seconds = DOWNLOAD_RETRY_BASE_DELAY_SECONDS * (2**attempt)
+        print(
+            "Retrying remote-agent runtime download "
+            f"(attempt {attempt + 2}/{DOWNLOAD_MAX_RETRIES + 1}) after a "
+            f"network error; waiting {delay_seconds}s.",
+            file=sys.stderr,
+            flush=True,
+        )
+        time.sleep(delay_seconds)
+
     actual = digest.hexdigest()
     if actual != expected_sha256:
         raise RuntimeError(
