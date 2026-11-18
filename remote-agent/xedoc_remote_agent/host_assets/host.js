@@ -1020,6 +1020,52 @@
     frame.contentWindow?.postMessage({ type: "xedoc-focus-prompt" }, location.origin);
   }
 
+  function visibleProjectButtons() {
+    return [...byId("projects").children]
+      .filter((row) => !row.hidden)
+      .map((row) => row.querySelector(".project"))
+      .filter(Boolean);
+  }
+
+  function setProjectSearchHighlight(target) {
+    for (const project of byId("projects").querySelectorAll(".project")) {
+      project.classList.toggle("search-active", project === target);
+    }
+    target?.scrollIntoView({ block: "nearest" });
+  }
+
+  function handleHostShortcut(event) {
+    if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey
+      || event.isComposing || event.defaultPrevented) return;
+    if (document.querySelector("dialog[open]")) return;
+    if (event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      const search = byId("project-search");
+      if (search.hidden) byId("search-projects").click();
+      search.focus();
+      search.select();
+      return;
+    }
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+    // Keep native line-start/end movement while a text field has content.
+    const editable = event.target?.closest?.("input, textarea, [contenteditable]:not([contenteditable=\"false\"])");
+    if (editable && (editable.value ?? editable.textContent).trim()) return;
+    const vertical = event.key === "ArrowUp" || event.key === "ArrowDown";
+    if (!vertical && byId("session-workspace").hidden) return;
+    const items = vertical
+      ? visibleProjectButtons()
+      : [...byId("sessions").querySelectorAll('[role="tab"]')];
+    if (!items.length) return;
+    event.preventDefault();
+    const current = items.findIndex((item) => vertical
+      ? item.dataset.name === selectedProject
+      : item.getAttribute("aria-selected") === "true");
+    const step = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
+    const next = current < 0 ? (step > 0 ? 0 : items.length - 1) : (current + step + items.length) % items.length;
+    if (next !== current) items[next].click();
+  }
+  document.addEventListener("keydown", handleHostShortcut, true);
+
   async function openSession(threadId, archived = false) {
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
@@ -1077,6 +1123,7 @@
         frame.className = "session-frame";
         frame.title = openedSession.title || "Xedoc session";
         frame.addEventListener("load", () => {
+          frame.contentWindow.addEventListener("keydown", handleHostShortcut, true);
           if (activeThread !== threadId || terminals.active) return;
           byId("session-loading").hidden = true;
           focusSessionPrompt(frame);
@@ -1331,11 +1378,36 @@
     } else {
       search.value = "";
       applyProjectFilter();
+      setProjectSearchHighlight(null);
       byId("search-projects").focus();
     }
   });
-  byId("project-search").addEventListener("input", applyProjectFilter);
+  byId("project-search").addEventListener("input", () => {
+    applyProjectFilter();
+    const query = byId("project-search").value.trim();
+    setProjectSearchHighlight(query ? visibleProjectButtons()[0] : null);
+  });
   byId("project-search").addEventListener("keydown", (event) => {
+    if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      const projects = visibleProjectButtons();
+      if (!projects.length) return;
+      event.preventDefault();
+      const current = projects.findIndex((project) => project.classList.contains("search-active"));
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      const next = current < 0 ? (step > 0 ? 0 : projects.length - 1) : (current + step + projects.length) % projects.length;
+      setProjectSearchHighlight(projects[next]);
+      return;
+    }
+    if (event.key === "Enter") {
+      const target = byId("projects").querySelector(".project.search-active")
+        || visibleProjectButtons()[0];
+      if (!target) return;
+      event.preventDefault();
+      byId("search-projects").click();
+      target.click();
+      return;
+    }
     if (event.key !== "Escape") return;
     event.preventDefault();
     byId("search-projects").click();

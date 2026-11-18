@@ -204,6 +204,7 @@ aside button.workspace.selected, aside button.project.selected {
   background: color-mix(in srgb, var(--brand) 12%, var(--surface));
   color: #e4d7f2;
 }
+aside button.project.search-active { outline: 1px solid var(--brand); outline-offset: -1px; }
 aside button.workspace.selected::before, aside button.project.selected::before {
   position: absolute;
   inset: 0 auto 0 0;
