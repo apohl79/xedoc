@@ -34,7 +34,7 @@ module.exports = async function verifyProjectSessionMenu(page) {
   const results = [];
   await open();
   results.push(await geometry());
-  await page.locator("#project-title").click();
+  await page.locator("#session-workspace > .tab-strip").click({position: {x: 1, y: 1}});
   await isClosed();
   await open();
   await page.keyboard.press("Escape");
@@ -93,7 +93,7 @@ module.exports = async function verifyProjectSessionMenu(page) {
   await open();
   await page.evaluate(() => document.querySelector('.project[data-name="beta"]').click());
   await isClosed();
-  await page.waitForFunction(() => document.querySelector("#project-title").textContent === "beta");
+  await page.waitForFunction(() => document.querySelector('.project[data-name="beta"]').classList.contains("selected"));
   await open();
   await menu.getByRole("menuitem", {name: "New session", exact: true}).click();
   await page.locator('.session-tab[data-thread-id="new-2"][aria-selected="true"]').waitFor();

@@ -292,7 +292,6 @@ aside button.project {
 @keyframes host-spin { to { transform: rotate(360deg); } }
 .tab-strip { position: relative; isolation: isolate; display: flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 4px; background: var(--tabbar); }
 .tab-strip::after { position: absolute; z-index: 0; right: 0; bottom: 0; left: 0; height: 1px; background: var(--border); content: ""; pointer-events: none; }
-.tab-strip #project-title { font-size: 12px; padding: 0 5px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-strip #session-menu-button { flex: none; border: 0; padding: 2px 7px; background: transparent; color: var(--accent); font-size: 17px; }
 .tab-strip #session-menu-button:hover, .tab-strip #session-menu-button[aria-expanded="true"] { background: var(--hover); }
 #session-menu { position: fixed; inset: auto; margin: 0; width: min(180px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto; visibility: hidden; padding: 4px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--text); box-shadow: 0 8px 24px #0008; }
@@ -431,7 +430,6 @@ dialog fieldset { border-color: var(--border); }
   #session-layout { flex-direction: column; }
   #plugin-panels { flex: 1; width: 100%; border-top: 1px solid var(--border); }
   #plugin-panel-divider { display: none; }
-  .tab-strip #project-title { display: none; }
   .session-tab { max-width: 200px; }
   #resume-sessions button { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   #resume-sessions .session-state { grid-column: 2; grid-row: 1; }

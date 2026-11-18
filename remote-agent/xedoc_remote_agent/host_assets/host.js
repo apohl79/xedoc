@@ -872,7 +872,6 @@
     terminals.hideOutside(workspaceId, projectName);
     byId("project-empty").hidden = true;
     byId("session-workspace").hidden = false;
-    byId("project-title").textContent = project.label || project.name;
     const key = projectSessionKey(workspaceId, projectName, username);
     const cachedSessions = sessionCache.get(key);
     if (cachedSessions) {
