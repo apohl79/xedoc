@@ -139,6 +139,13 @@ window.XedocHostActivity = class {
 
   markVisible() {
     this.paint();
+    // WebKit and Edge can leave infinite CSS animations frozen after the window was hidden.
+    for (const marker of document.querySelectorAll(".state-running:not([hidden])")) {
+      for (const animation of marker.getAnimations()) {
+        animation.cancel();
+        animation.play();
+      }
+    }
   }
 
   markVisited(threadId) {
