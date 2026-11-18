@@ -301,8 +301,7 @@ aside button.project {
 .session-heading { display: flex; flex: none; justify-content: space-between; align-items: center; gap: 8px; margin: 0 0 4px; }
 .session-heading h2 { margin: 0; font-size: 15px; }
 .session-heading p { display: none; overflow-wrap: anywhere; }
-.session-tabs { position: relative; z-index: 1; display: flex; min-width: 0; gap: 3px; overflow-x: auto; align-self: stretch; align-items: end; scrollbar-width: none; }
-.session-tabs::-webkit-scrollbar { display: none; }
+.session-tabs { position: relative; z-index: 1; display: flex; flex-wrap: wrap; min-width: 0; max-height: 30dvh; overflow-y: auto; gap: 3px; align-self: stretch; align-items: end; }
 .session-tab { flex: none; max-width: 260px; display: flex; align-items: center; gap: 6px; padding: 3px 7px; border: 1px solid var(--border); border-bottom: 0; border-radius: 4px 4px 0 0; cursor: pointer; color: var(--muted); background: transparent; font-size: 11px; }
 .session-tab:hover { color: var(--text); background: var(--surface); }
 .session-tab[aria-selected="true"] {
