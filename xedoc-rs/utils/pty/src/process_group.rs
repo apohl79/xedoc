@@ -173,6 +173,36 @@ pub fn kill_process_group(_process_group_id: u32) -> io::Result<()> {
 }
 
 #[cfg(unix)]
+/// SIGKILL every live descendant of `root_pid`, including processes that left
+/// the group with `setsid` or `nohup`. Call it before killing the group so the
+/// parent links still describe the tree.
+pub fn kill_descendants(root_pid: u32) -> io::Result<()> {
+    let output = std::process::Command::new("ps")
+        .args(["-axo", "pid=,ppid="])
+        .output()?;
+    let mut children: std::collections::HashMap<u32, Vec<u32>> = std::collections::HashMap::new();
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let mut fields = line.split_whitespace().map(str::parse::<u32>);
+        if let (Some(Ok(pid)), Some(Ok(ppid))) = (fields.next(), fields.next()) {
+            children.entry(ppid).or_default().push(pid);
+        }
+    }
+    let mut pending = vec![root_pid];
+    while let Some(parent) = pending.pop() {
+        for pid in children.remove(&parent).unwrap_or_default() {
+            pending.push(pid);
+            if unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) } == -1 {
+                let err = io::Error::last_os_error();
+                if err.raw_os_error() != Some(libc::ESRCH) {
+                    return Err(err);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
 /// Kill the process group for a tokio child (best-effort).
 pub fn kill_child_process_group(child: &mut Child) -> io::Result<()> {
     if let Some(pid) = child.id() {

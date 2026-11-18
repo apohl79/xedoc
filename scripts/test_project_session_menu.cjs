@@ -17,7 +17,7 @@ module.exports = async function verifyProjectSessionMenu(page) {
     await isOpen();
     await focused("new-session");
     assert.equal(await trigger.getAttribute("aria-expanded"), "true");
-    assert.equal(await menu.getByRole("menuitem").count(), 2);
+    assert.equal(await menu.getByRole("menuitem").count(), 3);
     assert.equal(await page.locator("dialog:modal").count(), 0);
   }
   async function geometry() {
@@ -47,6 +47,8 @@ module.exports = async function verifyProjectSessionMenu(page) {
   await page.keyboard.press("Enter");
   await isOpen();
   await focused("new-session");
+  await page.keyboard.press("ArrowDown");
+  await focused("new-terminal");
   await page.keyboard.press("ArrowDown");
   await focused("resume-session");
   await page.keyboard.press("ArrowDown");
@@ -80,7 +82,7 @@ module.exports = async function verifyProjectSessionMenu(page) {
   await trigger.focus();
   await page.keyboard.press("Space");
   await isOpen();
-  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("End");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => document.querySelector("#resume-dialog").open);
   await isClosed();

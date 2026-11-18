@@ -76,6 +76,7 @@ impl ChildTerminator for PtyChildTerminator {
             // Match the pipe backend's hard-kill behavior so descendant
             // processes from interactive shells/REPLs do not survive shutdown.
             // Also try the direct child killer in case the cached PGID is stale.
+            let _ = crate::process_group::kill_descendants(process_group_id);
             let process_group_kill_result =
                 crate::process_group::kill_process_group(process_group_id);
             let child_kill_result = self.killer.kill();
@@ -106,6 +107,7 @@ impl ChildTerminator for RawPidTerminator {
     }
 
     fn kill(&mut self) -> std::io::Result<()> {
+        let _ = crate::process_group::kill_descendants(self.process_group_id);
         crate::process_group::kill_process_group(self.process_group_id)
     }
 }

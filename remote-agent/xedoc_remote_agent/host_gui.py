@@ -39,6 +39,7 @@ from .host_hostname import host_hostname
 from .host_workspace import HostWorkspaces
 from .host_outside_projects import OTHER_WORKSPACE, outside_directory, session_inventory
 from .host_session_gui import HostSessionGuis, proxy_session_gui
+from .host_terminals import HostTerminals, serve_terminal_socket
 from .host_plugin_panels import HostPluginPanels
 from .host_panel_transport import PanelBroker, proxy_plugin_panel
 from .host_updates import HostUpdates
@@ -94,6 +95,7 @@ class HostServer(ThreadingHTTPServer):
             work_admission=work_admission,
         )
         self.session_guis = HostSessionGuis(home, self.workspaces._bootstrap_path)
+        self.terminals = HostTerminals(self.workspaces)
         self.plugin_panels = HostPluginPanels(
             home, self.workspaces, self.auth, self.session_guis
         )
@@ -163,6 +165,7 @@ class HostServer(ThreadingHTTPServer):
             self.ca_discovery.stop()
             self.ca_discovery = None
         self.session_guis.close()
+        self.terminals.close()
         self.plugin_panels.close()
         self.panel_broker.close()
         super().server_close()
@@ -429,7 +432,9 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/activity.js",
                 "/updates.js",
                 "/plugin-panels.js",
+                "/terminals.js",
                 "/xterm.js",
+                "/xterm-addon-fit.js",
                 "/xterm.css",
                 "/host.css",
                 "/favicon.svg",
@@ -442,7 +447,9 @@ class HostHandler(BaseHTTPRequestHandler):
                     "/activity.js": "activity.js",
                     "/updates.js": "updates.js",
                     "/plugin-panels.js": "plugin-panels.js",
+                    "/terminals.js": "terminals.js",
                     "/xterm.js": "xterm.js",
+                    "/xterm-addon-fit.js": "xterm-addon-fit.js",
                     "/xterm.css": "xterm.css",
                     "/host.css": "host.css",
                     "/favicon.svg": "favicon.svg",
@@ -455,7 +462,9 @@ class HostHandler(BaseHTTPRequestHandler):
                     "/activity.js": "text/javascript",
                     "/updates.js": "text/javascript",
                     "/plugin-panels.js": "text/javascript",
+                    "/terminals.js": "text/javascript",
                     "/xterm.js": "text/javascript",
+                    "/xterm-addon-fit.js": "text/javascript",
                     "/xterm.css": "text/css",
                     "/host.css": "text/css",
                     "/favicon.svg": "image/svg+xml",
@@ -579,9 +588,30 @@ class HostHandler(BaseHTTPRequestHandler):
                 entry = self.server.session_guis.entry(gui_token, account)
                 proxy_session_gui(self, entry, gui_token, resource, token)
                 return
+            if self.command == "GET" and path == "/api/terminal/socket":
+                query = parse_qs(parsed.query)
+                serve_terminal_socket(
+                    self,
+                    account,
+                    token,
+                    query.get("terminalId", [""])[0],
+                    int(query.get("offset", ["0"])[0]),
+                )
+                return
+            if self.command == "GET" and path == "/api/terminal/list":
+                self.reply(200, {"terminals": self.server.terminals.list(account)})
+                return
+            if self.command == "POST" and path == "/api/terminal/close":
+                terminal_id = body.get("terminalId")
+                if not isinstance(terminal_id, str):
+                    raise ValueError("Terminal ID is required")
+                self.server.terminals.close(account["username"], terminal_id)
+                self.reply(200, {"ok": True})
+                return
             if self.command == "POST" and path == "/api/logout":
                 self.server.auth.logout(token)
                 self.server.session_guis.close(account["username"])
+                self.server.terminals.close(account["username"])
                 self.server.plugin_panels.close(account["username"])
                 self.reply(200, {"ok": True}, cookie="")
                 return
@@ -647,6 +677,7 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/api/session/turn",
                 "/api/session/gui",
                 "/api/session/rebind",
+                "/api/terminal/new",
                 "/api/plugin/panels",
                 "/api/plugin/actions",
                 "/api/plugin/composer",
@@ -814,6 +845,21 @@ class HostHandler(BaseHTTPRequestHandler):
                         body.get("message"),
                     )
                     self.reply(200, result)
+                    return
+                if self.command == "POST" and path == "/api/terminal/new":
+                    with service._lock:
+                        project = service._project_path(workspace_id, project_name)
+                    self.reply(
+                        200,
+                        self.server.terminals.open(
+                            account["username"],
+                            workspace_id,
+                            project_name,
+                            project,
+                            body.get("cols"),
+                            body.get("rows"),
+                        ),
+                    )
                     return
                 self.reply(404, {"error": "Not found"})
                 return
@@ -986,6 +1032,7 @@ class HostHandler(BaseHTTPRequestHandler):
             elif self.command == "POST" and path == "/api/workspace/remove":
                 service.remove(workspace_id)
                 self.server.session_guis.close(workspace_id=workspace_id)
+                self.server.terminals.close(workspace_id=workspace_id)
                 self.server.plugin_panels.close(workspace_id=workspace_id)
             elif self.command == "POST" and path == "/api/user/save":
                 assignments = body.get("workspaces", [])
@@ -1002,8 +1049,19 @@ class HostHandler(BaseHTTPRequestHandler):
                     assignments,
                     body.get("password", ""),
                 )
+                # Closes terminals the saved role and assignments no longer allow.
+                self.server.terminals.list(
+                    {
+                        "username": body.get("username"),
+                        "role": body.get("role"),
+                        "workspaces": assignments,
+                    }
+                )
             elif self.command == "POST" and path == "/api/user/remove":
-                self.server.auth.delete_user(body.get("username"))
+                username = body.get("username")
+                self.server.auth.delete_user(username)
+                if isinstance(username, str):
+                    self.server.terminals.close(username)
             else:
                 self.reply(404, {"error": "Not found"})
                 return

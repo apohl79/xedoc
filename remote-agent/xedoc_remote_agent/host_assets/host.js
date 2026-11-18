@@ -20,6 +20,8 @@
   })();
   let projectRequest = 0;
   let sessionRequest = 0;
+  let terminalReveals = 0;
+  let pendingSessionList = null;
   let projectViewRequest = 0;
   let accountGeneration = 0;
   let hostDiscoveryGeneration = 0;
@@ -44,6 +46,37 @@
       projectName: selectedProject, threadId: activeThread, frame,
     };
   }, run);
+  const terminals = new window.XedocHostTerminals(api, {
+    run,
+    current: () => ({ workspaceId: selectedWorkspace, projectName: selectedProject }),
+    reveal() {
+      byId("session-menu").hidePopover();
+      sessionRequest++;
+      terminalReveals++;
+      sessionFrames.forEach((frame) => { frame.hidden = true; });
+      document.querySelectorAll("#sessions .session-tab:not(.terminal-tab)").forEach((tab) => {
+        tab.setAttribute("aria-selected", "false");
+      });
+      byId("session-view").hidden = false;
+      byId("session-loading").hidden = true;
+      byId("session-empty").hidden = true;
+    },
+    closed() {
+      if (pendingSessionList?.()) {
+        byId("session-view").hidden = true;
+        byId("session-empty").hidden = false;
+        return;
+      }
+      if (activeThread) {
+        run(() => openSession(activeThread));
+        return;
+      }
+      byId("session-view").hidden = true;
+      byId("session-empty").hidden = Boolean(
+        byId("sessions").querySelector(".session-tab:not(.terminal-tab)"),
+      );
+    },
+  });
   let refreshingRestartState = false;
   let sidebarLocked = (() => {
     try {
@@ -162,7 +195,7 @@
     if (selected) activeThread = threadId;
     if (session.workspaceId === selectedWorkspace && session.projectName === selectedProject) {
       applyProjectSessions(sessionCache.get(key) || []);
-      if (selected) {
+      if (selected && !terminals.active) {
         frame.hidden = false;
         byId("session-loading").hidden = true;
         focusSessionPrompt(frame);
@@ -425,6 +458,7 @@
     savedViews.clear();
     projectActivityLoaded.clear();
     projectActivityRefreshAt.clear();
+    terminals.clear();
     byId("session-frames").replaceChildren();
     pluginPanels.clear();
     byId("host-view").hidden = true;
@@ -577,9 +611,10 @@
       return row;
     }));
     if (state.restartRequired) {
-      notice("Workspace configuration saved. The broker will restart automatically after active turns finish.");
+      notice("Workspace configuration saved. The broker will restart automatically after active turns finish. Open terminals will close.");
     }
     void refreshWorkspaceActivity().catch(() => {});
+    await terminals.sync().catch((error) => notice(error.message));
     await renderWorkspace();
     window.dispatchEvent(new CustomEvent("xedoc-host-ready", {
       detail: { username: state.account.username },
@@ -680,6 +715,7 @@
     byId("session-menu").hidePopover();
     projectViewRequest++;
     sessionFrames.forEach((frame) => { frame.hidden = true; });
+    terminals.hideOutside(selectedWorkspace, selectedProject);
     const entry = state.workspaces.find((workspace) => workspace.workspaceId === selectedWorkspace);
     byId("new-project").title = entry?.external ? "Open folder" : "Add project";
     byId("new-project").setAttribute("aria-label", byId("new-project").title);
@@ -821,6 +857,7 @@
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
     const request = ++sessionRequest;
+    const reveals = terminalReveals;
     const viewRequest = ++projectViewRequest;
     const username = state.account.username;
     const generation = accountGeneration;
@@ -832,6 +869,7 @@
       && projectName === selectedProject
     );
     if (!project || !workspaceId || !projectName) return;
+    terminals.hideOutside(workspaceId, projectName);
     byId("project-empty").hidden = true;
     byId("session-workspace").hidden = false;
     byId("project-title").textContent = project.label || project.name;
@@ -839,7 +877,9 @@
     const cachedSessions = sessionCache.get(key);
     if (cachedSessions) {
       const threadId = applyProjectSessions(cachedSessions);
-      if (threadId) {
+      if (terminals.active) {
+        byId("session-view").hidden = false;
+      } else if (threadId) {
         byId("session-view").hidden = false;
         void openSession(threadId).catch((error) => notice(error.message));
       } else {
@@ -851,7 +891,7 @@
           sessionCache.set(key, response.sessions || []);
           const previousThread = activeThread;
           const threadId = applyProjectSessions(response.sessions || []);
-          if (threadId !== previousThread) {
+          if (threadId !== previousThread && !terminals.active) {
             if (threadId) {
               byId("session-view").hidden = false;
               void openSession(threadId).catch((error) => notice(error.message));
@@ -864,22 +904,25 @@
         .catch(() => {});
       return;
     }
+    terminals.hideAll();
     byId("sessions").replaceChildren();
     byId("session-empty").classList.add("loading");
     byId("session-empty").textContent = "Loading sessions…";
     byId("session-empty").hidden = false;
     byId("session-view").hidden = true;
+    const accepts = () => (
+      isCurrentView() && request + terminalReveals - reveals === sessionRequest
+    );
+    pendingSessionList = accepts;
     try {
       const response = await api(query("project/sessions", {
         workspaceId,
         projectName,
       }));
-      if (
-        request !== sessionRequest
-        || !isCurrentView()
-      ) return;
+      if (!accepts()) return;
       sessionCache.set(key, response.sessions || []);
       const threadId = applyProjectSessions(response.sessions || []);
+      if (terminals.active) return;
       if (threadId) {
         byId("session-view").hidden = false;
         await openSession(threadId);
@@ -889,10 +932,11 @@
     } catch (error) {
       if (isCurrentView() && byId("session-empty").classList.contains("loading")) {
         byId("session-empty").textContent = "Could not load sessions.";
-        byId("session-empty").hidden = false;
+        byId("session-empty").hidden = terminals.active !== null;
       }
       throw error;
     } finally {
+      if (pendingSessionList === accepts) pendingSessionList = null;
       if (isCurrentView()) byId("session-empty").classList.remove("loading");
     }
   }
@@ -903,12 +947,15 @@
     if (!sessions.some((session) => session.threadId === activeThread)) {
       activeThread = sessions[0]?.threadId || null;
     }
-    byId("sessions").replaceChildren(...sessions.map((session) => sessionTab(session)));
+    byId("sessions").replaceChildren(
+      ...sessions.map((session) => sessionTab(session)),
+      ...terminals.tabsFor(selectedWorkspace, selectedProject),
+    );
     byId("session-empty").classList.remove("loading");
     byId("session-empty").textContent = sessions.length
       ? ""
       : "No recent sessions. Start a new session or resume one.";
-    byId("session-empty").hidden = sessions.length > 0;
+    byId("session-empty").hidden = sessions.length > 0 || terminals.active !== null;
     activity.paint();
     saveView();
     return activeThread;
@@ -923,7 +970,9 @@
     element.className = "session-tab";
     element.dataset.threadId = session.threadId;
     element.setAttribute("role", "tab");
-    element.setAttribute("aria-selected", String(session.threadId === activeThread));
+    element.setAttribute(
+      "aria-selected", String(session.threadId === activeThread && terminals.active === null),
+    );
     element.tabIndex = 0;
     element.title = session.title || session.threadId;
     activity.attach(element, selectedWorkspace, selectedProject, session.threadId);
@@ -976,6 +1025,7 @@
     const workspaceId = selectedWorkspace;
     const projectName = selectedProject;
     if (!workspaceId || !projectName) return;
+    terminals.hideAll();
     const request = ++sessionRequest;
     const cachedFrame = sessionFrames.get(threadId);
     if (cachedFrame && openedSessions.has(threadId)) {
@@ -1028,7 +1078,7 @@
         frame.className = "session-frame";
         frame.title = openedSession.title || "Xedoc session";
         frame.addEventListener("load", () => {
-          if (activeThread !== threadId) return;
+          if (activeThread !== threadId || terminals.active) return;
           byId("session-loading").hidden = true;
           focusSessionPrompt(frame);
         });
@@ -1140,6 +1190,7 @@
       if (!state || generation !== accountGeneration) return;
       saveView();
       sessionRequest++;
+      terminals.hideAll();
       selectedWorkspace = result.workspaceId;
       selectedProject = result.projectName;
       activeThread = result.threadId;
@@ -1154,6 +1205,7 @@
 
   async function startNewSession() {
     byId("session-menu").hidePopover();
+    terminals.hideAll();
     byId("session-view").hidden = false;
     byId("session-loading").hidden = false;
     sessionFrames.forEach((frame) => { frame.hidden = true; });
@@ -1430,6 +1482,10 @@
   window.addEventListener("resize", () => byId("session-menu").hidePopover());
   window.addEventListener("blur", () => byId("session-menu").hidePopover());
   byId("new-session").addEventListener("click", () => run(startNewSession));
+  byId("new-terminal").addEventListener("click", () => run(() => {
+    byId("session-menu").hidePopover();
+    return terminals.create(selectedWorkspace, selectedProject);
+  }));
   byId("resume-session").addEventListener("click", () => run(showResumePicker));
   byId("resume-search").addEventListener("input", applyResumeFilter);
   byId("resume-dialog").addEventListener("keydown", (event) => {
