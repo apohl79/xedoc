@@ -355,6 +355,8 @@ class HostHandler(BaseHTTPRequestHandler):
                 else "default-src 'self'; script-src 'self'; style-src 'self'; "
                 "frame-src 'self' slack:; "
                 "style-src-elem 'self' 'unsafe-inline'; "
+                # xterm's DOM renderer applies 24-bit colors as inline style attributes.
+                "style-src-attr 'unsafe-inline'; "
                 "object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
             ),
         )
