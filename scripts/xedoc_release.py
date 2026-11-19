@@ -14,6 +14,7 @@ import tempfile
 import textwrap
 
 from xedoc_ios_release import build_ios_release, upload_ios_testflight
+from xedoc_desktop_release import build_desktop_release
 from xedoc_macos_release import build_macos_release
 from update_homebrew_cask import generate_cask, publish_cask
 from xedoc_package.targets import TARGET_SPECS
@@ -275,6 +276,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Build and publish only the universal macOS host app.",
     )
+    desktop_mode = parser.add_mutually_exclusive_group()
+    desktop_mode.add_argument(
+        "--skip-desktop-app",
+        action="store_true",
+        help="Skip the Linux and Windows host apps built with Electron.",
+    )
+    desktop_mode.add_argument(
+        "--desktop-app-only",
+        action="store_true",
+        help="Build and publish only the Linux and Windows host apps.",
+    )
     parser.add_argument(
         "--skip-testflight",
         action="store_true",
@@ -298,8 +310,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
-    if args.ios_only and args.macos_app_only:
-        parser.error("--ios-only and --macos-app-only are mutually exclusive.")
+    if sum([args.ios_only, args.macos_app_only, args.desktop_app_only]) > 1:
+        parser.error(
+            "--ios-only, --macos-app-only, and --desktop-app-only are mutually exclusive."
+        )
     args.targets = resolve_release_targets(getattr(args, "target", None))
     # Keep the historical Namespace shape for callers that build a single target.
     args.target = args.targets[0]
@@ -368,21 +382,27 @@ def ensure_target_specific_paths_are_unambiguous(
 def build_release(args: argparse.Namespace) -> None:
     ios_only = getattr(args, "ios_only", False)
     macos_only = getattr(args, "macos_app_only", False)
+    desktop_only = getattr(args, "desktop_app_only", False)
     include_ios = (
         not macos_only
+        and not desktop_only
         and not getattr(args, "skip_ios", False)
         and sys.platform == "darwin"
     )
     include_macos = (
         not ios_only
+        and not desktop_only
         and not getattr(args, "skip_macos_app", False)
         and sys.platform == "darwin"
+    )
+    include_desktop = (
+        not ios_only and not macos_only and not getattr(args, "skip_desktop_app", False)
     )
     if ios_only and not include_ios:
         raise RuntimeError("--ios-only requires macOS and Xcode.")
     if macos_only and not include_macos:
         raise RuntimeError("--macos-app-only requires macOS and Xcode.")
-    targets = [] if ios_only or macos_only else release_targets(args)
+    targets = [] if ios_only or macos_only or desktop_only else release_targets(args)
     ensure_target_specific_paths_are_unambiguous(args, targets)
     if getattr(args, "allow_dirty", False) and not args.skip_github_release:
         raise RuntimeError(
@@ -503,6 +523,16 @@ def build_release(args: argparse.Namespace) -> None:
         if include_macos
         else None
     )
+    desktop_archives = (
+        build_desktop_release(
+            source_root=source_root,
+            output_dir=output_dir,
+            version=version,
+            force=args.force,
+        )
+        if include_desktop
+        else []
+    )
 
     if not args.skip_github_release:
         for package in release_packages:
@@ -526,7 +556,8 @@ def build_release(args: argparse.Namespace) -> None:
                 for archive_output in package.archive_outputs
             ]
             + ([ios_archive] if ios_archive is not None else [])
-            + ([macos_archive] if macos_archive is not None else []),
+            + ([macos_archive] if macos_archive is not None else [])
+            + desktop_archives,
             env=github_env,
             notes=generate_release_notes(
                 release_tag,
@@ -561,6 +592,8 @@ def build_release(args: argparse.Namespace) -> None:
         print(f"Archive (iOS/iPadOS, Ad Hoc distribution-signed): {ios_archive}")
     if macos_archive is not None:
         print(f"Archive (macOS, Developer ID-signed): {macos_archive}")
+    for desktop_archive in desktop_archives:
+        print(f"Archive (Linux/Windows app, unsigned): {desktop_archive}")
     for package in release_packages:
         print(f"Package directory ({package.target}): {package.package_dir}")
         for archive_output in package.archive_outputs:

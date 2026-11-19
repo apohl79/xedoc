@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'">
+  <title>Pair Device</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body class="dialog-page">
+  <div>
+    <h1>Pair another device</h1>
+    <p id="step" class="secondary"></p>
+  </div>
+  <div class="stack scroll">
+    <h2 id="origin" class="selectable"></h2>
+    <div id="completed" class="stack" hidden>
+      <h2>The host accepted the device</h2>
+      <p>On the other device: finish saving the pairing, choose Connect to host, then sign in with your host account. No certificate installation is needed.</p>
+    </div>
+    <div id="invitation" class="stack" hidden>
+      <p>On the other computer, iPhone, or iPad: open Xedoc → Hosts → Pair a host. Choose I have an invitation, paste the invitation, then choose Verify host.</p>
+      <div class="row"><button id="copy" type="button">Copy invitation</button></div>
+      <p class="secondary">Transfer only through a trusted channel, never through the bridge. Treat the invitation like a password.</p>
+      <p>On both devices: compare this host address and fingerprint. On the other device: confirm the match and choose Pair this device.</p>
+      <div>
+        <p class="caption">Host certificate · SHA-256</p>
+        <p id="fingerprint" class="mono caption selectable"></p>
+      </div>
+      <div id="pending" class="stack">
+        <div class="row"><span class="spinner"></span><span>Waiting for the other device…</span></div>
+        <p id="expires" class="secondary"></p>
+      </div>
+      <p id="ended" class="warning" hidden></p>
+    </div>
+    <div id="ready" class="stack" hidden>
+      <p>Create a single-use invitation to reach this host through its sendnix bridge. Direct connections only need sign-in.</p>
+      <p>Next, you’ll transfer the invitation and compare the host fingerprint on both devices.</p>
+    </div>
+    <div id="setup" class="stack" hidden>
+      <h2>Bridge setup required</h2>
+      <p id="mismatch" class="warning" hidden>The public bridge presents another host’s certificate. Do not pair using that route.</p>
+      <div id="unreachable" class="stack" hidden>
+        <p>This host’s bridge route could not be verified. Run setup on that host to install or repair its outbound connector. Restarting Host GUI alone does not start the tunnel.</p>
+        <p class="mono selectable">xedoc-remote-agentd device-pairing setup</p>
+      </div>
+      <p>Each public bridge port serves one host. All devices pairing with that host share its port. Direct connections only need sign-in.</p>
+      <div id="checking-ports" class="row" hidden><span class="spinner"></span><span>Checking bridge ports 50001–50010…</span></div>
+      <div id="suggested" class="stack" hidden>
+        <h2 id="suggested-port"></h2>
+        <p id="suggested-intro"></p>
+        <p id="suggested-command" class="mono selectable"></p>
+        <p>Setup installs frpc, configures this host’s proxy and automatic startup, and verifies the public route. It requires this host’s transport certificate, private key, and the public bridge CA in ~/.xedoc/bridge/transport; use --transport-ca, --transport-cert, and --transport-key for other paths. Obtain them through a trusted channel, never from the bridge. Keep the transport CA’s private key off the host.</p>
+        <p>Once setup reports the bridge is ready, choose Check again here and create a new invitation.</p>
+        <p class="secondary">This check does not reserve the port. An offline connector can look unused; if the name or port is already claimed, check again. Changing a host’s port requires its devices to pair again. Direct host sign-in stays unchanged.</p>
+      </div>
+      <p id="no-port" hidden>No unused port could be confirmed in 50001–50010. Ports may be occupied or unreachable. Check the relay and connectors, then choose Check again. Do not reuse another host’s port.</p>
+    </div>
+    <div id="checking" class="row" hidden><span class="spinner"></span><span>Checking host protection…</span></div>
+    <div id="failure" class="stack" hidden>
+      <p class="failure"></p>
+      <p>For this computer’s host, connect using This computer in Hosts. For another host, sign in as an administrator and retry.</p>
+    </div>
+  </div>
+  <div class="actions">
+    <button id="close" type="button">Close</button>
+    <span class="spacer"></span>
+    <span id="working" class="spinner" hidden></span>
+    <button id="action" class="primary" type="button"></button>
+  </div>
+  <script src="pair-device.js"></script>
+</body>
+</html>

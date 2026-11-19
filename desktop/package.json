@@ -1,0 +1,74 @@
+{
+  "name": "xedoc-desktop",
+  "productName": "Xedoc",
+  "version": "1.77.0",
+  "private": true,
+  "description": "Xedoc host GUI app for Linux and Windows",
+  "author": "e47",
+  "homepage": "https://github.com/apohl79/xedoc",
+  "license": "Apache-2.0",
+  "main": "src/main.js",
+  "desktopName": "xedoc-desktop.desktop",
+  "scripts": {
+    "start": "electron .",
+    "dist:linux": "electron-builder --linux",
+    "dist:win": "electron-builder --win"
+  },
+  "dependencies": {
+    "bonjour-service": "1.4.4"
+  },
+  "devDependencies": {
+    "electron": "45.3.0",
+    "electron-builder": "26.18.1"
+  },
+  "build": {
+    "appId": "org.e47.xedoc.desktop",
+    "productName": "Xedoc",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "icon": "../ios/Xedoc/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+    "toolsets": {
+      "appimage": "1.0.3"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development",
+      "executableName": "xedoc-desktop",
+      "maintainer": "apohl79 <1129160+apohl79@users.noreply.github.com>",
+      "syncDesktopName": true
+    },
+    "deb": {
+      "packageName": "xedoc-desktop",
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libasound2 | libasound2t64"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false
+    }
+  }
+}

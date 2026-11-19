@@ -1,0 +1,4 @@
+main { flex: 1; align-items: center; justify-content: center; padding: 24px; text-align: center; }
+#message { max-width: 460px; }
+.warning-icon { width: 48px; height: 48px; }
+.warning-icon svg { width: 28px; height: 28px; }

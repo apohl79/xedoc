@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'">
+  <title>Xedoc</title>
+  <link rel="stylesheet" href="ui.css">
+  <link rel="stylesheet" href="error.css">
+</head>
+<body>
+  <div class="titlebar"></div>
+  <main class="stack">
+    <div class="icon warning-icon">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3zM12 10v4M12 17h.01"/></svg>
+    </div>
+    <p id="message" role="alert"></p>
+    <div class="row"><button id="certificate" type="button" hidden>Open Certificate Setup</button></div>
+    <div class="row">
+      <button id="hosts" type="button">Hosts</button>
+      <button id="retry" class="primary" type="button">Retry</button>
+      <button id="dismiss" type="button">Dismiss</button>
+    </div>
+  </main>
+  <script src="error.js"></script>
+</body>
+</html>

@@ -1350,6 +1350,76 @@ install_macos_app() {
   step "Xedoc macOS app installed"
 }
 
+install_linux_app() {
+  [ "$(uname -s)" = Linux ] || return 0
+  [ -z "$LOCAL_ZIP" ] || return 0
+  [ "$EXPERIMENTAL" = false ] || return 0
+  case "$tag" in
+    *-alpha* | *-beta*) return 0 ;;
+  esac
+  prompt_user_available || return 0
+  if ! prompt_yes_no "Install or update the Xedoc desktop app?"; then
+    step "Skipping Xedoc desktop app installation"
+    return 0
+  fi
+
+  case "$(uname -m)" in
+    arm64 | aarch64) app_arch=aarch64 ;;
+    x86_64 | amd64) app_arch=x86_64 ;;
+    *)
+      printf 'WARNING: The Xedoc desktop app does not support %s; the Xedoc CLI remains installed.\n' "$(uname -m)" >&2
+      return 0
+      ;;
+  esac
+  app_sudo=""
+  [ "$(id -u)" = 0 ] || app_sudo=sudo
+  if command -v apt-get >/dev/null 2>&1 && { [ -z "$app_sudo" ] || command -v sudo >/dev/null 2>&1; }; then
+    app_format=deb
+  else
+    app_format=AppImage
+  fi
+  app_asset="xedoc-desktop-${tag#v}-linux-$app_arch.$app_format"
+  if ! app_url="$(release_url_for_asset "$tag" "$app_asset")" ||
+    ! app_digest="$(release_asset_digest "$tag" "$app_asset")"; then
+    printf 'WARNING: Release %s has no Xedoc desktop app for this system; the Xedoc CLI remains installed.\n' "$tag" >&2
+    return 0
+  fi
+  app_file="$tmp_dir/$app_asset"
+  download_file "$app_url" "$app_file"
+  verify_archive_digest "$app_file" "$app_digest"
+
+  if [ "$app_format" = deb ]; then
+    step "Updating apt package lists"
+    $app_sudo apt-get update ||
+      printf 'WARNING: Could not update apt package lists; trying the installation anyway.\n' >&2
+    step "Installing $app_asset with apt-get"
+    if ! $app_sudo apt-get install -y "$app_file"; then
+      printf 'WARNING: Could not install the Xedoc desktop app; the Xedoc CLI remains installed.\n' >&2
+      return 0
+    fi
+    step "Xedoc desktop app installed; start it from your app launcher or with xedoc-desktop"
+    return 0
+  fi
+
+  app_path="$BIN_DIR/xedoc-desktop"
+  step "Installing $app_asset to $app_path"
+  mkdir -p "$BIN_DIR"
+  chmod 755 "$app_file"
+  mv -f "$app_file" "$app_path"
+  app_entries="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+  mkdir -p "$app_entries"
+  cat >"$app_entries/xedoc-desktop.desktop" <<EOF
+[Desktop Entry]
+Name=Xedoc
+Comment=Xedoc host GUI app
+Exec="$app_path" %U
+Terminal=false
+Type=Application
+Categories=Development;
+EOF
+  step "Xedoc desktop app installed; the AppImage needs FUSE (fusermount) to start"
+}
+
 install_ios_app() {
   [ "$(uname -s)" = Darwin ] || return 0
   prompt_user_available || return 0
@@ -1615,4 +1685,5 @@ if [ "$EXPERIMENTAL" = false ]; then
 fi
 printf 'Xedoc CLI %s installed successfully.\n' "$release_version"
 install_macos_app
+install_linux_app
 install_ios_app

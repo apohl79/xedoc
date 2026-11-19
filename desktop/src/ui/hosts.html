@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'">
+  <title>Hosts</title>
+  <link rel="stylesheet" href="ui.css">
+  <link rel="stylesheet" href="hosts.css">
+</head>
+<body>
+  <div class="titlebar"></div>
+  <header class="row">
+    <div class="grow">
+      <h1>Hosts</h1>
+      <p class="secondary">Connect to a Xedoc host</p>
+    </div>
+    <button id="pair-host" type="button">Pair a host</button>
+    <button id="refresh" type="button" title="Refresh hosts" aria-label="Refresh hosts">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+    </button>
+  </header>
+  <main id="hosts">
+    <section id="local-section" class="list" hidden>
+      <div class="section">THIS COMPUTER</div>
+    </section>
+    <section class="list" id="available">
+      <div class="section">AVAILABLE HOSTS</div>
+    </section>
+  </main>
+  <form id="connect" class="footer">
+    <h2>Connect to a host</h2>
+    <div class="row">
+      <input id="address" class="mono" type="text" placeholder="https://hostname:port" aria-label="Host URL"
+             autocomplete="off" spellcheck="false">
+      <button id="connect-button" class="primary" type="submit" disabled>Connect</button>
+    </div>
+    <p id="invalid-address" class="failure" role="alert" hidden>Enter an HTTPS host URL, or HTTP for localhost</p>
+  </form>
+
+  <template id="host-row">
+    <button type="button" class="card host">
+      <span class="icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>
+      <span class="grow">
+        <span class="name truncate"></span>
+        <span class="url mono truncate"></span>
+      </span>
+      <span class="route caption"></span>
+      <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+    </button>
+  </template>
+
+  <template id="status-row">
+    <div class="card status">
+      <span class="icon"></span>
+      <span class="grow">
+        <span class="title"></span>
+        <span class="detail secondary"></span>
+      </span>
+    </div>
+  </template>
+
+  <dialog id="pairing" aria-labelledby="pairing-title">
+    <div class="stack dialog-body">
+      <div>
+        <h1 id="pairing-title">Pair a host</h1>
+        <p id="pairing-step" class="secondary"></p>
+      </div>
+      <div class="stack scroll">
+        <div class="stack" data-step="0">
+          <p>Directly reachable hosts only need sign-in. Pair a host to reach it through the sendnix bridge.</p>
+          <h2>On a trusted computer connected to the host</h2>
+          <p>In Xedoc, open the host and sign in as an administrator. Choose Pair Device… and create an invitation.</p>
+          <p>If you only have terminal access to the host, run this command there:</p>
+          <p class="mono selectable">xedoc-remote-agentd device-pairing invite</p>
+          <p>For first-time setup, use Pair Device on a trusted computer to check for an unused sendnix bridge port, then run device-pairing setup on the host to install and start its connector. Each public port serves one host; all devices pairing with that host share it.</p>
+          <h2>Then return to this device</h2>
+          <p>Transfer the invitation directly using a trusted channel. Never get it from sendnix or the bridge.</p>
+        </div>
+        <div class="stack" data-step="1">
+          <h2>On this device: paste the invitation</h2>
+          <p>On the trusted computer, use Copy invitation. Each invitation works once and expires after 10 minutes.</p>
+          <input id="invitation" type="password" placeholder="Pairing invitation" aria-label="Pairing invitation"
+                 autocomplete="off" spellcheck="false">
+          <p id="invalid-invitation" class="failure" hidden>This is not a valid invitation. Copy the complete invitation from the trusted host.</p>
+        </div>
+        <div class="stack" data-step="2">
+          <h2>Compare both devices</h2>
+          <p>Check that this bridge address and host certificate fingerprint match those shown on the trusted computer, or printed beside the invitation in the host terminal.</p>
+          <h2 id="preview-origin" class="selectable"></h2>
+          <div>
+            <p class="caption">Host certificate · SHA-256</p>
+            <p id="preview-fingerprint" class="mono caption selectable"></p>
+          </div>
+          <label class="row"><input id="verified" type="checkbox"> I verified the host address and fingerprint</label>
+          <p class="secondary">Pair creates a private key on this device. The key is not sent to the host or bridge.</p>
+        </div>
+        <div class="stack" data-step="3">
+          <h2>This device is paired</h2>
+          <p id="paired-origin" class="selectable"></p>
+          <p>On this device: connect, then sign in with your host account. No certificate installation is needed.</p>
+        </div>
+        <div id="pairing-failure" class="stack" hidden>
+          <p class="failure"></p>
+          <p>Check that the host’s bridge connector is running. If the invitation expired or was already used, create another on the trusted computer and paste it here. Direct host sign-in is unchanged.</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="pairing-cancel" type="button">Cancel</button>
+        <button id="pairing-back" type="button">Back</button>
+        <span class="spacer"></span>
+        <span id="pairing-working" class="spinner" role="status" aria-label="Pairing" hidden></span>
+        <button id="pairing-next" class="primary" type="button"></button>
+      </div>
+    </div>
+  </dialog>
+  <script src="hosts.js"></script>
+</body>
+</html>

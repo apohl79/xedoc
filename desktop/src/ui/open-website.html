@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'">
+  <title>Open Website</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body class="dialog-page">
+  <form id="form" class="stack">
+    <h2>Open Website</h2>
+    <input id="address" type="text" placeholder="https://example.com" aria-label="Website address"
+           autocomplete="off" spellcheck="false" autofocus>
+    <div class="actions">
+      <span class="spacer"></span>
+      <button id="cancel" type="button">Cancel</button>
+      <button class="primary" type="submit">Open</button>
+    </div>
+  </form>
+  <script src="open-website.js"></script>
+</body>
+</html>

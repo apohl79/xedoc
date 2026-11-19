@@ -1,0 +1,30 @@
+header { flex: none; padding: 0 22px 18px; }
+header button { display: grid; place-items: center; height: 30px; }
+header svg { width: 15px; height: 15px; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+main { flex: 1; overflow: auto; padding: 0 22px 20px; display: flex; flex-direction: column; gap: 10px; }
+.list { display: flex; flex-direction: column; gap: 10px; }
+
+.card .grow { display: flex; flex-direction: column; gap: 3px; }
+.card .name, .card .title { font-weight: 500; }
+.card .url { font-size: 11px; color: var(--secondary); }
+.card .detail { font-size: 12px; }
+.card .chevron { width: 12px; height: 12px; fill: none; stroke: var(--secondary); stroke-width: 2.5; }
+.host:hover { border-color: var(--secondary); }
+
+.footer { flex: none; display: flex; flex-direction: column; gap: 12px; padding: 22px; background: var(--footer); border-top: 1px solid var(--border); }
+
+dialog {
+  width: min(520px, calc(100vw - 32px));
+  height: min(520px, calc(100vh - 32px));
+  padding: 24px;
+  color: var(--primary);
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+dialog::backdrop { background: rgb(0 0 0 / 55%); }
+.dialog-body { height: 100%; }
+.dialog-body .scroll { flex: 1; overflow: auto; }
+.actions { display: flex; align-items: center; gap: 10px; }
+.actions .spacer { flex: 1; }

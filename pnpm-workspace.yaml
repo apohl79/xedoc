@@ -1,4 +1,5 @@
 packages:
+  - desktop
   - xedoc-rs/responses-api-proxy/npm
 
 ignoredBuiltDependencies:
@@ -12,4 +13,5 @@ strictDepBuilds: true
 trustPolicy: no-downgrade
 trustPolicyIgnoreAfter: 10080
 trustPolicyExclude: []
-allowBuilds: {}
+allowBuilds:
+  electron: true
