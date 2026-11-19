@@ -1,7 +1,7 @@
+/* No local() source: WebKit canvas, which xterm uses to size cells, ignores local() faces. */
 @font-face {
   font-family: "IosevkaTerm NFM Medium";
-  src: local("IosevkaTerm NFM Medium"), local("IosevkaTermNFM-Medium"),
-    url("/IosevkaTermNFM-Medium.woff2") format("woff2");
+  src: url("/IosevkaTermNFM-Medium.woff2") format("woff2");
 }
 :root {
   color-scheme: dark;
