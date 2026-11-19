@@ -34,6 +34,7 @@ from .host_gui_bridge import HostBridgeAccess, load_bridge_config
 from .host_gui_local import LocalHostAccess
 from .host_device_pairing import HostDevicePairing
 from .host_pairing_activation import can_invite_device, invite_device
+from .host_pins import HostPins
 from .host_bridge_setup import bridge_setup
 from .host_hostname import host_hostname
 from .host_workspace import HostWorkspaces
@@ -84,6 +85,7 @@ class HostServer(ThreadingHTTPServer):
         self.hostname = host_hostname()
         self.instance_id = secrets.token_hex(16)
         self.auth = HostAuth(home)
+        self.pins = HostPins(home)
         self.ca = HostCA(home)
         self.updates = HostUpdates(home)
         if not self.auth.users:
@@ -872,6 +874,7 @@ class HostHandler(BaseHTTPRequestHandler):
                 return
             if path in (
                 "/api/projects",
+                "/api/project/pin",
                 "/api/project/create",
                 "/api/project/clone",
             ):
@@ -892,6 +895,26 @@ class HostHandler(BaseHTTPRequestHandler):
                                     "activity", [""]
                                 )[0]
                                 == "1",
+                            ),
+                            "pins": self.server.pins.get(
+                                account["username"], workspace_id
+                            ),
+                        },
+                    )
+                    return
+                if self.command == "POST" and path == "/api/project/pin":
+                    if workspace_id != OTHER_WORKSPACE and workspace_id not in {
+                        entry["workspaceId"] for entry in service.snapshot()["workspaces"]
+                    }:
+                        raise ValueError("Unknown workspace")
+                    self.reply(
+                        200,
+                        {
+                            "pins": self.server.pins.set(
+                                account["username"],
+                                workspace_id,
+                                body.get("projectName"),
+                                body.get("pinned"),
                             )
                         },
                     )
@@ -1069,6 +1092,7 @@ class HostHandler(BaseHTTPRequestHandler):
                 self.server.auth.delete_user(username)
                 if isinstance(username, str):
                     self.server.terminals.close(username)
+                    self.server.pins.remove_user(username)
             else:
                 self.reply(404, {"error": "Not found"})
                 return

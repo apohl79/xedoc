@@ -28,6 +28,7 @@
   const sessionFrames = new Map();
   const openedSessions = new Map();
   const projectCache = new Map();
+  const projectPinCache = new Map();
   const sessionCache = new Map();
   const sessionTabOrders = new Map();
   const sessionRebindings = new WeakMap();
@@ -252,20 +253,39 @@
 
   function projectPins(username = state?.account?.username, workspaceId = selectedWorkspace) {
     if (!username || !workspaceId) return [];
-    try {
-      const pins = JSON.parse(localStorage.getItem(`xedoc-pins:${username}:${workspaceId}`));
-      return Array.isArray(pins) ? pins.filter((name) => typeof name === "string") : [];
-    } catch {
-      return [];
-    }
+    return projectPinCache.get(projectCacheKey(workspaceId, username)) || [];
   }
 
-  window.addEventListener("storage", (event) => {
-    const username = state?.account?.username;
-    const workspaceId = selectedWorkspace;
-    if (!username || !workspaceId || event.key !== `xedoc-pins:${username}:${workspaceId}`) return;
-    applyProjectPinOrder(projectCache.get(projectCacheKey(workspaceId, username)) || []);
-  });
+  function storeProjectPins(workspaceId, username, pins) {
+    projectPinCache.set(projectCacheKey(workspaceId, username), Array.isArray(pins) ? pins : []);
+    // Pins used to live in per-origin localStorage; move them to the host once.
+    const legacyKey = `xedoc-pins:${username}:${workspaceId}`;
+    let legacy;
+    try {
+      legacy = JSON.parse(localStorage.getItem(legacyKey));
+    } catch {}
+    if (!Array.isArray(legacy)) {
+      localStorage.removeItem(legacyKey);
+      return;
+    }
+    void (async () => {
+      for (const name of legacy) {
+        if (state?.account?.username !== username) return;
+        if (typeof name !== "string" || projectPins(username, workspaceId).includes(name)) continue;
+        await setProjectPin(workspaceId, username, name, true);
+      }
+      localStorage.removeItem(legacyKey);
+    })().catch((error) => notice(error.message));
+  }
+
+  async function setProjectPin(workspaceId, username, projectName, pinned) {
+    const result = await api("project/pin", { workspaceId, projectName, pinned });
+    if (state?.account?.username !== username) return;
+    projectPinCache.set(projectCacheKey(workspaceId, username), result.pins || []);
+    if (selectedWorkspace === workspaceId) {
+      applyProjectPinOrder(projectCache.get(projectCacheKey(workspaceId, username)) || []);
+    }
+  }
 
   function applyProjectFilter() {
     const query = byId("project-search").value.trim().toLowerCase();
@@ -453,6 +473,7 @@
     sessionFrames.clear();
     openedSessions.clear();
     projectCache.clear();
+    projectPinCache.clear();
     sessionCache.clear();
     sessionTabOrders.clear();
     savedViews.clear();
@@ -657,6 +678,7 @@
       `projects?workspaceId=${encodeURIComponent(workspaceId)}&activity=1`
     );
     if (generation !== accountGeneration || state?.account?.username !== username) return;
+    storeProjectPins(workspaceId, username, result.pins);
     applyProjectActivity(workspaceId, result.projects || []);
   }
 
@@ -758,6 +780,7 @@
         ) return;
         workspaceProjects = result.projects || [];
         projectCache.set(cacheKey, workspaceProjects);
+        storeProjectPins(selectedWorkspace, username, result.pins);
       } catch (error) {
         if (request === projectRequest) {
           byId("project-empty").textContent = "Could not load projects.";
@@ -809,16 +832,9 @@
       const username = state.account.username;
       const workspaceId = selectedWorkspace;
       const pin = button(pins.has(project.name) ? "★" : "☆", () => {
-        const currentPins = new Set(projectPins(username, workspaceId));
-        if (currentPins.has(project.name)) currentPins.delete(project.name);
-        else currentPins.add(project.name);
-        localStorage.setItem(
-          `xedoc-pins:${username}:${workspaceId}`,
-          JSON.stringify([...currentPins]),
-        );
-        if (state?.account?.username === username && selectedWorkspace === workspaceId) {
-          applyProjectPinOrder(projectCache.get(projectCacheKey(workspaceId, username)) || []);
-        }
+        const pinned = !projectPins(username, workspaceId).includes(project.name);
+        void setProjectPin(workspaceId, username, project.name, pinned)
+          .catch((error) => notice(error.message));
       });
       pin.className = "project-pin";
       pin.title = `${pins.has(project.name) ? "Unpin" : "Pin"} ${project.label || project.name}`;
@@ -1179,6 +1195,7 @@
     selectedProject = projectName;
     activeThread = threadId;
     projectCache.set(projectCacheKey(workspaceId), projects.projects);
+    storeProjectPins(workspaceId, state.account.username, projects.pins);
     const opening = openSession(threadId, session.archived === true);
     const request = sessionRequest;
     await opening;
