@@ -329,6 +329,7 @@ class HostHandler(BaseHTTPRequestHandler):
         cookie=None,
         session_frame=False,
         attachment_name=None,
+        cache_control="no-store",
     ):
         if cookie is None:
             cookie = getattr(self, "local_session_cookie", None)
@@ -340,15 +341,15 @@ class HostHandler(BaseHTTPRequestHandler):
                 "Content-Disposition", f'attachment; filename="{attachment_name}"'
             )
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache_control)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header(
             "Content-Security-Policy",
             (
                 "default-src 'none'; base-uri 'none'; connect-src 'self'; "
-                "img-src 'self' data:; object-src blob: data:; form-action 'none'; "
-                "frame-ancestors 'self'; script-src 'self'; style-src 'self'; "
+                "img-src 'self' data:; font-src 'self'; object-src blob: data:; "
+                "form-action 'none'; frame-ancestors 'self'; script-src 'self'; style-src 'self'; "
                 "style-src-attr 'unsafe-inline'"
                 if session_frame
                 else "default-src 'self'; script-src 'self'; style-src 'self'; "
@@ -440,6 +441,7 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/favicon.svg",
                 "/favicon.png",
                 "/favicon.ico",
+                "/IosevkaTermNFM-Medium.woff2",
             ):
                 asset = {
                     "/": "host.html",
@@ -455,6 +457,7 @@ class HostHandler(BaseHTTPRequestHandler):
                     "/favicon.svg": "favicon.svg",
                     "/favicon.png": "favicon.png",
                     "/favicon.ico": "favicon.ico",
+                    "/IosevkaTermNFM-Medium.woff2": "IosevkaTermNFM-Medium.woff2",
                 }[path]
                 kind = {
                     "/": "text/html; charset=utf-8",
@@ -470,6 +473,7 @@ class HostHandler(BaseHTTPRequestHandler):
                     "/favicon.svg": "image/svg+xml",
                     "/favicon.png": "image/png",
                     "/favicon.ico": "image/x-icon",
+                    "/IosevkaTermNFM-Medium.woff2": "font/woff2",
                 }[path]
                 self.reply(
                     200,
@@ -477,6 +481,7 @@ class HostHandler(BaseHTTPRequestHandler):
                     .joinpath("host_assets", asset)
                     .read_bytes(),
                     content_type=kind,
+                    cache_control="max-age=86400" if kind == "font/woff2" else "no-store",
                 )
                 return
             if self.command == "GET" and path == "/api/host-info":

@@ -215,6 +215,43 @@ pub(crate) fn history_cell_html(
                 }
             } else if cell.as_any().is::<ToolCallSummaryCell>() {
                 ("history-tool history-tool-call history-command", lines)
+            } else if lines.len() >= 2
+                && lines[0]
+                    .spans
+                    .first()
+                    .is_some_and(|span| span.content.starts_with('╭'))
+                && lines[lines.len() - 1]
+                    .spans
+                    .first()
+                    .is_some_and(|span| span.content.starts_with('╰'))
+                && lines[1..lines.len() - 1].iter().all(|line| {
+                    line.spans.len() >= 2
+                        && line.spans[0].content == "│ "
+                        && line.spans[line.spans.len() - 1].content == " │"
+                })
+            {
+                // Box-drawing glyphs leave gaps and misalign beside emoji in browser
+                // fonts, so draw the frame with CSS instead.
+                let inner_line_count = lines.len() - 1;
+                let lines = lines
+                    .into_iter()
+                    .take(inner_line_count)
+                    .skip(1)
+                    .map(|mut line| {
+                        line.spans.pop();
+                        if line.spans.len() > 1
+                            && line
+                                .spans
+                                .last()
+                                .is_some_and(|span| span.content.trim().is_empty())
+                        {
+                            line.spans.pop();
+                        }
+                        line.spans.remove(0);
+                        line
+                    })
+                    .collect();
+                ("history-tool history-box", lines)
             } else {
                 ("history-tool", lines)
             };

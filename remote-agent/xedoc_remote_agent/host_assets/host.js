@@ -1632,6 +1632,16 @@
     await users();
     byId("users-dialog").showModal();
   }));
+  byId("settings-button").addEventListener("click", () => {
+    byId("mono-font").value = window.xedocMonoFont();
+    byId("settings-dialog").showModal();
+  });
+  form("settings-form", async (data) => {
+    // Same-origin session frames pick this up through their storage event.
+    localStorage.setItem("xedoc-mono-font", data.get("monoFont").trim());
+    await terminals.setFont();
+    byId("settings-dialog").close();
+  });
   form("user-form", async (data) => {
     await api("user/save", {
       username: data.get("username"),

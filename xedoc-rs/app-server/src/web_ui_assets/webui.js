@@ -1,6 +1,17 @@
 "use strict";
 
 (() => {
+  // The host GUI's settings dialog (terminals.js) writes this same-origin key.
+  const applyMonoFont = () => {
+    const font = localStorage.getItem("xedoc-mono-font")?.trim();
+    const root = document.documentElement.style;
+    if (font == null) root.removeProperty("--mono");
+    else root.setProperty("--mono", font ? `${JSON.stringify(font)}, var(--system-mono)` : "var(--system-mono)");
+  };
+  applyMonoFont();
+  window.addEventListener("storage", (event) => {
+    if (event.key === "xedoc-mono-font" || event.key === null) applyMonoFont();
+  });
   const history = document.getElementById("history");
   const active = document.getElementById("active");
   const toolSummary = document.createElement("div");

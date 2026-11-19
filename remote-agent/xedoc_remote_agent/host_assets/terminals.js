@@ -1,7 +1,16 @@
 "use strict";
-// Colors mirror the City Lights theme in cmux's Ghostty config; the font matches the session view's --mono.
+// Same key, default, and fallback as the session view's --mono (webui.js), which shares this origin.
+const XEDOC_MONO_FONT_KEY = "xedoc-mono-font";
+const XEDOC_DEFAULT_MONO_FONT = "IosevkaTerm NFM Medium";
+const XEDOC_SYSTEM_MONO_FONTS = 'ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace';
+window.xedocMonoFont = () => (localStorage.getItem(XEDOC_MONO_FONT_KEY) ?? XEDOC_DEFAULT_MONO_FONT).trim();
+window.xedocMonoFontFamily = () => {
+  const font = window.xedocMonoFont();
+  return font ? `${JSON.stringify(font)}, ${XEDOC_SYSTEM_MONO_FONTS}` : XEDOC_SYSTEM_MONO_FONTS;
+};
+
+// Colors mirror the City Lights theme in cmux's Ghostty config.
 const XEDOC_TERMINAL_OPTIONS = {
-  fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
   fontSize: 13,
   cursorStyle: "block",
   cursorBlink: false,
@@ -45,6 +54,26 @@ window.XedocHostTerminals = class {
       const entry = this.entries.get(this.active);
       if (entry?.term && document.activeElement?.matches(".session-frame[hidden]")) entry.term.focus();
     }));
+    // Copy on select; copying inside the mouseup gesture satisfies WebKit's clipboard activation rule.
+    window.addEventListener("mouseup", () => {
+      const entry = this.entries.get(this.active);
+      if (!entry?.selectionChanged || !entry.term.hasSelection()) return;
+      entry.selectionChanged = false;
+      void navigator.clipboard?.writeText(entry.term.getSelection()).catch(() => {});
+    });
+    void this.setFont();
+  }
+
+  async setFont() {
+    const fontFamily = window.xedocMonoFontFamily();
+    await document.fonts.load(`13px ${fontFamily}`).catch(() => {});
+    for (const entry of this.entries.values()) {
+      if (!entry.term) continue;
+      // xterm measures cells only when fontFamily changes; reset it so a font loaded after mount is measured.
+      entry.term.options.fontFamily = "monospace";
+      entry.term.options.fontFamily = fontFamily;
+      if (!entry.frame.hidden) entry.fit.fit();
+    }
   }
 
   async create(workspaceId, projectName) {
@@ -194,7 +223,9 @@ window.XedocHostTerminals = class {
     entry.frame = document.createElement("div");
     entry.frame.className = "terminal-frame";
     document.getElementById("session-frames").append(entry.frame);
-    entry.term = new window.Terminal(XEDOC_TERMINAL_OPTIONS);
+    entry.term = new window.Terminal({
+      ...XEDOC_TERMINAL_OPTIONS, fontFamily: window.xedocMonoFontFamily(),
+    });
     entry.fit = new window.FitAddon.FitAddon();
     entry.term.loadAddon(entry.fit);
     entry.term.open(entry.frame);
@@ -203,6 +234,7 @@ window.XedocHostTerminals = class {
       this.send(entry, Uint8Array.from(data, (character) => character.charCodeAt(0)));
     });
     entry.term.onResize(() => this.sendSize(entry));
+    entry.term.onSelectionChange(() => { entry.selectionChanged = true; });
     entry.term.onTitleChange((title) => {
       const value = title.trim() || entry.title;
       if (!entry.label) return;

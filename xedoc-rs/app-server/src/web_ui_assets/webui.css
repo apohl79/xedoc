@@ -1,3 +1,10 @@
+/* Host GUI session frames share the host origin, which serves this font; a standalone
+   session web UI can only use an installed copy and otherwise falls back to --system-mono. */
+@font-face {
+  font-family: "IosevkaTerm NFM Medium";
+  src: local("IosevkaTerm NFM Medium"), local("IosevkaTermNFM-Medium"),
+    url("/IosevkaTermNFM-Medium.woff2") format("woff2");
+}
 :root {
   color-scheme: dark;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -10,7 +17,8 @@
   --bg-prompt: #222b33;
   --fg-dim: #718ca1;
   background: var(--bg-main);
-  --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --system-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  --mono: "IosevkaTerm NFM Medium", var(--system-mono);
   --border: #56697a;
   --accent: #b47af3;
 }
@@ -96,6 +104,7 @@ a { color: #8fc4e7; }
 .history-lines { white-space: normal; overflow-wrap: anywhere; }
 .history-lines > div { min-height: 1.4em; white-space: pre-wrap; overflow-wrap: anywhere; }
 .history-tool, .history-tool-slice { padding: 0 8px; }
+.history-tool.history-box { width: fit-content; max-width: calc(100% - 8px); margin-left: 8px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 6px; }
 .history-tool-box { background: var(--bg-history); border-radius: 6px; }
 .history-tool-box > div, .history-tool-call > div { overflow: hidden; overflow-wrap: normal; text-overflow: clip; white-space: pre; }
 .history-tool { padding-left: calc(10px + 2ch); }

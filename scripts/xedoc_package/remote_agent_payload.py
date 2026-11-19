@@ -268,10 +268,15 @@ def _payload_sources() -> dict[str, Path]:
             f"xedoc_remote_agent/{path.relative_to(REMOTE_AGENT_PACKAGE_SOURCE)}"
         ] = path
     for path in sorted((REMOTE_AGENT_PACKAGE_SOURCE / "host_assets").glob("*")):
-        if (
-            path.suffix in {".html", ".css", ".js", ".svg", ".png", ".ico"}
-            or path.name == "xterm-LICENSE.txt"
-        ):
+        if path.suffix in {
+            ".html",
+            ".css",
+            ".js",
+            ".svg",
+            ".png",
+            ".ico",
+            ".woff2",
+        } or path.name in {"xterm-LICENSE.txt", "IosevkaTerm-LICENSE.txt"}:
             entries[f"xedoc_remote_agent/host_assets/{path.name}"] = path
     for archive_name, path in entries.items():
         if not path.is_file():

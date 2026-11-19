@@ -17,7 +17,7 @@ use crate::version::xedoc_cli_version;
 
 pub(crate) use crate::updates_cache::dismiss_version;
 
-const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/apohl79/codex/releases/latest";
+const LATEST_RELEASE_URL: &str = "https://api.github.com/repos/apohl79/xedoc/releases/latest";
 
 pub fn get_upgrade_version(config: &Config) -> Option<String> {
     if !config.check_for_update_on_startup || is_source_build_version(xedoc_cli_version()) {

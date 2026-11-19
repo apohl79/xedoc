@@ -797,7 +797,7 @@ fn run_update_command() -> anyhow::Result<()> {
     {
         let Some(action) = xedoc_tui::get_update_action() else {
             anyhow::bail!(
-                "Xedoc self-update is only available on macOS. Please update manually: https://github.com/apohl79/codex/releases/latest"
+                "Xedoc self-update is only available on macOS. Please update manually: https://github.com/apohl79/xedoc/releases/latest"
             );
         };
         run_update_action(action)?;

@@ -29,7 +29,7 @@ use ratatui::widgets::Clear;
 use ratatui::widgets::WidgetRef;
 use tokio_stream::StreamExt;
 
-const RELEASE_NOTES_URL: &str = "https://github.com/apohl79/codex/releases/latest";
+const RELEASE_NOTES_URL: &str = "https://github.com/apohl79/xedoc/releases/latest";
 
 pub(crate) enum UpdatePromptOutcome {
     Continue,
