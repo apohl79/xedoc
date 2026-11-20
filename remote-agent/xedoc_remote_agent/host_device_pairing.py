@@ -133,7 +133,8 @@ class HostDevicePairing:
                 (digest, expires),
             )
         value = {
-            "version": 1, "origin": config.origin, "token": token, "route": "bridge",
+            "version": 1, "origin": config.origin, "token": token,
+            "route": "direct" if config.network_mode == "external" else "bridge",
             "serverCA": base64.b64encode(ca.public_bytes(serialization.Encoding.DER)).decode(),
             "serverCertificate": base64.b64encode(
                 leaf.public_bytes(serialization.Encoding.DER)

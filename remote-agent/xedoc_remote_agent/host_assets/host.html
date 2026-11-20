@@ -83,8 +83,11 @@
     <div class="section-title"><h2 id="update-heading">Xedoc updates</h2><button type="button" data-close aria-label="Close">×</button></div>
     <div class="update-toolbar"><span id="update-version" class="muted"></span><button id="update-check">Check</button><button id="update-install" class="primary" hidden>Install update</button></div>
     <p id="update-status" role="status"></p>
-    <div id="update-terminal" aria-label="Interactive Xedoc installer" hidden></div>
-    <footer id="update-keys" hidden><button type="button" data-update-key="up" aria-label="Up">↑</button><button type="button" data-update-key="down" aria-label="Down">↓</button><button type="button" data-update-key="tab">Tab</button><button type="button" data-update-key="escape">Esc</button><button type="button" data-update-key="enter">Enter</button></footer>
+    <div id="update-progress-area" hidden><progress id="update-progress" max="100" aria-label="Installation progress"></progress><span id="update-percent"></span></div>
+    <p id="update-info" class="muted"></p>
+    <section id="update-question" aria-labelledby="update-prompt" hidden><p id="update-prompt" aria-live="polite"></p><div class="update-answers"><button type="button" id="update-yes" class="primary">Yes</button><button type="button" id="update-no">No</button></div></section>
+    <details id="update-details" hidden><summary>Installer details</summary><div id="update-terminal" aria-label="Interactive Xedoc installer" hidden></div>
+    <footer id="update-keys" hidden><button type="button" data-update-key="up" aria-label="Up">↑</button><button type="button" data-update-key="down" aria-label="Down">↓</button><button type="button" data-update-key="tab">Tab</button><button type="button" data-update-key="escape">Esc</button><button type="button" data-update-key="enter">Enter</button></footer></details>
   </dialog>
 </body>
 </html>

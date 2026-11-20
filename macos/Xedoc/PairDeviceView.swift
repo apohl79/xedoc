@@ -7,6 +7,7 @@ struct PairDeviceView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var enabled: Bool?
     @State private var canInvite = false
+    @State private var externalNetwork = false
     @State private var bridgeStatus = ""
     @State private var suggestedPort: Int?
     @State private var localPairing = LocalDevicePairing()
@@ -58,7 +59,9 @@ struct PairDeviceView: View {
                                 .foregroundStyle(.orange)
                         }
                     } else if canInvite {
-                        Text("Create a single-use invitation to reach this host through its sendnix bridge. Direct connections only need sign-in.")
+                        Text(externalNetwork
+                             ? "This host uses external network mode. Create a single-use invitation for a direct connection; pairing and account sign-in are required."
+                             : "Create a single-use invitation to reach this host through its sendnix bridge. Internal direct connections only need sign-in.")
                         Text("Next, you’ll transfer the invitation and compare the host fingerprint on both devices.")
                     } else if enabled != nil {
                         Label("Bridge setup required", systemImage: "network").font(.headline)
@@ -154,6 +157,12 @@ struct PairDeviceView: View {
             } else {
                 guard let protection = result["enabled"] as? Bool else {
                     throw pairingError("Update the host to a version that supports device pairing.")
+                }
+                externalNetwork = result["networkMode"] as? String == "external"
+                if externalNetwork {
+                    enabled = protection
+                    canInvite = result["canInvite"] as? Bool ?? protection
+                    return
                 }
                 let setup = try await request("device/bridge-setup", body: nil)
                 guard let routeStatus = setup["status"] as? String,

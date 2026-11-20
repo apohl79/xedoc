@@ -4,6 +4,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import re
 import select
 import socket
 import struct
@@ -23,6 +24,12 @@ def run(home: str, tag: str, lock_fd: int):
     total = 0
     status = "starting"
     exit_code = None
+    progress = None
+    info = f"Fetching installer for {tag}…"
+    prompt = None
+    prompt_id = 0
+    events, event_writer = os.pipe()
+    event_buffer = b""
 
     def save():
         temporary = directory / "state.tmp"
@@ -30,14 +37,27 @@ def run(home: str, tag: str, lock_fd: int):
             "pid": os.getpid(), "tag": tag, "status": status,
             "exitCode": exit_code, "cursor": total,
             "output": base64.b64encode(output).decode(),
+            "progress": progress, "info": info,
+            "prompt": prompt, "promptId": prompt_id,
         }))
         temporary.chmod(0o600)
         temporary.replace(directory / "state.json")
 
     def record(chunk):
-        nonlocal output, total
+        nonlocal output, total, info, prompt, prompt_id
         output = (output + chunk)[-262144:]
         total += len(chunk)
+        # Also support prompts from setup subprocesses and older release scripts.
+        text = re.sub(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*\x07)", "",
+                      output[-8192:].decode(errors="replace"))
+        lines = [line.strip() for line in text.replace("\r", "\n").split("\n")
+                 if line.strip()]
+        if lines:
+            info = lines[-1][:2048]
+            question = re.fullmatch(r"(.+?)\s*\[[yYnN]/[yYnN]\]\s*:?\s*", info)
+            if question and question[1] != prompt:
+                prompt = question[1]
+                prompt_id += 1
 
     terminal = None
     child = None
@@ -61,19 +81,30 @@ def run(home: str, tag: str, lock_fd: int):
         child, terminal = pty.fork()
         if child == 0:
             try:
+                os.close(events)
+                os.dup2(event_writer, 3)
+                os.set_inheritable(3, True)
+                if event_writer != 3:
+                    os.close(event_writer)
+                os.environ["XEDOC_INSTALL_GUI"] = "1"
                 os.environ["TERM"] = "xterm-256color"
                 os.environ["COLUMNS"] = "100"
                 os.environ["LINES"] = "30"
                 os.execvp("sh", ["sh", str(script), "--repo", REPOSITORY, "--tag", tag])
             finally:
                 os._exit(127)
+        os.close(event_writer)
+        event_writer = None
         fcntl.ioctl(terminal, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
         status = "running"
         save()
         last_save = time.monotonic()
-        saved_total = total
+        saved_state = None
         while True:
-            ready, _, _ = select.select([terminal, listener], [], [], 0.1)
+            ready, _, _ = select.select(
+                [terminal, listener] + ([events] if events is not None else []),
+                [], [], 0.1,
+            )
             if listener in ready:
                 connection, _ = listener.accept()
                 with connection:
@@ -89,6 +120,7 @@ def run(home: str, tag: str, lock_fd: int):
                             remaining = bytes(chunks)
                             while remaining:
                                 remaining = remaining[os.write(terminal, remaining):]
+                            prompt = None
                             connection.sendall(b"ok")
                     except OSError:
                         pass
@@ -100,10 +132,30 @@ def run(home: str, tag: str, lock_fd: int):
                 if not chunk:
                     break
                 record(chunk)
-            if total != saved_total and time.monotonic() - last_save >= 0.1:
+            if events in ready:
+                chunk = os.read(events, 8192)
+                if not chunk:
+                    os.close(events)
+                    events = None
+                else:
+                    event_buffer += chunk
+                    while b"\n" in event_buffer:
+                        line, event_buffer = event_buffer.split(b"\n", 1)
+                        kind, _, value = line.decode(errors="replace").partition("\t")
+                        if kind == "progress" and value.isdigit():
+                            progress = max(progress or 0, min(int(value), 99))
+                        elif kind == "info":
+                            info = value[:2048]
+                        elif kind == "prompt":
+                            prompt = value[:2048] or None
+                            if prompt:
+                                prompt_id += 1
+                    event_buffer = event_buffer[-8192:]
+            state = (total, progress, info, prompt, prompt_id)
+            if state != saved_state and time.monotonic() - last_save >= 0.1:
                 save()
                 last_save = time.monotonic()
-                saved_total = total
+                saved_state = state
             completed, wait_status = os.waitpid(child, os.WNOHANG)
             if completed:
                 exit_code = os.waitstatus_to_exitcode(wait_status)
@@ -123,15 +175,22 @@ def run(home: str, tag: str, lock_fd: int):
             exit_code = os.waitstatus_to_exitcode(wait_status)
             child = None
         status = "completed" if exit_code == 0 else "failed"
+        if exit_code == 0:
+            progress = 100
     except Exception as error:
         record(f"\r\nInstaller failed: {error}\r\n".encode())
         status = "failed"
     finally:
+        prompt = None
         save()
         listener.close()
         socket_path.unlink(missing_ok=True)
         if terminal is not None:
             os.close(terminal)
+        if events is not None:
+            os.close(events)
+        if event_writer is not None:
+            os.close(event_writer)
         if child is not None:
             os.waitpid(child, 0)
         os.close(lock_fd)

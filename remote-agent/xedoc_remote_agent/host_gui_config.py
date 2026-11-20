@@ -32,6 +32,7 @@ class HostGuiConfig:
     tls_key: Path | None = None
     tls_client_ca: Path | None = None
     instant_chat_directory: str = DEFAULT_INSTANT_CHAT_DIRECTORY
+    network_mode: str = "internal"
 
     @classmethod
     def local_only(cls) -> "HostGuiConfig":
@@ -57,11 +58,14 @@ class HostGuiConfig:
             instant_chat_directory=value.get(
                 "instant_chat_directory", DEFAULT_INSTANT_CHAT_DIRECTORY
             ),
+            network_mode=value.get("network_mode", "internal"),
         )
         config.validate()
         return config
 
     def validate(self) -> None:
+        if self.network_mode not in ("internal", "external"):
+            raise ValueError("Host GUI network mode must be internal or external")
         if (
             not isinstance(self.instant_chat_directory, str)
             or not self.instant_chat_directory
@@ -92,6 +96,8 @@ class HostGuiConfig:
         ):
             raise ValueError("Invalid Host GUI listener address or port")
         if origin.scheme == "http":
+            if self.network_mode == "external":
+                raise ValueError("External network mode requires HTTPS")
             if self.tls_cert or self.tls_key or self.tls_client_ca:
                 raise ValueError("TLS certificate paths require an HTTPS origin")
             if self.listen_address not in ("127.0.0.1", "::1", "localhost"):

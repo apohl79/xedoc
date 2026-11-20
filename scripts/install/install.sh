@@ -6,8 +6,6 @@ RELEASE_REPO="${XEDOC_RELEASE_REPO:-apohl79/xedoc}"
 RELEASE_TAG="${XEDOC_RELEASE_TAG:-}"
 RELEASE_TARGET="${XEDOC_RELEASE_TARGET:-}"
 LOCAL_ZIP="${XEDOC_LOCAL_ZIP:-}"
-LOCAL_IOS_ZIP="${XEDOC_LOCAL_IOS_ZIP:-}"
-IOS_ONLY=false
 BIN_DIR="${XEDOC_INSTALL_DIR:-$HOME/.local/bin}"
 BIN_PATH="$BIN_DIR/xedoc"
 EXPERIMENTAL_BIN_PATH="$BIN_DIR/xedoc-experimental"
@@ -37,6 +35,16 @@ repo_root="$(CDPATH='' cd "$script_dir/../.." && pwd)"
 
 step() {
   printf '==> %s\n' "$1"
+  gui_event info "$1"
+}
+
+gui_event() {
+  [ "${XEDOC_INSTALL_GUI:-}" = 1 ] || return 0
+  printf '%s\t%s\n' "$1" "$2" >&3
+}
+
+gui_progress() {
+  gui_event progress "$1"
 }
 
 die() {
@@ -46,7 +54,7 @@ die() {
 
 usage() {
   cat <<EOF
-Usage: install.sh [--tag TAG] [--target TARGET] [--repo OWNER/REPO] [--local-zip PATH] [--experimental] [--check] [--ios-only] [--local-ios-zip PATH]
+Usage: install.sh [--tag TAG] [--target TARGET] [--repo OWNER/REPO] [--local-zip PATH] [--experimental] [--check]
 
 Downloads and installs the Xedoc binary release for the current release tag,
 or installs a local release ZIP without contacting GitHub.
@@ -61,9 +69,6 @@ Options:
   --experimental    Install a local ZIP and also expose it as xedoc-experimental.
                    This option requires --local-zip.
   --check          Verify that the release asset exists, then print the plan and exit.
-  --ios-only       Only offer iOS/iPadOS device installation (macOS with Xcode).
-  --local-ios-zip PATH
-                   Use a local signed iOS release ZIP, without a GitHub download.
   -h, --help       Show this help.
 
 Environment:
@@ -71,7 +76,6 @@ Environment:
   XEDOC_RELEASE_TARGET  Same as --target.
   XEDOC_RELEASE_REPO    Same as --repo.
   XEDOC_LOCAL_ZIP       Same as --local-zip.
-  XEDOC_LOCAL_IOS_ZIP   Same as --local-ios-zip.
   XEDOC_INSTALL_DIR     Directory for the visible xedoc symlinks. Defaults to ~/.local/bin.
   XEDOC_HOME            Xedoc home directory. Defaults to ~/.xedoc.
   XEDOC_NON_INTERACTIVE  Set to 1, true, or yes to skip prompts.
@@ -104,14 +108,6 @@ parse_args() {
         ;;
       --experimental)
         EXPERIMENTAL=true
-        ;;
-      --ios-only)
-        IOS_ONLY=true
-        ;;
-      --local-ios-zip)
-        [ "$#" -ge 2 ] || die "--local-ios-zip requires a value."
-        LOCAL_IOS_ZIP="$2"
-        shift
         ;;
       --check)
         CHECK_ONLY=true
@@ -152,6 +148,7 @@ prompt_yes_no() {
     return 1
   fi
 
+  gui_event prompt "$prompt"
   printf '%s [y/N] ' "$prompt" >/dev/tty 2>/dev/null ||
     printf '%s [y/N] ' "$prompt"
   if ( : </dev/tty ) 2>/dev/null; then
@@ -160,6 +157,7 @@ prompt_yes_no() {
     IFS= read -r answer || return 1
   fi
 
+  gui_event prompt ""
   case "$answer" in
     y | Y | yes | YES)
       return 0
@@ -402,6 +400,16 @@ configure_app_server_startup() {
     if ! prompt_user_available; then
       return
     fi
+    if [ "${XEDOC_INSTALL_GUI:-}" = 1 ]; then
+      if [ "$(uname -s)" = Darwin ] &&
+        prompt_yes_no "Start Xedoc app-server automatically with a LaunchAgent?"; then
+        choice="launchagent"
+      elif prompt_yes_no "Start Xedoc app-server from .zshrc?"; then
+        choice="zshrc"
+      else
+        choice="none"
+      fi
+    fi
     while [ -z "$choice" ]; do
       printf 'Choose Xedoc app-server auto-start: [l]aunchagent, [z]shrc, [n]one: ' >/dev/tty 2>/dev/null ||
         printf 'Choose Xedoc app-server auto-start: [l]aunchagent, [z]shrc, [n]one: '
@@ -576,11 +584,6 @@ current_release_tag() {
   if [ -n "$RELEASE_TAG" ]; then
     validate_tag "$RELEASE_TAG"
     printf '%s\n' "$RELEASE_TAG"
-    return
-  fi
-
-  if [ "$IOS_ONLY" = true ]; then
-    latest_release_tag
     return
   fi
 
@@ -1420,75 +1423,9 @@ EOF
   step "Xedoc desktop app installed; the AppImage needs FUSE (fusermount) to start"
 }
 
-install_ios_app() {
-  [ "$(uname -s)" = Darwin ] || return 0
-  prompt_user_available || return 0
-  if [ -n "$LOCAL_ZIP" ] && [ -z "$LOCAL_IOS_ZIP" ]; then
-    step "Skipping iOS installation; provide --local-ios-zip with a local desktop package"
-    return 0
-  fi
-  prompt_yes_no "Install the Xedoc app on an iPhone or iPad connected by cable?" || return 0
-  require_command xcrun
-  require_command python3
-  require_command unzip
-  xcrun --find devicectl >/dev/null 2>&1 ||
-    die "iOS device installation requires full Xcode with devicectl."
-  ios_archive="$LOCAL_IOS_ZIP"
-  if [ -z "$ios_archive" ]; then
-    tag="${tag:-$(current_release_tag)}"
-    ios_asset="xedoc-ios-${tag#v}.zip"
-    ios_url="$(release_url_for_asset "$tag" "$ios_asset")"
-    ios_digest="$(release_asset_digest "$tag" "$ios_asset")"
-    ios_archive="$tmp_dir/$ios_asset"
-    download_file "$ios_url" "$ios_archive"
-    verify_archive_digest "$ios_archive" "$ios_digest"
-  fi
-  [ -f "$ios_archive" ] || die "iOS release ZIP does not exist: $ios_archive"
-  python3 - "$ios_archive" <<'PY'
-import stat
-import sys
-import zipfile
-from pathlib import PurePosixPath
-
-with zipfile.ZipFile(sys.argv[1]) as archive:
-    for entry in archive.infolist():
-        path = PurePosixPath(entry.filename)
-        if (path.is_absolute() or ".." in path.parts or "\\" in entry.filename
-                or not path.parts
-                or path.parts[0] not in ("Xedoc.app", "install-ios.py", "ios-project")
-                or stat.S_ISLNK(entry.external_attr >> 16)):
-            sys.exit("Unsafe member in iOS release ZIP: " + entry.filename)
-    if "install-ios.py" not in archive.namelist():
-        sys.exit("iOS release ZIP is missing install-ios.py")
-PY
-  mkdir -p "$tmp_dir/ios"
-  unzip -q "$ios_archive" -d "$tmp_dir/ios"
-  python3 "$tmp_dir/ios/install-ios.py" "$tmp_dir/ios/Xedoc.app"
-}
-
 parse_args "$@"
 validate_repo "$RELEASE_REPO"
-
-if [ "$IOS_ONLY" = true ]; then
-  [ "$(uname -s)" = Darwin ] || die "--ios-only requires macOS with Xcode."
-  [ -z "$LOCAL_ZIP" ] && [ "$EXPERIMENTAL" = false ] ||
-    die "--ios-only cannot be combined with --local-zip or --experimental."
-  tmp_dir="$(mktemp -d)"
-  trap cleanup EXIT INT TERM
-  if [ "$CHECK_ONLY" = true ]; then
-    if [ -n "$LOCAL_IOS_ZIP" ]; then
-      [ -f "$LOCAL_IOS_ZIP" ] || die "iOS release ZIP does not exist: $LOCAL_IOS_ZIP"
-      printf 'iOS package: %s\n' "$LOCAL_IOS_ZIP"
-    else
-      tag="$(current_release_tag)"
-      release_url_for_asset "$tag" "xedoc-ios-${tag#v}.zip"
-      release_asset_digest "$tag" "xedoc-ios-${tag#v}.zip"
-    fi
-    exit 0
-  fi
-  install_ios_app
-  exit 0
-fi
+gui_progress 5
 
 if [ "$EXPERIMENTAL" = true ] && [ -z "$LOCAL_ZIP" ]; then
   die "--experimental requires --local-zip."
@@ -1541,6 +1478,7 @@ tmp_dir="$(mktemp -d)"
 trap cleanup EXIT INT TERM
 
 if [ -n "$LOCAL_ZIP" ] || ! release_dir_is_complete "$release_dir" "$release_name"; then
+  gui_progress 10
   if [ -n "$LOCAL_ZIP" ]; then
     archive_path="$LOCAL_ZIP"
     step "Installing local package ZIP"
@@ -1551,10 +1489,12 @@ if [ -n "$LOCAL_ZIP" ] || ! release_dir_is_complete "$release_dir" "$release_nam
     verify_archive_digest "$archive_path" "$expected_digest"
   fi
 
+  gui_progress 25
   step "Installing standalone package to $release_dir"
   install_zip_release "$release_dir" "$archive_path"
 fi
 
+gui_progress 40
 router_runtime_id="$(package_runtime_field "$release_dir/xedoc-package.json" runtimeId)"
 router_runtime_asset="$(package_runtime_field "$release_dir/xedoc-package.json" assetName)"
 router_runtime_digest="$(package_runtime_field "$release_dir/xedoc-package.json" sha256)"
@@ -1626,6 +1566,7 @@ else
   step "Package has no model-router runtime reference; semantic routing is unavailable"
 fi
 
+gui_progress 60
 if [ "$EXPERIMENTAL" = true ]; then
   update_experimental_link "$release_dir"
   update_experimental_visible_command
@@ -1638,11 +1579,13 @@ else
   restart_running_app_server
 fi
 
+gui_progress 70
 configure_host_push
 configure_remote_agent
 restart_app_server_through_launch_agent
 configure_host_bridge
 
+gui_progress 85
 # Deploy statusline script
 STATUSLINE_DST="$XEDOC_HOME_DIR/statusline.sh"
 STATUSLINE_SRC="$repo_root/scripts/statusline.sh"
@@ -1684,6 +1627,7 @@ if [ "$EXPERIMENTAL" = false ]; then
   print_zshrc_app_server_instructions
 fi
 printf 'Xedoc CLI %s installed successfully.\n' "$release_version"
+gui_progress 95
 install_macos_app
 install_linux_app
-install_ios_app
+gui_progress 100

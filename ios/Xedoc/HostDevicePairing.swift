@@ -28,8 +28,8 @@ struct HostInvitation: Decodable {
         guard let data = Data(base64Encoded: base64 + String(repeating: "=", count: (4 - base64.count % 4) % 4))
         else { throw pairingError("Paste the invitation from your trusted host.") }
         self = try JSONDecoder().decode(Self.self, from: data)
-        guard route == .bridge else {
-            throw pairingError("Create a new bridge invitation. Directly reachable hosts only need sign-in.")
+        guard route == .bridge || route == .direct else {
+            throw pairingError("Create a new device invitation on the trusted host.")
         }
         guard version == 1, let url = DiscoveredHost.validatedURL(origin), url.scheme == "https",
               HostDevicePairing.origin(url) == origin, (32...128).contains(token.count),

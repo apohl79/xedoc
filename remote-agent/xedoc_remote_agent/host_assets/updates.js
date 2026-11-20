@@ -13,11 +13,18 @@ window.XedocHostUpdates = class {
     this.byId("button").addEventListener("click", () => {
       this.byId("dialog").showModal();
       this.refresh(true);
-      if (this.terminal) this.terminal.focus();
     });
     this.byId("check").addEventListener("click", () => this.refresh(true));
     this.resizeObserver = new ResizeObserver(() => this.fitTerminal());
     this.resizeObserver.observe(this.byId("terminal"));
+    this.byId("details").addEventListener("toggle", () => this.fitTerminal());
+    for (const [answer, data] of [["yes", "y\r"], ["no", "n\r"]]) {
+      this.byId(answer).addEventListener("click", () => {
+        this.answeredPrompt = this.promptKey;
+        this.byId("yes").disabled = this.byId("no").disabled = true;
+        this.send(data);
+      });
+    }
     this.byId("install").addEventListener("click", async () => {
       if (!this.latest) return;
       this.byId("install").disabled = true;
@@ -28,7 +35,6 @@ window.XedocHostUpdates = class {
         this.running = true;
         this.terminal?.reset();
         await this.refresh();
-        this.terminal?.focus();
       } catch (error) {
         this.byId("status").textContent = error.message;
       } finally {
@@ -59,6 +65,10 @@ window.XedocHostUpdates = class {
     this.running = false;
     this.latest = null;
     this.terminal?.reset();
+    this.byId("info").textContent = "";
+    this.byId("question").hidden = true;
+    this.byId("progress-area").hidden = true;
+    if (!name) this.byId("dialog").close();
     if (name) this.refresh(true);
   }
 
@@ -70,13 +80,15 @@ window.XedocHostUpdates = class {
         await this.api("update/input", { data });
       } catch (error) {
         this.byId("status").textContent = error.message;
+        this.answeredPrompt = null;
+        this.byId("yes").disabled = this.byId("no").disabled = false;
       }
     });
   }
 
   fitTerminal() {
     const container = this.byId("terminal");
-    if (!this.terminal || !container.clientWidth) return;
+    if (!this.terminal || !this.byId("details").open || !container.clientWidth) return;
     const screen = this.terminal.element.querySelector(".xterm-screen");
     const cellWidth = screen.getBoundingClientRect().width / this.terminal.cols;
     if (!cellWidth) return;
@@ -119,9 +131,22 @@ window.XedocHostUpdates = class {
       };
       this.byId("status").textContent = result.supported
         ? messages[result.status] : "Updates require a macOS or Linux host";
+      this.byId("progress-area").hidden = !job;
+      const progress = this.byId("progress");
+      if (Number.isFinite(result.progress)) progress.value = result.progress;
+      else progress.removeAttribute("value");
+      this.byId("percent").textContent = Number.isFinite(result.progress)
+        ? `${result.progress}%` : "";
+      this.byId("info").textContent = result.info || "";
+      this.byId("question").hidden = !this.running || !result.prompt;
+      this.byId("prompt").textContent = result.prompt || "";
+      this.promptKey = `${job}:${result.promptId}`;
+      this.byId("yes").disabled = this.byId("no").disabled
+        = this.answeredPrompt === this.promptKey;
       if (this.latest === result.currentVersion) this.byId("install").hidden = true;
       if (this.running) this.byId("button").title = "Updating…";
       if (job) {
+        this.byId("details").hidden = false;
         this.byId("terminal").hidden = false;
         this.byId("keys").hidden = !this.running;
         if (!this.terminal) {
@@ -134,7 +159,6 @@ window.XedocHostUpdates = class {
         }
         if (this.running && !wasRunning) {
           if (!this.byId("dialog").open) this.byId("dialog").showModal();
-          this.terminal.focus();
         }
         this.fitTerminal();
         if (result.reset) this.terminal.reset();
@@ -143,7 +167,7 @@ window.XedocHostUpdates = class {
       }
       this.cursor = result.cursor;
       if (wasRunning && result.status === "completed") {
-        window.setTimeout(() => window.location.reload(), 250);
+        window.setTimeout(() => window.location.reload(), 1500);
         return;
       }
       if (check && !this.running) {

@@ -13,6 +13,7 @@ import secrets
 from pathlib import Path
 import socket
 import ssl
+import sys
 import threading
 import time
 from typing import Callable
@@ -32,8 +33,9 @@ from .host_gui_discovery import HostGuiDiscovery, discover_host_guis
 from .host_gui_config import HostGuiConfig
 from .host_gui_bridge import HostBridgeAccess, load_bridge_config
 from .host_gui_local import LocalHostAccess
+from .host_gui_network import device_invitation, network_command, network_tls_config
 from .host_device_pairing import HostDevicePairing
-from .host_pairing_activation import can_invite_device, invite_device
+from .host_pairing_activation import can_invite_device, invite_device, pairing_target
 from .host_pins import HostPins
 from .host_bridge_setup import bridge_setup
 from .host_hostname import host_hostname
@@ -71,6 +73,7 @@ class HostServer(ThreadingHTTPServer):
         tls_config = tls_config or HostGuiConfig.load(home)
         if tls_config.origin != origin:
             raise ValueError("Running TLS configuration must match the Host GUI origin")
+        tls_config = network_tls_config(tls_config, home)
         self.tls_config = tls_config
         self.tls_context = tls_config.create_tls_context()
         self.tls_certificate = (
@@ -950,7 +953,8 @@ class HostHandler(BaseHTTPRequestHandler):
                 return
             pairing_server = getattr(self.server, "pairing_server", self.server)
             bridge = pairing_server.bridge_access.server
-            pairing = bridge.device_pairing if bridge is not None else None
+            target = pairing_target(pairing_server)
+            pairing = target.device_pairing if target is not None else None
             if self.command == "POST" and path == "/api/device/bridge-reload":
                 if local_token is None:
                     self.reply(403, {"error": "Run bridge setup on the host itself"})
@@ -975,15 +979,16 @@ class HostHandler(BaseHTTPRequestHandler):
                 return
             if self.command == "GET" and path == "/api/device/pairing":
                 self.reply(200, {
-                    "enabled": bridge is not None,
+                    "enabled": target is not None,
                     "canInvite": can_invite_device(pairing_server),
-                    "origin": bridge.origin if bridge is not None else None,
+                    "origin": target.origin if target is not None else None,
+                    "networkMode": pairing_server.tls_config.network_mode,
                 })
                 return
             if self.command == "POST" and path in (
                 "/api/device/invite", "/api/device/pairing-status"
             ):
-                if bridge is None:
+                if target is None:
                     self.reply(409, {
                         "error": "Use Pair Device to check for an unused bridge port, "
                         "then run device-pairing setup on this host to install and start "
@@ -1132,7 +1137,10 @@ class HostHandler(BaseHTTPRequestHandler):
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="xedoc-remote-agentd host-gui")
-    parser.add_argument("action", choices=("setup", "serve", "invite"))
+    parser.add_argument(
+        "action", choices=("setup", "serve", "invite", "network", "pair-device")
+    )
+    parser.add_argument("network_mode", nargs="?", choices=("internal", "external"))
     parser.add_argument(
         "--xedoc-home",
         type=Path,
@@ -1143,8 +1151,24 @@ def main(argv=None) -> int:
     parser.add_argument("--origin")
     parser.add_argument("--tls-cert")
     parser.add_argument("--tls-key")
+    parser.add_argument("--server-ca", type=Path)
     parser.add_argument("--allow-insecure-http", action="store_true")
     args = parser.parse_args(argv)
+    if args.network_mode is not None and args.action != "network":
+        parser.error("A network mode is only valid with the network action")
+    if args.action in ("network", "pair-device"):
+        try:
+            if args.action == "network":
+                network_command(args.xedoc_home, args.network_mode)
+            else:
+                print(device_invitation(args.xedoc_home, args.server_ca)["invitation"])
+                print(
+                    "Restart Host GUI after changing network mode before pairing.",
+                    file=sys.stderr,
+                )
+        except (OSError, ValueError, ssl.SSLError) as error:
+            parser.error(str(error))
+        return 0
     if args.action == "serve":
         from .runtime import configure_runtime
 
@@ -1332,6 +1356,7 @@ def main(argv=None) -> int:
                     tls_key,
                     previous_config.tls_client_ca,
                     previous_config.instant_chat_directory,
+                    previous_config.network_mode,
                 )
                 config.create_tls_context()
             else:
@@ -1340,6 +1365,7 @@ def main(argv=None) -> int:
                 config = replace(
                     HostGuiConfig.local_only(),
                     instant_chat_directory=previous_config.instant_chat_directory,
+                    network_mode=previous_config.network_mode,
                 )
             config.save(args.xedoc_home)
         except (OSError, ValueError, ssl.SSLError) as error:
@@ -1393,6 +1419,7 @@ def main(argv=None) -> int:
         Path(args.tls_key) if args.tls_key else None,
         saved.tls_client_ca,
         saved.instant_chat_directory,
+        saved.network_mode,
     )
     with HostServer(
         (args.listen, args.port), args.origin, args.xedoc_home, tls_config=tls_config

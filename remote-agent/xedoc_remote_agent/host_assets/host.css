@@ -152,6 +152,15 @@ aside {
 .update-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
 #update-version { flex: 1; }
 #update-status { min-height: 20px; color: var(--muted); }
+#update-progress-area { display: flex; align-items: center; gap: 10px; }
+#update-progress { flex: 1; min-width: 0; height: 12px; accent-color: var(--accent); }
+#update-percent { min-width: 4ch; font-variant-numeric: tabular-nums; text-align: right; }
+#update-info, #update-prompt { overflow-wrap: anywhere; white-space: pre-wrap; }
+#update-info { min-height: 2.5em; }
+#update-question { border-top: 1px solid var(--border); padding: 12px 0; }
+.update-answers { display: flex; gap: 8px; }
+.update-answers button { min-width: 80px; }
+#update-details summary { cursor: pointer; color: var(--muted); padding: 12px 0; }
 #update-terminal { padding: 6px; background: var(--sidebar); overflow: auto; }
 #update-keys { flex-wrap: wrap; justify-content: flex-start; gap: 4px; }
 .sidebar-brand button { padding: 1px 5px; background: transparent; }
