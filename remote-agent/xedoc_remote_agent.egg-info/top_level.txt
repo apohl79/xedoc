@@ -1,0 +1,3 @@
+bridge
+scripts
+xedoc_remote_agent

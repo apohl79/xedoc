@@ -1,0 +1,2 @@
+[console_scripts]
+xedoc-remote-agentd = xedoc_remote_agent.main:main

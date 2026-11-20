@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: xedoc-remote-agent
+Version: 0.1.0
+Summary: Local Xedoc remote-agent broker core
+Requires-Python: >=3.10
+Requires-Dist: cryptography==46.0.5
+Requires-Dist: httpcore[http2]==1.0.9
+Requires-Dist: ifaddr==0.2.0
+Requires-Dist: zeroconf==0.148.0

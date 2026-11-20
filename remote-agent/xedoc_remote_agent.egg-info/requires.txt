@@ -1,0 +1,4 @@
+cryptography==46.0.5
+httpcore[http2]==1.0.9
+ifaddr==0.2.0
+zeroconf==0.148.0
