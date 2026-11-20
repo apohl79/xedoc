@@ -28,7 +28,7 @@ struct HostWebView: UIViewRepresentable {
         if let store = HostDevicePairing.dataStore(for: url) { configuration.websiteDataStore = store }
         configuration.userContentController.add(context.coordinator, name: "xedocNotifications")
         do {
-            for name in ["Mobile", "TUIControls", "Notifications"] {
+            for name in ["Mobile", "TUIControls", "TerminalGestures", "Notifications"] {
                 guard let scriptURL = Bundle.main.url(forResource: name, withExtension: "js")
                 else { throw CocoaError(.fileNoSuchFile) }
                 let script = try String(contentsOf: scriptURL, encoding: .utf8)
@@ -181,7 +181,13 @@ final class MobileWebView: WKWebView, UIGestureRecognizerDelegate {
         let movement = recognizer.translation(in: self)
         guard abs(movement.x) >= 60, abs(movement.x) > abs(movement.y) * 1.5 else { return }
         let action = movement.x > 0 ? "show" : "hide"
-        evaluateJavaScript("window.xedocMobileSidebar?.('\(action)')", completionHandler: nil)
+        let end = recognizer.location(in: self)
+        let start = CGPoint(x: end.x - movement.x, y: end.y - movement.y)
+        evaluateJavaScript("""
+            if (!window.xedocMobileTerminalAtPoint?.(\(start.x), \(start.y))) {
+                window.xedocMobileSidebar?.('\(action)')
+            }
+            """, completionHandler: nil)
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
