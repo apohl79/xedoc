@@ -33,7 +33,7 @@
     const scrollingStyle = new CSSStyleSheet();
     scrollingStyle.replaceSync(`
       :root { font-size: 16px; }
-      .entry-footer, .status-row, .session-heading h2,
+      .session-heading h2,
       .history-image figcaption, .image-viewer figcaption,
       .question-meta, #question h2, .question-description, .question-notes-label,
       .question-actions button, .attachment figcaption, .attachment-filename,
@@ -42,6 +42,7 @@
       #activity, #activity .task-heading, #activity .task-row,
       #activity .agent-heading, #activity .agent-row, #activity .task-overflow,
       #live { font-size: 16px; }
+      .entry-footer, .status-row, #quote-selection { font-size: 11px; }
       * { touch-action: pan-y !important; overscroll-behavior-x: none !important; }
       html, body, #session, #activity, #live, .session-tabs,
       .history-cell pre, .table-scroll { overflow-x: hidden !important; }
@@ -49,7 +50,7 @@
       .entry-footer { min-height: 44px; }
       #quote-selection {
         position: static !important; inset: auto !important;
-        flex-shrink: 0; min-height: 44px; font-size: 16px; box-shadow: none;
+        flex-shrink: 0; min-height: 44px; font-size: 11px; box-shadow: none;
       }
     `);
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, scrollingStyle];
