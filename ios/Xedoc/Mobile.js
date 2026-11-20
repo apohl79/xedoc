@@ -29,10 +29,11 @@
       document.head.append(viewport);
     }
     viewport.content = "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no";
-    const scrollingStyle = document.createElement("style");
-    scrollingStyle.textContent = `
+    // Session CSP blocks inline style elements, but permits constructed stylesheets.
+    const scrollingStyle = new CSSStyleSheet();
+    scrollingStyle.replaceSync(`
       :root { font-size: 16px; }
-      .entry-footer, .status-row, .session-tab, .session-heading h2,
+      .entry-footer, .status-row, .session-heading h2,
       .history-image figcaption, .image-viewer figcaption,
       .question-meta, #question h2, .question-description, .question-notes-label,
       .question-actions button, .attachment figcaption, .attachment-filename,
@@ -50,8 +51,8 @@
         position: static !important; inset: auto !important;
         flex-shrink: 0; min-height: 44px; font-size: 16px; box-shadow: none;
       }
-    `;
-    document.head.append(scrollingStyle);
+    `);
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, scrollingStyle];
     const quote = document.getElementById("quote-selection");
     const attach = document.querySelector(".entry-footer #attach");
     if (quote && attach) attach.after(quote);
