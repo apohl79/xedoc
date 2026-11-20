@@ -178,6 +178,8 @@ impl WebUiServer {
             let router = Router::new()
                 .route("/", get(page))
                 .route("/favicon.svg", get(favicon))
+                .route("/IosevkaAile-Regular.woff2", get(aile_font))
+                .route("/IosevkaEtoile-Regular.woff2", get(etoile_font))
                 .route("/webui.js", get(script))
                 .route("/webui.css", get(styles))
                 .route("/session/{token}", get(browser_upgrade))
@@ -420,6 +422,20 @@ async fn favicon() -> Response {
     asset(include_str!("web_ui_assets/favicon.svg"), "image/svg+xml")
 }
 
+async fn aile_font() -> Response {
+    asset(
+        axum::body::Body::from(&include_bytes!("web_ui_assets/IosevkaAile-Regular.woff2")[..]),
+        "font/woff2",
+    )
+}
+
+async fn etoile_font() -> Response {
+    asset(
+        axum::body::Body::from(&include_bytes!("web_ui_assets/IosevkaEtoile-Regular.woff2")[..]),
+        "font/woff2",
+    )
+}
+
 async fn script() -> Response {
     asset(
         concat!(
@@ -444,7 +460,7 @@ async fn styles() -> Response {
     )
 }
 
-fn asset(body: &'static str, content_type: &'static str) -> Response {
+fn asset(body: impl IntoResponse, content_type: &'static str) -> Response {
     let mut response = body.into_response();
     response
         .headers_mut()
@@ -465,7 +481,7 @@ fn secured(response: impl IntoResponse) -> Response {
         HeaderValue::from_static("nosniff"),
     );
     headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(
-        "default-src 'none'; base-uri 'none'; connect-src 'self'; img-src 'self' data:; object-src blob: data:; form-action 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'",
+        "default-src 'none'; base-uri 'none'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src blob: data:; form-action 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'",
     ));
     response
 }

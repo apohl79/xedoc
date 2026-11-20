@@ -3,11 +3,26 @@
 const XEDOC_MONO_FONT_KEY = "xedoc-mono-font";
 const XEDOC_DEFAULT_MONO_FONT = "IosevkaTerm NFM Medium";
 const XEDOC_SYSTEM_MONO_FONTS = 'ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace';
-window.xedocMonoFont = () => (localStorage.getItem(XEDOC_MONO_FONT_KEY) ?? XEDOC_DEFAULT_MONO_FONT).trim();
+window.xedocMonoFont = () => {
+  const font = (localStorage.getItem(XEDOC_MONO_FONT_KEY) ?? XEDOC_DEFAULT_MONO_FONT).trim();
+  return font === "" ? "" : XEDOC_DEFAULT_MONO_FONT;
+};
 window.xedocMonoFontFamily = () => {
   const font = window.xedocMonoFont();
   return font ? `${JSON.stringify(font)}, ${XEDOC_SYSTEM_MONO_FONTS}` : XEDOC_SYSTEM_MONO_FONTS;
 };
+window.xedocSansFont = () => {
+  const font = localStorage.getItem("xedoc-sans-font");
+  return font === "" || font === "Iosevka Etoile" ? font : "Iosevka Aile";
+};
+window.xedocApplySansFont = () => {
+  const font = window.xedocSansFont();
+  document.documentElement.style.setProperty("--sans", font ? `${JSON.stringify(font)}, var(--system-sans)` : "var(--system-sans)");
+};
+window.xedocApplySansFont();
+window.addEventListener("storage", (event) => {
+  if (event.key === "xedoc-sans-font" || event.key === null) window.xedocApplySansFont();
+});
 
 // Colors mirror the City Lights theme in cmux's Ghostty config.
 const XEDOC_TERMINAL_OPTIONS = {

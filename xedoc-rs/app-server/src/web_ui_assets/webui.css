@@ -1,13 +1,22 @@
-/* Host GUI session frames share the host origin, which serves this font; a standalone
-   session web UI can only use an installed copy and otherwise falls back to --system-mono. */
+/* Host GUI frames and standalone session pages serve this font; standalone sessions can
+   still use an installed copy when the app-server font request is unavailable. */
 @font-face {
   font-family: "IosevkaTerm NFM Medium";
   src: local("IosevkaTerm NFM Medium"), local("IosevkaTermNFM-Medium"),
     url("/IosevkaTermNFM-Medium.woff2") format("woff2");
 }
+@font-face {
+  font-family: "Iosevka Aile";
+  src: url("/IosevkaAile-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Iosevka Etoile";
+  src: url("/IosevkaEtoile-Regular.woff2") format("woff2");
+}
 :root {
   color-scheme: dark;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --system-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --sans: "Iosevka Aile", var(--system-sans);
   font-family: var(--sans);
   font-size: 15px;
   line-height: 1.55;

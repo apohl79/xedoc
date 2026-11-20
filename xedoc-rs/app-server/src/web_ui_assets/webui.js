@@ -3,14 +3,21 @@
 (() => {
   // The host GUI's settings dialog (terminals.js) writes this same-origin key.
   const applyMonoFont = () => {
-    const font = localStorage.getItem("xedoc-mono-font")?.trim();
+    const font = localStorage.getItem("xedoc-mono-font")?.trim() === "" ? "" : "IosevkaTerm NFM Medium";
     const root = document.documentElement.style;
-    if (font == null) root.removeProperty("--mono");
-    else root.setProperty("--mono", font ? `${JSON.stringify(font)}, var(--system-mono)` : "var(--system-mono)");
+    root.setProperty("--mono", font ? `${JSON.stringify(font)}, var(--system-mono)` : "var(--system-mono)");
+  };
+  const applySansFont = () => {
+    const saved = localStorage.getItem("xedoc-sans-font")?.trim();
+    const font = saved === "" || saved === "Iosevka Etoile" ? saved : "Iosevka Aile";
+    document.documentElement.style.setProperty("--sans",
+      font ? `${JSON.stringify(font)}, var(--system-sans)` : "var(--system-sans)");
   };
   applyMonoFont();
+  applySansFont();
   window.addEventListener("storage", (event) => {
     if (event.key === "xedoc-mono-font" || event.key === null) applyMonoFont();
+    if (event.key === "xedoc-sans-font" || event.key === null) applySansFont();
   });
   const history = document.getElementById("history");
   const active = document.getElementById("active");

@@ -1650,12 +1650,15 @@
     byId("users-dialog").showModal();
   }));
   byId("settings-button").addEventListener("click", () => {
+    byId("sans-font").value = window.xedocSansFont();
     byId("mono-font").value = window.xedocMonoFont();
     byId("settings-dialog").showModal();
   });
   form("settings-form", async (data) => {
     // Same-origin session frames pick this up through their storage event.
     localStorage.setItem("xedoc-mono-font", data.get("monoFont").trim());
+    localStorage.setItem("xedoc-sans-font", data.get("sansFont"));
+    window.xedocApplySansFont();
     await terminals.setFont();
     byId("settings-dialog").close();
   });

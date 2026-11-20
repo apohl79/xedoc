@@ -448,6 +448,8 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/favicon.png",
                 "/favicon.ico",
                 "/IosevkaTermNFM-Medium.woff2",
+                "/IosevkaAile-Regular.woff2",
+                "/IosevkaEtoile-Regular.woff2",
             ):
                 asset = {
                     "/": "host.html",
@@ -464,6 +466,8 @@ class HostHandler(BaseHTTPRequestHandler):
                     "/favicon.png": "favicon.png",
                     "/favicon.ico": "favicon.ico",
                     "/IosevkaTermNFM-Medium.woff2": "IosevkaTermNFM-Medium.woff2",
+                    "/IosevkaAile-Regular.woff2": "IosevkaAile-Regular.woff2",
+                    "/IosevkaEtoile-Regular.woff2": "IosevkaEtoile-Regular.woff2",
                 }[path]
                 kind = {
                     "/": "text/html; charset=utf-8",
@@ -480,6 +484,8 @@ class HostHandler(BaseHTTPRequestHandler):
                     "/favicon.png": "image/png",
                     "/favicon.ico": "image/x-icon",
                     "/IosevkaTermNFM-Medium.woff2": "font/woff2",
+                    "/IosevkaAile-Regular.woff2": "font/woff2",
+                    "/IosevkaEtoile-Regular.woff2": "font/woff2",
                 }[path]
                 self.reply(
                     200,

@@ -11,6 +11,9 @@ import zipfile
 
 REMOTE_AGENT_SOURCE = Path(__file__).resolve().parents[2] / "remote-agent"
 REMOTE_AGENT_PACKAGE_SOURCE = REMOTE_AGENT_SOURCE / "xedoc_remote_agent"
+WEB_UI_ASSETS_SOURCE = (
+    REMOTE_AGENT_SOURCE.parent / "xedoc-rs" / "app-server" / "src" / "web_ui_assets"
+)
 SESSION_SCRIPT_SDK_SOURCE = (
     Path(__file__).resolve().parents[1] / "session_script_sdk.py"
 )
@@ -276,8 +279,18 @@ def _payload_sources() -> dict[str, Path]:
             ".png",
             ".ico",
             ".woff2",
-        } or path.name in {"xterm-LICENSE.txt", "IosevkaTerm-LICENSE.txt"}:
+        } or path.name in {
+            "xterm-LICENSE.txt",
+            "IosevkaTerm-LICENSE.txt",
+            "Iosevka-LICENSE.txt",
+        }:
             entries[f"xedoc_remote_agent/host_assets/{path.name}"] = path
+    for name in (
+        "IosevkaAile-Regular.woff2",
+        "IosevkaEtoile-Regular.woff2",
+        "Iosevka-LICENSE.txt",
+    ):
+        entries[f"xedoc_remote_agent/host_assets/{name}"] = WEB_UI_ASSETS_SOURCE / name
     for archive_name, path in entries.items():
         if not path.is_file():
             raise RuntimeError(f"Missing remote-agent payload source: {path}")
