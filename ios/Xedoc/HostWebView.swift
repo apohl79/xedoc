@@ -27,13 +27,16 @@ struct HostWebView: UIViewRepresentable {
         let configuration = WKWebViewConfiguration()
         if let store = HostDevicePairing.dataStore(for: url) { configuration.websiteDataStore = store }
         configuration.userContentController.add(context.coordinator, name: "xedocNotifications")
+        configuration.userContentController.add(context.coordinator, contentWorld: .defaultClient, name: "xedocWebsite")
         do {
-            for name in ["Mobile", "TUIControls", "TerminalGestures", "Notifications"] {
+            for name in ["WebsiteLinks", "Mobile", "TUIControls", "TerminalGestures", "Notifications"] {
                 guard let scriptURL = Bundle.main.url(forResource: name, withExtension: "js")
                 else { throw CocoaError(.fileNoSuchFile) }
                 let script = try String(contentsOf: scriptURL, encoding: .utf8)
                 configuration.userContentController.addUserScript(WKUserScript(
-                    source: script, injectionTime: .atDocumentEnd, forMainFrameOnly: name == "Notifications"
+                    source: script, injectionTime: name == "WebsiteLinks" ? .atDocumentStart : .atDocumentEnd,
+                    forMainFrameOnly: name == "Notifications",
+                    in: name == "WebsiteLinks" ? .defaultClient : .page
                 ))
             }
         } catch {
@@ -58,25 +61,73 @@ struct HostWebView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ view: MobileWebView, coordinator: Coordinator) {
+        view.navigationDelegate = nil
+        coordinator.invalidate()
         view.configuration.userContentController.removeScriptMessageHandler(forName: "xedocNotifications")
+        view.configuration.userContentController.removeScriptMessageHandler(forName: "xedocWebsite", contentWorld: .defaultClient)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         var parent: HostWebView
         var reload: Int
+        private var invalidated = false
+        private var lifecycleObservers: [NSObjectProtocol] = []
+        private var pendingAuthentication: [(
+            challenge: URLAuthenticationChallenge,
+            completion: (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+        )] = []
 
         init(_ parent: HostWebView) {
             self.parent = parent
             reload = parent.reload
+            super.init()
+            for name in [UIApplication.didBecomeActiveNotification, UIApplication.protectedDataDidBecomeAvailableNotification] {
+                lifecycleObservers.append(NotificationCenter.default.addObserver(
+                    forName: name, object: nil, queue: .main
+                ) { [weak self] _ in
+                    guard let self else { return }
+                    let pending = self.pendingAuthentication
+                    self.pendingAuthentication.removeAll()
+                    for item in pending {
+                        self.authenticate(item.challenge, completionHandler: item.completion)
+                    }
+                })
+            }
+        }
+
+        deinit {
+            for observer in lifecycleObservers { NotificationCenter.default.removeObserver(observer) }
+        }
+
+        func invalidate() {
+            invalidated = true
+            let pending = pendingAuthentication
+            pendingAuthentication.removeAll()
+            for item in pending { item.completion(.cancelAuthenticationChallenge, nil) }
         }
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard message.frameInfo.isMainFrame,
-                  let source = message.frameInfo.request.url,
+            guard let source = message.frameInfo.request.url,
                   source.scheme == parent.url.scheme, source.host == parent.url.host,
                   (source.port ?? 443) == (parent.url.port ?? 443)
             else { return }
             guard let body = message.body as? [String: Any] else { return }
+            if message.name == "xedocWebsite" {
+                guard let text = body["url"] as? String, text.utf8.count <= 16_384,
+                      let target = URL(string: text), let scheme = target.scheme?.lowercased(),
+                      ["http", "https", "slack"].contains(scheme),
+                      target.user == nil, target.password == nil
+                else { return }
+                if scheme != "slack" {
+                    guard target.host != nil else { return }
+                    let sameOrigin = target.scheme == parent.url.scheme && target.host == parent.url.host
+                        && (target.port ?? 443) == (parent.url.port ?? 443)
+                    guard !sameOrigin else { return }
+                }
+                UIApplication.shared.open(target)
+                return
+            }
+            guard message.frameInfo.isMainFrame else { return }
             switch body["kind"] as? String {
             case "pushReady":
                 if let view = message.webView { PushSubscription.shared.ready(view) }
@@ -101,6 +152,20 @@ struct HostWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
                      completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+            authenticate(challenge, completionHandler: completionHandler)
+        }
+
+        private func authenticate(_ challenge: URLAuthenticationChallenge,
+                                  completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+            guard !invalidated else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+            // Pairing credentials are unlock-only; a locked Keychain is not a host identity failure.
+            guard UIApplication.shared.applicationState == .active, UIApplication.shared.isProtectedDataAvailable else {
+                pendingAuthentication.append((challenge, completionHandler))
+                return
+            }
             HostDevicePairing.authenticate(challenge, for: parent.url) { disposition, credential in
                 if disposition == .cancelAuthenticationChallenge {
                     self.parent.error = .connection("Host identity verification failed. Obtain a new pairing invitation directly from your trusted host.")
