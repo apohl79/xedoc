@@ -1566,6 +1566,10 @@
     menu.showPopover();
     if (!menu.matches(":popover-open")) openMenuWithKeyboard = false;
   };
+  byId("session-menu").addEventListener("pointermove", (event) => {
+    if (event.pointerType === "touch") return;
+    event.target.closest("button")?.focus();
+  });
   byId("session-menu").addEventListener("keydown", (event) => {
     if (event.key === "Tab") {
       event.currentTarget.hidePopover();

@@ -12,10 +12,19 @@ module.exports = async function verifyProjectSessionMenu(page) {
     !document.querySelector("#session-menu").matches(":popover-open")
       && document.querySelector("#session-menu-button").getAttribute("aria-expanded") === "false");
   const focused = id => page.waitForFunction(value => document.activeElement?.id === value, id);
+  async function selected(id) {
+    await focused(id);
+    await page.waitForFunction(value => {
+      const menu = document.querySelector("#session-menu");
+      const background = getComputedStyle(menu).backgroundColor;
+      return [...menu.querySelectorAll("button")].every(node =>
+        (getComputedStyle(node).backgroundColor !== background) === (node.id === value));
+    }, id);
+  }
   async function open() {
     await trigger.click();
     await isOpen();
-    await focused("new-session");
+    await selected("new-session");
     assert.equal(await trigger.getAttribute("aria-expanded"), "true");
     assert.equal(await menu.getByRole("menuitem").count(), 3);
     assert.equal(await page.locator("dialog:modal").count(), 0);
@@ -43,22 +52,36 @@ module.exports = async function verifyProjectSessionMenu(page) {
   await open();
   await trigger.click();
   await isClosed();
+  await page.evaluate(() => window.xedocOpenSessionMenu());
+  await isOpen();
+  await selected("new-session");
+  await page.locator("#new-session").hover();
+  await page.keyboard.press("ArrowDown");
+  await selected("new-terminal");
+  await page.keyboard.press("ArrowUp");
+  await selected("new-session");
+  await page.locator("#resume-session").hover();
+  await selected("resume-session");
+  await page.keyboard.press("ArrowUp");
+  await selected("new-terminal");
+  await page.keyboard.press("Escape");
+  await isClosed();
   await trigger.focus();
   await page.keyboard.press("Enter");
   await isOpen();
-  await focused("new-session");
+  await selected("new-session");
   await page.keyboard.press("ArrowDown");
-  await focused("new-terminal");
+  await selected("new-terminal");
   await page.keyboard.press("ArrowDown");
-  await focused("resume-session");
+  await selected("resume-session");
   await page.keyboard.press("ArrowDown");
-  await focused("new-session");
+  await selected("new-session");
   await page.keyboard.press("ArrowUp");
-  await focused("resume-session");
+  await selected("resume-session");
   await page.keyboard.press("Home");
-  await focused("new-session");
+  await selected("new-session");
   await page.keyboard.press("End");
-  await focused("resume-session");
+  await selected("resume-session");
   await page.keyboard.press("Tab");
   await isClosed();
 
