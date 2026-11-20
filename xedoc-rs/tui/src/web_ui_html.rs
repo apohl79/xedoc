@@ -12,7 +12,9 @@ use crate::history_cell::AgentMarkdownCell;
 use crate::history_cell::AgentMessageCell;
 use crate::history_cell::FinalMessageSeparator;
 use crate::history_cell::HistoryCell;
+use crate::history_cell::HookCell;
 use crate::history_cell::ImageOutputCell;
+use crate::history_cell::PlainHistoryCell;
 use crate::history_cell::PrefixedWrappedHistoryCell;
 use crate::history_cell::ProposedPlanCell;
 use crate::history_cell::ToolCallCountSummaryCell;
@@ -180,6 +182,10 @@ pub(crate) fn history_cell_html(
                 ("history-agent", lines)
             } else if cell.as_any().is::<PrefixedWrappedHistoryCell>() {
                 ("history-notice", lines)
+            } else if cell.as_any().is::<HookCell>() {
+                ("history-hook", lines)
+            } else if cell.as_any().is::<PlainHistoryCell>() {
+                ("history-prose", lines)
             } else if let Some(exec) = cell.as_any().downcast_ref::<ExecCell>() {
                 if exec.is_exploring_cell() {
                     ("history-tool history-command", lines)

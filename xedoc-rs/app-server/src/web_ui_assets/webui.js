@@ -1031,38 +1031,29 @@
           const first = Math.max(statusStart, statusOffset);
           const last = Math.min(statusEnd, statusOffset + node.length);
           if (last > first) {
-            const source = node.parentElement?.closest("span") || statusLine;
-            const rgb = getComputedStyle(source).color.match(/[\d.]+/g)?.map(Number);
-            if (rgb?.length >= 3) {
-              for (let offset = first; offset < last; offset++) {
-                shimmerChars.push({
-                  node,
-                  offset: offset - statusOffset,
-                  luminance: 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2],
-                });
-              }
+            for (let offset = first; offset < last; offset++) {
+              shimmerChars.push({node, offset: offset - statusOffset});
             }
           }
           statusOffset += node.length;
         }
-        const luminanceRange = shimmerChars.reduce(
-          ([min, max], {luminance}) => [Math.min(min, luminance), Math.max(max, luminance)],
-          [Infinity, -Infinity],
-        );
-        const luminanceSpan = luminanceRange[1] - luminanceRange[0];
-        for (const {node, offset, luminance} of shimmerChars.reverse()) {
-          const intensity = luminanceSpan
-            ? (luminance - luminanceRange[0]) / luminanceSpan
-            : 1;
+        for (const [index, {node, offset}] of [...shimmerChars.entries()].reverse()) {
           const shimmerSpan = document.createElement("span");
           shimmerSpan.className = "activity-shimmer-char";
-          shimmerSpan.style.setProperty("--activity-shimmer-opacity", String(0.55 + intensity * 0.45));
+          shimmerSpan.style.setProperty(
+            "--activity-shimmer-delay",
+            `${activityAnimationOrigin - performance.now() - index * 120}ms`,
+          );
           const range = document.createRange();
           range.setStart(node, offset);
           range.setEnd(node, offset + 1);
           shimmerSpan.append(range.extractContents());
           range.insertNode(shimmerSpan);
         }
+        statusLine.style.setProperty(
+          "--activity-status-foreground",
+          getComputedStyle(statusLine).color,
+        );
         statusLine.classList.add("activity-status");
         if (statusMatch[1] === "Working") statusLine.classList.add("activity-working");
         const interruptHintEnd = text.indexOf(" to interrupt");

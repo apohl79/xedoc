@@ -140,8 +140,23 @@ a { color: #8fc4e7; }
 #composer { flex: none; min-width: 0; }
 #activity { max-height: 32dvh; overflow-y: auto; overflow-x: hidden; padding-left: 10px; font-family: var(--sans); font-size: 13px; margin-bottom: 10px; }
 #activity:empty { display: none; }
-#activity .activity-status { color: var(--accent) !important; opacity: 1; }
-#activity .activity-status .activity-shimmer-char { color: var(--accent) !important; opacity: var(--activity-shimmer-opacity, 1); }
+@keyframes activity-glimmer {
+  0%, 100% { color: var(--activity-status-foreground, inherit); text-shadow: none; }
+  50% { color: #fff; text-shadow: 0 0 5px rgb(255 255 255 / 55%); }
+}
+#activity .activity-status { color: inherit; opacity: 1; }
+#activity .activity-status .activity-shimmer-char * {
+  color: inherit !important;
+  opacity: 1;
+}
+#activity .activity-status .activity-shimmer-char {
+  color: var(--activity-status-foreground, inherit);
+  animation: activity-glimmer 1.6s ease-in-out infinite alternate;
+  animation-delay: var(--activity-shimmer-delay, 0ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  #activity .activity-status .activity-shimmer-char { animation: none; }
+}
 #activity .activity-meta, #activity .activity-meta * { color: var(--fg-dim) !important; opacity: 1; }
 #activity .task-heading, #activity .task-row, #activity .agent-heading, #activity .agent-row { font-size: 13px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }
 #activity .task-heading span[style*="background-color:"], #activity .agent-heading span[style*="background-color:"] { padding: 1px 4px; border-radius: 3px; }
