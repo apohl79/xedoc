@@ -59,6 +59,7 @@ RELEASE_TARGET_ALIASES = {
     "macos-x86_64": "x86_64-apple-darwin",
     "linux-x86_64": "x86_64-unknown-linux-gnu",
     "linux-arm64": "aarch64-unknown-linux-gnu",
+    "windows-x86_64": "x86_64-pc-windows-msvc",
 }
 RELEASE_TARGET_CHOICES = {
     **RELEASE_TARGET_ALIASES,
@@ -73,6 +74,8 @@ BAZEL_MULTIPLATFORM_TARGET_BY_TARGET = {
     "x86_64-apple-darwin": "//xedoc-rs/cli:xedoc_macos_amd64",
     "aarch64-unknown-linux-gnu": "//xedoc-rs/cli:xedoc_linux_arm64_gnu.2.28",
     "x86_64-unknown-linux-gnu": "//xedoc-rs/cli:xedoc_linux_amd64_gnu.2.28",
+    # Built for gnullvm (see bazel/platforms/release_binaries.bzl).
+    "x86_64-pc-windows-msvc": "//xedoc-rs/cli:xedoc_windows_x86_64_gnullvm",
 }
 BAZEL_MULTIPLATFORM_BWRAP_TARGET_BY_TARGET = {
     "aarch64-unknown-linux-gnu": "//xedoc-rs/bwrap:bwrap_linux_arm64_gnu.2.28",
@@ -677,24 +680,19 @@ def package_release_target(
             signing_identity=codesign_identity,
             sign_macho=sign_macho,
         )
-    remote_agent_runtime = None
-    remote_agent_runtime_output = None
-    if not spec.is_windows:
-        remote_agent_runtime_output = (
-            output_dir / "remote-agent-runtime" / version / target
-        )
-        remote_agent_runtime_source = (
-            resolve_repo_path(getattr(args, "remote_agent_runtime_dir", None))
-            if getattr(args, "remote_agent_runtime_dir", None) is not None
-            else None
-        )
-        remote_agent_runtime = build_remote_agent_runtime(
-            spec,
-            remote_agent_runtime_output,
-            force=args.force,
-            source=remote_agent_runtime_source,
-            sign_macho=sign_macho,
-        )
+    remote_agent_runtime_output = output_dir / "remote-agent-runtime" / version / target
+    remote_agent_runtime_source = (
+        resolve_repo_path(getattr(args, "remote_agent_runtime_dir", None))
+        if getattr(args, "remote_agent_runtime_dir", None) is not None
+        else None
+    )
+    remote_agent_runtime = build_remote_agent_runtime(
+        spec,
+        remote_agent_runtime_output,
+        force=args.force,
+        source=remote_agent_runtime_source,
+        sign_macho=sign_macho,
+    )
 
     package_args = [
         sys.executable,
@@ -938,7 +936,7 @@ def build_bazel_release_binaries_for_targets(
                 cwd=source_root,
             ),
             execution_root,
-            binary_name="xedoc",
+            binary_name=f"xedoc{TARGET_SPECS[target].exe_suffix}",
             description="Bazel entrypoint",
         )
         bwrap_label = bwrap_labels.get(target)

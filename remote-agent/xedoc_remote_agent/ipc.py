@@ -31,6 +31,7 @@ from .work_admission import WorkAdmissionGate
 PROTOCOL = "xedoc.remote-agent.local"
 PROTOCOL_VERSION = 1
 SOCKET_NAME = "broker.sock"
+PORT_NAME = "broker.port"
 CAPABILITY_NAME = "broker.capability"
 BINDING_CAPABILITY_NAME = "extension.capability"
 MAX_CLIENTS = 16
@@ -38,6 +39,10 @@ CLIENT_IO_TIMEOUT_SECONDS = 1.0
 MAX_CLIENT_CALL_TIMEOUT_SECONDS = 3_605.0
 _FRAME_OVERHEAD = 16 * 1024
 _HARD_FRAME_LIMIT = 4 * 1024 * 1024
+# Windows Python has no AF_UNIX, so the broker listens on an ephemeral loopback
+# TCP port recorded in a private file. Every request still needs the private
+# capability, which is what keeps other local users out.
+_TCP_TRANSPORT = os.name == "nt" or not hasattr(socket, "AF_UNIX")
 _CAPABILITY_BYTES = 48
 _REQUEST_FIELDS = {
     "capability",
@@ -107,7 +112,6 @@ class LocalIpcServer:
         work_admission: WorkAdmissionGate | None = None,
         max_clients: int = MAX_CLIENTS,
     ) -> None:
-        _require_unix_sockets()
         if (
             not isinstance(host_id, str)
             or not host_id
@@ -137,6 +141,7 @@ class LocalIpcServer:
         home = _xedoc_home(xedoc_home)
         self.directory = home / "remote-agent"
         self.socket_path = self.directory / SOCKET_NAME
+        self.port_path = self.directory / PORT_NAME
         self.capability_path = self.directory / CAPABILITY_NAME
         self.binding_capability_path = self.directory / BINDING_CAPABILITY_NAME
         self._capability: str | None = None
@@ -174,7 +179,11 @@ class LocalIpcServer:
         if self._shutdown_incomplete:
             raise BrokerError.unavailable()
         _prepare_directory(self.directory)
-        _prepare_endpoint(self.socket_path)
+        if _TCP_TRANSPORT:
+            # Clients must not pair a stale port with the new capability.
+            _remove_safe_capability(self.port_path)
+        else:
+            _prepare_endpoint(self.socket_path)
         capability = secrets.token_urlsafe(_CAPABILITY_BYTES)
         binding_capability = secrets.token_urlsafe(_CAPABILITY_BYTES)
         _write_capability(self.capability_path, capability)
@@ -185,15 +194,26 @@ class LocalIpcServer:
             raise
         listener: socket.socket | None = None
         try:
-            listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            listener.bind(os.fspath(self.socket_path))
-            _chmod_private(self.socket_path, 0o600)
+            if _TCP_TRANSPORT:
+                listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                    listener.setsockopt(
+                        socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1
+                    )
+                listener.bind(("127.0.0.1", 0))
+            else:
+                listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                listener.bind(os.fspath(self.socket_path))
+                _chmod_private(self.socket_path, 0o600)
             listener.listen(MAX_CLIENTS)
             listener.settimeout(0.2)
-        except (AttributeError, NotImplementedError, OSError) as error:
+            if _TCP_TRANSPORT:
+                _write_capability(self.port_path, str(listener.getsockname()[1]))
+        except (AttributeError, BrokerError, NotImplementedError, OSError) as error:
             if listener is not None:
                 listener.close()
             _safe_unlink(self.socket_path, require_socket=True)
+            _safe_unlink(self.port_path, require_socket=False)
             _safe_unlink(self.capability_path, require_socket=False)
             _safe_unlink(self.binding_capability_path, require_socket=False)
             raise BrokerError.unavailable() from error
@@ -238,6 +258,7 @@ class LocalIpcServer:
         for worker in workers:
             worker.join(timeout=max(0.0, deadline - time.monotonic()))
         _safe_unlink(self.socket_path, require_socket=True)
+        _safe_unlink(self.port_path, require_socket=False)
         _safe_unlink(self.capability_path, require_socket=False)
         _safe_unlink(self.binding_capability_path, require_socket=False)
         self._capability = None
@@ -636,7 +657,6 @@ class LocalIpcClient:
         timeout_seconds: float = 5.0,
         controller_id: str | None = None,
     ) -> None:
-        _require_unix_sockets()
         if (
             not isinstance(timeout_seconds, (int, float))
             or isinstance(timeout_seconds, bool)
@@ -648,6 +668,7 @@ class LocalIpcClient:
         _reject_symlink_components(directory)
         _validate_private_directory(directory)
         self.socket_path = directory / SOCKET_NAME
+        self.port_path = directory / PORT_NAME
         self.capability_path = directory / CAPABILITY_NAME
         self.max_request_bytes = _frame_limit(max_message_bytes)
         self.max_response_bytes = _frame_limit(max_result_bytes)
@@ -674,7 +695,11 @@ class LocalIpcClient:
         capability = _read_capability(self.capability_path)
         request_id = request_id or f"req_{secrets.token_urlsafe(18)}"
         _bounded_identifier(request_id)
-        _validate_client_endpoint(self.socket_path)
+        if _TCP_TRANSPORT:
+            family, address = socket.AF_INET, ("127.0.0.1", _read_port(self.port_path))
+        else:
+            _validate_client_endpoint(self.socket_path)
+            family, address = socket.AF_UNIX, os.fspath(self.socket_path)
         request = {
             "capability": capability,
             "requestId": request_id,
@@ -686,9 +711,9 @@ class LocalIpcClient:
         if self.controller_id is not None:
             request["controllerId"] = self.controller_id
         try:
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            with socket.socket(family, socket.SOCK_STREAM) as connection:
                 connection.settimeout(timeout)
-                connection.connect(os.fspath(self.socket_path))
+                connection.connect(address)
                 _send_json(connection, request, self.max_request_bytes)
                 response = _receive_json(connection, self.max_response_bytes)
         except BrokerError:
@@ -886,7 +911,11 @@ def _prepare_directory(directory: Path) -> None:
         info = directory.lstat()
     except OSError as error:
         raise BrokerError.unavailable() from error
-    if not stat.S_ISDIR(info.st_mode) or _wrong_owner(info) or info.st_mode & 0o077:
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or _wrong_owner(info)
+        or (os.name != "nt" and info.st_mode & 0o077)
+    ):
         raise BrokerError.unauthorized()
     _chmod_private(directory, 0o700)
 
@@ -896,7 +925,11 @@ def _validate_private_directory(directory: Path) -> None:
         info = directory.lstat()
     except OSError as error:
         raise BrokerError.unavailable() from error
-    if not stat.S_ISDIR(info.st_mode) or _wrong_owner(info) or info.st_mode & 0o077:
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or _wrong_owner(info)
+        or (os.name != "nt" and info.st_mode & 0o077)
+    ):
         raise BrokerError.unauthorized()
 
 
@@ -950,7 +983,7 @@ def _remove_safe_capability(path: Path) -> None:
         stat.S_ISLNK(info.st_mode)
         or not stat.S_ISREG(info.st_mode)
         or _wrong_owner(info)
-        or info.st_mode & 0o077
+        or (os.name != "nt" and info.st_mode & 0o077)
     ):
         raise BrokerError.unauthorized()
     try:
@@ -960,24 +993,35 @@ def _remove_safe_capability(path: Path) -> None:
 
 
 def _read_capability(path: Path) -> str:
+    capability = _read_private_text(path)
+    if len(capability) < 32 or len(capability) > 128:
+        raise BrokerError.unavailable()
+    return capability
+
+
+def _read_port(path: Path) -> int:
+    text = _read_private_text(path)
+    if not text.isdigit() or str(int(text)) != text or not 0 < int(text) < 65536:
+        raise BrokerError.unavailable()
+    return int(text)
+
+
+def _read_private_text(path: Path) -> str:
     try:
         info = path.lstat()
         if (
             stat.S_ISLNK(info.st_mode)
             or not stat.S_ISREG(info.st_mode)
             or _wrong_owner(info)
-            or info.st_mode & 0o077
+            or (os.name != "nt" and info.st_mode & 0o077)
             or info.st_size > 256
         ):
             raise BrokerError.unauthorized()
-        capability = path.read_text(encoding="ascii").strip()
+        return path.read_text(encoding="ascii").strip()
     except BrokerError:
         raise
     except (OSError, UnicodeError) as error:
         raise BrokerError.unavailable() from error
-    if len(capability) < 32 or len(capability) > 128:
-        raise BrokerError.unavailable()
-    return capability
 
 
 def _validate_client_endpoint(path: Path) -> None:
@@ -1034,8 +1078,3 @@ def _chmod_private(path: Path, mode: int) -> None:
     except (NotImplementedError, OSError) as error:
         if os.name != "nt":
             raise BrokerError.unavailable() from error
-
-
-def _require_unix_sockets() -> None:
-    if not hasattr(socket, "AF_UNIX"):
-        raise BrokerError.unavailable()

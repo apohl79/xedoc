@@ -179,10 +179,6 @@ def build_remote_agent_runtime(
     Python dependencies.
     """
 
-    if spec.is_windows:
-        raise RuntimeError(
-            f"Remote-agent Python runtime is unsupported on Windows target {spec.target}."
-        )
     distribution = PYTHON_DISTRIBUTIONS.get(spec.target)
     if distribution is None:
         raise RuntimeError(

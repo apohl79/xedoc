@@ -621,7 +621,7 @@ detect_target() {
       os="linux"
       ;;
     *)
-      die "Only macOS and Linux are supported by this installer."
+      die "Only macOS and Linux are supported by this installer. On Windows, run in PowerShell: irm https://raw.githubusercontent.com/apohl79/xedoc/main/scripts/install/install.ps1 | iex"
       ;;
   esac
 

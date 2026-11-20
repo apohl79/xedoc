@@ -2,6 +2,7 @@
 
 from http.server import ThreadingHTTPServer
 import logging
+import os
 from pathlib import Path
 import threading
 
@@ -27,6 +28,8 @@ def load_bridge_config(home: Path) -> HostGuiConfig | None:
 
 class BridgeHostServer(ThreadingHTTPServer):
     daemon_threads = True
+    # On Windows, SO_REUSEADDR lets other sockets take over the bound port.
+    allow_reuse_address = os.name != "nt"
     secure = True
     bridge_only = True
 

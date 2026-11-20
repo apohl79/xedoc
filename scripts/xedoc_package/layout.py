@@ -24,6 +24,7 @@ from .remote_agent_payload import validate_tools_file
 from .remote_agent_payload import write_manifest
 from .remote_agent_runtime import RemoteAgentRuntimeReference
 from .remote_agent_runtime import hash_tree
+from .remote_agent_runtime import runtime_interpreter_path
 
 LAYOUT_VERSION = 3
 SESSION_CONTROL_LAYOUT_VERSION = 5
@@ -56,14 +57,7 @@ MODEL_CATALOG_SOURCE = (
     / "catalog.json"
 )
 MODEL_CATALOG_PATH = Path("model-router") / "model-catalog.json"
-REMOTE_AGENT_LAUNCHER_SOURCE = REMOTE_AGENT_SOURCE / "xedoc-remote-agentd"
 REMOTE_AGENT_LAUNCHER_NAME = "xedoc-remote-agentd"
-REMOTE_AGENT_RUNTIME_INTERPRETER_UNIX = (
-    Path("xedoc-resources") / "remote-agent" / "runtime" / "python" / "bin" / "python3"
-)
-REMOTE_AGENT_RUNTIME_MANIFEST_INTERPRETER_UNIX = (
-    Path("runtime") / "python" / "bin" / "python3"
-)
 
 
 def prepare_package_dir(package_dir: Path, *, force: bool) -> None:
@@ -109,8 +103,6 @@ def build_package_dir(
         is_windows=spec.is_windows,
     )
     if include_session_control:
-        if spec.is_windows:
-            raise RuntimeError("Session-control CLI is only supported on Unix targets")
         if not SESSION_CONTROL_SOURCE.is_file():
             raise RuntimeError(
                 f"Missing session-control script: {SESSION_CONTROL_SOURCE}"
@@ -120,6 +112,12 @@ def build_package_dir(
             bin_dir / SESSION_CONTROL_NAME,
             is_windows=False,
         )
+        if spec.is_windows:
+            copy_executable(
+                SESSION_CONTROL_SOURCE.with_suffix(".cmd"),
+                bin_dir / f"{SESSION_CONTROL_NAME}.cmd",
+                is_windows=True,
+            )
         if not SESSION_CONTROL_SDK_SOURCE.is_file():
             raise RuntimeError(
                 f"Missing session-control SDK module: {SESSION_CONTROL_SDK_SOURCE}"
@@ -132,75 +130,75 @@ def build_package_dir(
 
     if inputs.bwrap_bin is not None:
         copy_executable(inputs.bwrap_bin, resources_dir / "bwrap", is_windows=False)
-    remote_agent_metadata = None
-    if not spec.is_windows:
-        if remote_agent_runtime is None:
-            raise RuntimeError("Remote-agent runtime is required for Unix packages")
-        remote_agent_dir = resources_dir / "remote-agent"
-        remote_agent_dir.mkdir()
-        payload_path = remote_agent_dir / "remote-agent.pyz"
-        payload_sha256 = build_payload_archive(payload_path, force=True)
-        tools_path = remote_agent_dir / "remote-tools.json"
-        tools_path.write_bytes(remote_tools_bytes())
-        tools_sha256 = sha256_file(tools_path)
-        runtime_root = remote_agent_dir / "runtime"
-        _copy_remote_agent_runtime(remote_agent_runtime.root.parent, runtime_root)
-        _make_runtime_read_only(runtime_root / "python")
-        runtime_metadata = {
-            "target": remote_agent_runtime.target,
-            "runtimeId": remote_agent_runtime.runtime_id,
-            "pythonVersion": remote_agent_runtime.python_version,
-            "sha256": hash_tree(runtime_root / "python"),
-            "interpreter": REMOTE_AGENT_RUNTIME_MANIFEST_INTERPRETER_UNIX.as_posix(),
-            "sitePackages": remote_agent_runtime.site_packages,
-            "dependencyLockSha256": remote_agent_runtime.dependency_lock_sha256,
-            "dependencies": list(remote_agent_runtime.dependencies),
-        }
-        if runtime_metadata["target"] != spec.target or runtime_metadata["sha256"] != (
-            remote_agent_runtime.runtime_sha256
-        ):
-            raise RuntimeError(
-                "Remote-agent runtime identity does not match package target"
-            )
-        manifest = remote_agent_dir / "remote-agent-manifest.json"
-        write_manifest(
-            manifest,
-            package_version=version,
-            target=spec.target,
-            runtime=runtime_metadata,
-            payload_sha256=payload_sha256,
-            tools_sha256=tools_sha256,
-            payload_size=payload_path.stat().st_size,
-            tools_size=tools_path.stat().st_size,
+    if remote_agent_runtime is None:
+        raise RuntimeError("Remote-agent runtime is required")
+    remote_agent_dir = resources_dir / "remote-agent"
+    remote_agent_dir.mkdir()
+    payload_path = remote_agent_dir / "remote-agent.pyz"
+    payload_sha256 = build_payload_archive(payload_path, force=True)
+    tools_path = remote_agent_dir / "remote-tools.json"
+    tools_path.write_bytes(remote_tools_bytes())
+    tools_sha256 = sha256_file(tools_path)
+    runtime_root = remote_agent_dir / "runtime"
+    _copy_remote_agent_runtime(remote_agent_runtime.root.parent, runtime_root)
+    _make_runtime_read_only(runtime_root / "python")
+    runtime_metadata = {
+        "target": remote_agent_runtime.target,
+        "runtimeId": remote_agent_runtime.runtime_id,
+        "pythonVersion": remote_agent_runtime.python_version,
+        "sha256": hash_tree(runtime_root / "python"),
+        "interpreter": runtime_interpreter_path(
+            Path("runtime") / "python", spec
+        ).as_posix(),
+        "sitePackages": remote_agent_runtime.site_packages,
+        "dependencyLockSha256": remote_agent_runtime.dependency_lock_sha256,
+        "dependencies": list(remote_agent_runtime.dependencies),
+    }
+    if runtime_metadata["target"] != spec.target or runtime_metadata["sha256"] != (
+        remote_agent_runtime.runtime_sha256
+    ):
+        raise RuntimeError(
+            "Remote-agent runtime identity does not match package target"
         )
-        if not REMOTE_AGENT_LAUNCHER_SOURCE.is_file():
-            raise RuntimeError(
-                f"Missing remote-agent launcher: {REMOTE_AGENT_LAUNCHER_SOURCE}"
-            )
-        copy_executable(
-            REMOTE_AGENT_LAUNCHER_SOURCE,
-            bin_dir / REMOTE_AGENT_LAUNCHER_NAME,
-            is_windows=False,
-        )
-        remote_agent_metadata = {
-            "manifest": f"xedoc-resources/{MANIFEST_PATH}",
-            "payload": f"xedoc-resources/{PAYLOAD_PATH}",
-            "tools": f"xedoc-resources/{TOOLS_PATH}",
-            "runtime": f"xedoc-resources/{RUNTIME_PATH}",
-            "interpreter": REMOTE_AGENT_RUNTIME_INTERPRETER_UNIX.as_posix(),
-            "launcher": f"bin/{REMOTE_AGENT_LAUNCHER_NAME}",
-            "contractVersion": "xedoc.remote-agent/v1",
-            "payloadSha256": payload_sha256,
-            "toolsSha256": tools_sha256,
-            "runtimeSha256": runtime_metadata["sha256"],
-            "dependencyLockSha256": remote_agent_runtime.dependency_lock_sha256,
-            "dependencies": list(remote_agent_runtime.dependencies),
-            "sitePackages": (
-                Path("xedoc-resources")
-                / "remote-agent"
-                / remote_agent_runtime.site_packages
-            ).as_posix(),
-        }
+    manifest = remote_agent_dir / "remote-agent-manifest.json"
+    write_manifest(
+        manifest,
+        package_version=version,
+        target=spec.target,
+        runtime=runtime_metadata,
+        payload_sha256=payload_sha256,
+        tools_sha256=tools_sha256,
+        payload_size=payload_path.stat().st_size,
+        tools_size=tools_path.stat().st_size,
+    )
+    launcher_name = _remote_agent_launcher_name(spec)
+    launcher_source = REMOTE_AGENT_SOURCE / launcher_name
+    if not launcher_source.is_file():
+        raise RuntimeError(f"Missing remote-agent launcher: {launcher_source}")
+    copy_executable(
+        launcher_source,
+        bin_dir / launcher_name,
+        is_windows=spec.is_windows,
+    )
+    remote_agent_metadata = {
+        "manifest": f"xedoc-resources/{MANIFEST_PATH}",
+        "payload": f"xedoc-resources/{PAYLOAD_PATH}",
+        "tools": f"xedoc-resources/{TOOLS_PATH}",
+        "runtime": f"xedoc-resources/{RUNTIME_PATH}",
+        "interpreter": _remote_agent_interpreter(spec).as_posix(),
+        "launcher": f"bin/{launcher_name}",
+        "contractVersion": "xedoc.remote-agent/v1",
+        "payloadSha256": payload_sha256,
+        "toolsSha256": tools_sha256,
+        "runtimeSha256": runtime_metadata["sha256"],
+        "dependencyLockSha256": remote_agent_runtime.dependency_lock_sha256,
+        "dependencies": list(remote_agent_runtime.dependencies),
+        "sitePackages": (
+            Path("xedoc-resources")
+            / "remote-agent"
+            / remote_agent_runtime.site_packages
+        ).as_posix(),
+    }
     if not MODEL_ROUTER_RESOURCE_SOURCE.is_file():
         raise RuntimeError(
             f"Missing packaged model-router script: {MODEL_ROUTER_RESOURCE_SOURCE}"
@@ -255,9 +253,8 @@ def build_package_dir(
         "modelRouterPolicy": f"xedoc-resources/{MODEL_ROUTER_POLICY_PATH}",
         "modelRouterRuntime": model_router_runtime.package_metadata(),
         "pathDir": "xedoc-path",
+        "remoteAgent": remote_agent_metadata,
     }
-    if remote_agent_metadata is not None:
-        metadata["remoteAgent"] = remote_agent_metadata
     write_json(package_dir / "xedoc-package.json", metadata)
 
 
@@ -302,37 +299,29 @@ def validate_package_dir(
         "modelRouterRuntime": model_router_runtime.package_metadata(),
         "pathDir": "xedoc-path",
     }
-    if spec.is_windows:
-        if "remoteAgent" in metadata:
-            raise RuntimeError("Windows packages must not advertise remote-agent")
-        if (package_dir / "xedoc-resources" / "remote-agent").exists():
-            raise RuntimeError("Windows packages must not contain remote-agent assets")
-        if (package_dir / "bin" / REMOTE_AGENT_LAUNCHER_NAME).exists():
-            raise RuntimeError(
-                "Windows packages must not contain remote-agent launchers"
-            )
-    else:
-        if remote_agent_runtime is None:
-            raise RuntimeError("Remote-agent runtime is required for Unix packages")
-        expected_metadata["remoteAgent"] = {
-            "manifest": f"xedoc-resources/{MANIFEST_PATH}",
-            "payload": f"xedoc-resources/{PAYLOAD_PATH}",
-            "tools": f"xedoc-resources/{TOOLS_PATH}",
-            "runtime": f"xedoc-resources/{RUNTIME_PATH}",
-            "interpreter": REMOTE_AGENT_RUNTIME_INTERPRETER_UNIX.as_posix(),
-            "launcher": f"bin/{REMOTE_AGENT_LAUNCHER_NAME}",
-            "contractVersion": "xedoc.remote-agent/v1",
-            "payloadSha256": _manifest_sha256_from_package(package_dir, "payload"),
-            "toolsSha256": _manifest_sha256_from_package(package_dir, "tools"),
-            "runtimeSha256": remote_agent_runtime.runtime_sha256,
-            "dependencyLockSha256": remote_agent_runtime.dependency_lock_sha256,
-            "dependencies": list(remote_agent_runtime.dependencies),
-            "sitePackages": (
-                Path("xedoc-resources")
-                / "remote-agent"
-                / remote_agent_runtime.site_packages
-            ).as_posix(),
-        }
+    if remote_agent_runtime is None:
+        raise RuntimeError("Remote-agent runtime is required")
+    remote_agent_interpreter = _remote_agent_interpreter(spec)
+    remote_agent_launcher = Path("bin") / _remote_agent_launcher_name(spec)
+    expected_metadata["remoteAgent"] = {
+        "manifest": f"xedoc-resources/{MANIFEST_PATH}",
+        "payload": f"xedoc-resources/{PAYLOAD_PATH}",
+        "tools": f"xedoc-resources/{TOOLS_PATH}",
+        "runtime": f"xedoc-resources/{RUNTIME_PATH}",
+        "interpreter": remote_agent_interpreter.as_posix(),
+        "launcher": remote_agent_launcher.as_posix(),
+        "contractVersion": "xedoc.remote-agent/v1",
+        "payloadSha256": _manifest_sha256_from_package(package_dir, "payload"),
+        "toolsSha256": _manifest_sha256_from_package(package_dir, "tools"),
+        "runtimeSha256": remote_agent_runtime.runtime_sha256,
+        "dependencyLockSha256": remote_agent_runtime.dependency_lock_sha256,
+        "dependencies": list(remote_agent_runtime.dependencies),
+        "sitePackages": (
+            Path("xedoc-resources")
+            / "remote-agent"
+            / remote_agent_runtime.site_packages
+        ).as_posix(),
+    }
     for key, expected in expected_metadata.items():
         actual = metadata.get(key)
         if actual != expected:
@@ -355,33 +344,27 @@ def validate_package_dir(
         executable_files.append(Path("xedoc-resources") / MODEL_ROUTER_RESOURCE_PATH)
 
     if include_session_control:
-        if spec.is_windows:
-            raise RuntimeError("Session-control CLI is only supported on Unix targets")
         session_control_path = Path("bin") / SESSION_CONTROL_NAME
         required_files.append(session_control_path)
         executable_files.append(session_control_path)
         required_files.append(Path("bin") / SESSION_CONTROL_SDK_NAME)
+        if spec.is_windows:
+            required_files.append(Path("bin") / f"{SESSION_CONTROL_NAME}.cmd")
 
     if spec.is_linux:
         required_files.append(Path("xedoc-resources") / "bwrap")
         executable_files.append(Path("xedoc-resources") / "bwrap")
 
-    if not spec.is_windows:
-        required_files.extend(
-            [
-                Path("xedoc-resources") / PAYLOAD_PATH,
-                Path("xedoc-resources") / TOOLS_PATH,
-                Path("xedoc-resources") / MANIFEST_PATH,
-                REMOTE_AGENT_RUNTIME_INTERPRETER_UNIX,
-                Path("bin") / REMOTE_AGENT_LAUNCHER_NAME,
-            ]
-        )
-        executable_files.extend(
-            [
-                REMOTE_AGENT_RUNTIME_INTERPRETER_UNIX,
-                Path("bin") / REMOTE_AGENT_LAUNCHER_NAME,
-            ]
-        )
+    required_files.extend(
+        [
+            Path("xedoc-resources") / PAYLOAD_PATH,
+            Path("xedoc-resources") / TOOLS_PATH,
+            Path("xedoc-resources") / MANIFEST_PATH,
+            remote_agent_interpreter,
+            remote_agent_launcher,
+        ]
+    )
+    executable_files.extend([remote_agent_interpreter, remote_agent_launcher])
 
     for relative_file in required_files:
         path = package_dir / relative_file
@@ -394,38 +377,35 @@ def validate_package_dir(
             if not is_executable(path):
                 raise RuntimeError(f"Package file is not executable: {relative_file}")
 
-    if not spec.is_windows:
-        if remote_agent_runtime is None:
-            raise RuntimeError("Remote-agent runtime is required for Unix packages")
-        runtime_root = package_dir / "xedoc-resources" / RUNTIME_PATH
-        manifest = load_manifest(package_dir / "xedoc-resources" / MANIFEST_PATH)
-        payload = package_dir / "xedoc-resources" / PAYLOAD_PATH
-        tools = package_dir / "xedoc-resources" / TOOLS_PATH
-        validate_payload_archive(payload, _manifest_sha256(manifest, "payload"))
-        validate_tools_file(tools, _manifest_sha256(manifest, "tools"))
-        validate_manifest_value(
-            manifest,
-            package_version=str(metadata["version"]),
-            target=spec.target,
-            payload_sha256=sha256_file(payload),
-            tools_sha256=sha256_file(tools),
-            payload_size=payload.stat().st_size,
-            tools_size=tools.stat().st_size,
-            dependency_lock_sha256=remote_agent_runtime.dependency_lock_sha256,
-            dependencies=remote_agent_runtime.dependencies,
-            site_packages=remote_agent_runtime.site_packages,
-        )
-        if hash_tree(runtime_root / "python") != remote_agent_runtime.runtime_sha256:
-            raise RuntimeError("Remote-agent runtime checksum mismatch")
-        if remote_agent_runtime.root.name != "python":
-            raise RuntimeError("Remote-agent runtime reference has an invalid root")
-        runtime_meta = manifest.get("runtime")
-        if not isinstance(runtime_meta, dict):
-            raise RuntimeError("Remote-agent runtime manifest entry is invalid")
-        if runtime_meta.get("runtimeId") != remote_agent_runtime.runtime_id:
-            raise RuntimeError("Remote-agent runtime ID mismatch")
-        if runtime_meta.get("sha256") != remote_agent_runtime.runtime_sha256:
-            raise RuntimeError("Remote-agent runtime manifest checksum mismatch")
+    runtime_root = package_dir / "xedoc-resources" / RUNTIME_PATH
+    manifest = load_manifest(package_dir / "xedoc-resources" / MANIFEST_PATH)
+    payload = package_dir / "xedoc-resources" / PAYLOAD_PATH
+    tools = package_dir / "xedoc-resources" / TOOLS_PATH
+    validate_payload_archive(payload, _manifest_sha256(manifest, "payload"))
+    validate_tools_file(tools, _manifest_sha256(manifest, "tools"))
+    validate_manifest_value(
+        manifest,
+        package_version=str(metadata["version"]),
+        target=spec.target,
+        payload_sha256=sha256_file(payload),
+        tools_sha256=sha256_file(tools),
+        payload_size=payload.stat().st_size,
+        tools_size=tools.stat().st_size,
+        dependency_lock_sha256=remote_agent_runtime.dependency_lock_sha256,
+        dependencies=remote_agent_runtime.dependencies,
+        site_packages=remote_agent_runtime.site_packages,
+    )
+    if hash_tree(runtime_root / "python") != remote_agent_runtime.runtime_sha256:
+        raise RuntimeError("Remote-agent runtime checksum mismatch")
+    if remote_agent_runtime.root.name != "python":
+        raise RuntimeError("Remote-agent runtime reference has an invalid root")
+    runtime_meta = manifest.get("runtime")
+    if not isinstance(runtime_meta, dict):
+        raise RuntimeError("Remote-agent runtime manifest entry is invalid")
+    if runtime_meta.get("runtimeId") != remote_agent_runtime.runtime_id:
+        raise RuntimeError("Remote-agent runtime ID mismatch")
+    if runtime_meta.get("sha256") != remote_agent_runtime.runtime_sha256:
+        raise RuntimeError("Remote-agent runtime manifest checksum mismatch")
 
 
 def copy_executable(src: Path, dest: Path, *, is_windows: bool) -> None:
@@ -444,6 +424,16 @@ def write_json(path: Path, value: object) -> None:
 
 def is_executable(path: Path) -> bool:
     return bool(path.stat().st_mode & stat.S_IXUSR)
+
+
+def _remote_agent_launcher_name(spec: TargetSpec) -> str:
+    return REMOTE_AGENT_LAUNCHER_NAME + (".cmd" if spec.is_windows else "")
+
+
+def _remote_agent_interpreter(spec: TargetSpec) -> Path:
+    return runtime_interpreter_path(
+        Path("xedoc-resources") / RUNTIME_PATH / "python", spec
+    )
 
 
 def _copy_remote_agent_runtime(source_root: Path, destination: Path) -> None:

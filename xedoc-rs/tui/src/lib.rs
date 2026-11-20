@@ -178,7 +178,6 @@ use xedoc_arg0::Arg0DispatchPaths;
 
 const TUI_LOG_FILE_NAME: &str = "xedoc-tui.log";
 
-#[cfg(unix)]
 const AUTO_CONNECT_DAEMON_CONNECT_TIMEOUT: std::time::Duration =
     std::time::Duration::from_millis(50);
 
@@ -347,13 +346,11 @@ pub fn remote_addr_supports_auth_token(endpoint: &RemoteAppServerEndpoint) -> bo
     }
 }
 
-#[cfg(unix)]
 async fn maybe_probe_default_daemon_socket(xedoc_home: &Path) -> Option<AbsolutePathBuf> {
     let socket_path = xedoc_app_server_client::app_server_control_socket_path(xedoc_home).ok()?;
     maybe_probe_daemon_socket(socket_path).await
 }
 
-#[cfg(unix)]
 async fn maybe_probe_daemon_socket(socket_path: AbsolutePathBuf) -> Option<AbsolutePathBuf> {
     if !socket_path.as_path().try_exists().unwrap_or(false) {
         return None;
@@ -361,7 +358,7 @@ async fn maybe_probe_daemon_socket(socket_path: AbsolutePathBuf) -> Option<Absol
 
     match tokio::time::timeout(
         AUTO_CONNECT_DAEMON_CONNECT_TIMEOUT,
-        tokio::net::UnixStream::connect(socket_path.as_path()),
+        xedoc_uds::UnixStream::connect(socket_path.as_path()),
     )
     .await
     {
@@ -379,16 +376,6 @@ async fn maybe_probe_daemon_socket(socket_path: AbsolutePathBuf) -> Option<Absol
             None
         }
     }
-}
-
-#[cfg(not(unix))]
-async fn maybe_probe_default_daemon_socket(_xedoc_home: &Path) -> Option<AbsolutePathBuf> {
-    None
-}
-
-#[cfg(not(unix))]
-async fn maybe_probe_daemon_socket(_socket_path: AbsolutePathBuf) -> Option<AbsolutePathBuf> {
-    None
 }
 
 #[allow(clippy::too_many_arguments)]

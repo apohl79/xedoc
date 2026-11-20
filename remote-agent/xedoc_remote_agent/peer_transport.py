@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import secrets
 import socket
 import ssl
@@ -450,7 +451,9 @@ def _create_listener(endpoint: PeerEndpoint) -> socket.socket:
     try:
         family = socket.AF_INET6 if ":" in endpoint.host else socket.AF_INET
         listener = socket.socket(family, socket.SOCK_STREAM)
-        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # On Windows, SO_REUSEADDR lets other sockets take over the bound port.
+        if os.name != "nt":
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind((endpoint.host, endpoint.port))
         return listener
     except OSError as error:

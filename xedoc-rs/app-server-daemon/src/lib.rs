@@ -16,7 +16,6 @@ pub use backend::BackendKind;
 use backend::BackendPaths;
 use managed_install::experimental_managed_xedoc_bin;
 use managed_install::managed_xedoc_bin;
-#[cfg(unix)]
 use managed_install::managed_xedoc_version;
 use managed_install::resolved_managed_xedoc_bin;
 use serde::Serialize;
@@ -37,7 +36,16 @@ const EXPERIMENTAL_SOCKET_FILE_NAME: &str = "experimental.sock";
 const REMOTE_AGENT_BOOTSTRAP_DIRECTORY: &str = "remote-agent";
 const REMOTE_AGENT_BOOTSTRAP_FILE_NAME: &str = "bootstrap.toml";
 const REMOTE_AGENT_EXPERIMENTAL_BOOTSTRAP_FILE_NAME: &str = "bootstrap-experimental.toml";
-const REMOTE_AGENT_DAEMON_FILE_NAME: &str = "xedoc-remote-agentd";
+const REMOTE_AGENT_DAEMON_FILE_NAME: &str = if cfg!(windows) {
+    "xedoc-remote-agentd.cmd"
+} else {
+    "xedoc-remote-agentd"
+};
+const INSTALL_COMMAND: &str = if cfg!(windows) {
+    "irm https://raw.githubusercontent.com/apohl79/xedoc/main/scripts/install/install.ps1 | iex"
+} else {
+    "curl -fsSL https://raw.githubusercontent.com/apohl79/xedoc/main/scripts/install/install.sh | sh"
+};
 const REMOTE_AGENT_ENSURE_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 15);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,15 +174,15 @@ pub async fn run_pid_update_loop() -> Result<()> {
     update_loop::run().await
 }
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 fn ensure_supported_platform() -> Result<()> {
     Ok(())
 }
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 fn ensure_supported_platform() -> Result<()> {
     Err(anyhow!(
-        "xedoc app-server daemon lifecycle is only supported on Unix platforms"
+        "xedoc app-server daemon lifecycle is only supported on Unix and Windows"
     ))
 }
 
@@ -239,7 +247,9 @@ impl Daemon {
             operation_lock_file: state_dir.join(OPERATION_LOCK_FILE_NAME),
             managed_xedoc_bin,
             remote_agent_bootstrap_path,
-            auto_update_enabled: matches!(target, DaemonTarget::Current),
+            // The update loop replaces itself with exec(2) and runs install.sh, so it is
+            // Unix-only; Windows installs update by rerunning install.ps1.
+            auto_update_enabled: cfg!(unix) && matches!(target, DaemonTarget::Current),
         })
     }
 
@@ -549,19 +559,13 @@ impl Daemon {
             "managed standalone Xedoc install not found at {managed_xedoc_path}\n\n\
              This command requires the standalone install managed by the Xedoc installer, because \
              the daemon starts and updates app-server from that fixed path.\n\n\
-             Install it with:\n  curl -fsSL https://raw.githubusercontent.com/apohl79/xedoc/main/scripts/install/install.sh | sh\n\n\
+             Install it with:\n  {INSTALL_COMMAND}\n\n\
              Then rerun the command you just tried."
         ))
     }
 
-    #[cfg(unix)]
     async fn managed_xedoc_version_best_effort(&self) -> Option<String> {
         managed_xedoc_version(&self.managed_xedoc_bin).await.ok()
-    }
-
-    #[cfg(not(unix))]
-    async fn managed_xedoc_version_best_effort(&self) -> Option<String> {
-        None
     }
 
     fn backend_paths(&self) -> BackendPaths {
@@ -588,7 +592,13 @@ impl Daemon {
         let launcher = self
             .managed_xedoc_bin
             .parent()
-            .map(|directory| directory.join("bin").join(REMOTE_AGENT_DAEMON_FILE_NAME))
+            .map(|directory| {
+                if cfg!(windows) {
+                    directory.join(REMOTE_AGENT_DAEMON_FILE_NAME)
+                } else {
+                    directory.join("bin").join(REMOTE_AGENT_DAEMON_FILE_NAME)
+                }
+            })
             .ok_or_else(|| anyhow!("managed remote-agent launcher is unavailable"))?;
         if !launcher.is_file() {
             return Err(anyhow!("managed remote-agent launcher is unavailable"));
@@ -729,7 +739,7 @@ fn try_lock_file(file: &tokio::fs::File) -> Result<bool> {
     Err(err).context("failed to lock daemon operation")
 }
 
-#[cfg(not(unix))]
-fn try_lock_file(_file: &tokio::fs::File) -> Result<bool> {
-    Ok(true)
+#[cfg(windows)]
+fn try_lock_file(file: &tokio::fs::File) -> Result<bool> {
+    backend::windows::try_lock_file(file).context("failed to lock daemon operation")
 }

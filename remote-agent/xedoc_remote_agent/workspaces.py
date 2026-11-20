@@ -309,6 +309,13 @@ def _xedoc_home(value: str | os.PathLike[str] | None) -> Path:
 def _parse_controller_endpoint(value: str) -> BootstrapDescriptor:
     if "\x00" in value or "%" in value:
         raise BrokerError.invalid_request()
+    if os.name == "nt":
+        if not value.startswith("unix://"):
+            raise BrokerError.invalid_request()
+        windows_path = PureWindowsPath(value[len("unix://") :])
+        if not windows_path.is_absolute() or not windows_path.name:
+            raise BrokerError.invalid_request()
+        return BootstrapDescriptor(Path(windows_path))
     parsed = urlsplit(value)
     if parsed.scheme != "unix" or parsed.netloc or parsed.query or parsed.fragment:
         raise BrokerError.invalid_request()

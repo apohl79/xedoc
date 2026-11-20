@@ -78,7 +78,8 @@ def is_experimental_invocation() -> bool:
 
 
 def managed_xedoc_binary() -> Path:
-    binary = Path(sys.argv[0]).resolve().with_name("xedoc")
+    name = "xedoc.exe" if os.name == "nt" else "xedoc"
+    binary = Path(sys.argv[0]).resolve().with_name(name)
     if not binary.is_file():
         raise AppServerError(
             "cannot find the Xedoc binary beside this session-control script"
@@ -105,13 +106,30 @@ def run_daemon_command(experimental: bool, action: str) -> None:
         raise AppServerError(f"could not {action} the managed app-server")
 
 
+def remote_agent_daemon_command() -> list[str]:
+    binary = managed_xedoc_binary()
+    if os.name != "nt":
+        launcher = binary.with_name("xedoc-remote-agentd")
+        if not launcher.is_file():
+            raise AppServerError(
+                "cannot find xedoc-remote-agentd beside the Xedoc binary"
+            )
+        return [str(launcher)]
+    # Run the bundled runtime directly: through xedoc-remote-agentd.cmd, cmd.exe
+    # would reinterpret metacharacters in peer-supplied arguments. UTF-8 mode
+    # matches the launcher, so non-ASCII JSON output survives the pipe.
+    resources = binary.parent.parent / "xedoc-resources" / "remote-agent"
+    python = resources / "runtime" / "python" / "python.exe"
+    payload = resources / "remote-agent.pyz"
+    if not python.is_file() or not payload.is_file():
+        raise AppServerError("cannot find the bundled remote-agent runtime")
+    return [str(python), "-B", "-I", "-X", "utf8", str(payload), "daemon"]
+
+
 def remote_agent_pairing_command(
     action: str, peer_host_id: str | None = None
 ) -> dict[str, object]:
-    binary = managed_xedoc_binary().with_name("xedoc-remote-agentd")
-    if not binary.is_file():
-        raise AppServerError("cannot find xedoc-remote-agentd beside the Xedoc binary")
-    command = [str(binary), "pairings", action]
+    command = [*remote_agent_daemon_command(), "pairings", action]
     if peer_host_id is not None:
         command.extend(("--peer-host-id", peer_host_id))
     try:
@@ -177,10 +195,7 @@ def remote_agent_enrollment_command(
     endpoints: list[str] | None = None,
     ttl_seconds: int | None = None,
 ) -> dict[str, object]:
-    binary = managed_xedoc_binary().with_name("xedoc-remote-agentd")
-    if not binary.is_file():
-        raise AppServerError("cannot find xedoc-remote-agentd beside the Xedoc binary")
-    command = [str(binary), "enrollment", action]
+    command = [*remote_agent_daemon_command(), "enrollment", action]
     if peer_host_id is not None:
         command.extend(("--peer-host-id", peer_host_id))
     if fingerprint is not None:
@@ -249,6 +264,8 @@ def local_ssh_hint(host_id: object) -> tuple[str, list[str]] | None:
     """
 
     if not isinstance(host_id, str) or not re.fullmatch(r"[A-Za-z0-9_]+", host_id):
+        return None
+    if not hasattr(os, "getuid"):
         return None
     directory = Path(tempfile.gettempdir()) / f"xedoc-remote-agent-discovery-{os.getuid()}"
     try:
@@ -482,7 +499,8 @@ def write_remote_agent_bootstrap(socket_path: Path, experimental: bool) -> None:
     try:
         os.chmod(temporary_path, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as file:
-            file.write(f'controller = "unix://{socket_directory}/{socket_path.name}"\n')
+            controller = f"unix://{socket_directory / socket_path.name}"
+            file.write(f"controller = {json.dumps(controller, ensure_ascii=False)}\n")
         Path(temporary_path).replace(remote_agent_directory / bootstrap_name)
     except OSError as error:
         try:
@@ -1066,8 +1084,9 @@ def setup_host_gui_if_missing() -> None:
     ):
         return
 
-    agent_binary = managed_xedoc_binary().with_name("xedoc-remote-agentd")
-    if not agent_binary.is_file():
+    try:
+        agent_command = remote_agent_daemon_command()
+    except AppServerError:
         print(
             "Host GUI setup is unavailable in this Xedoc installation.",
             file=sys.stderr,
@@ -1087,13 +1106,7 @@ def setup_host_gui_if_missing() -> None:
         file=sys.stderr,
     )
     result = subprocess.run(
-        [
-            str(agent_binary),
-            "host-gui",
-            "setup",
-            "--xedoc-home",
-            str(xedoc_home),
-        ],
+        [*agent_command, "host-gui", "setup", "--xedoc-home", str(xedoc_home)],
         check=False,
     )
     if result.returncode != 0:

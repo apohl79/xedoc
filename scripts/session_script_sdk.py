@@ -35,6 +35,31 @@ class RpcError(RuntimeError):
         super().__init__(message)
 
 
+def _connect_windows_unix_socket(socket_path: str | os.PathLike[str]) -> socket.socket:
+    """Connect through Winsock AF_UNIX, which Windows Python does not expose."""
+    import ctypes
+
+    path = os.fsencode(socket_path)
+    if b"\0" in path or len(path) >= 108:
+        raise RpcError("Unix controller socket path is invalid")
+    winsock = ctypes.WinDLL("ws2_32", use_last_error=True)
+    winsock.socket.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int]
+    winsock.socket.restype = ctypes.c_size_t
+    winsock.connect.argtypes = [ctypes.c_size_t, ctypes.c_char_p, ctypes.c_int]
+    winsock.closesocket.argtypes = [ctypes.c_size_t]
+    handle = winsock.socket(1, socket.SOCK_STREAM, 0)
+    if handle == ctypes.c_size_t(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        address = struct.pack("<H108s", 1, path)
+        if winsock.connect(handle, address, 2 + len(path) + 1) != 0:
+            raise ctypes.WinError(ctypes.get_last_error())
+        return socket.socket(1, socket.SOCK_STREAM, 0, handle)
+    except BaseException:
+        winsock.closesocket(handle)
+        raise
+
+
 class WebSocketTransport:
     """A bounded, dependency-free JSON WebSocket transport for app-server RPC."""
 
@@ -58,12 +83,19 @@ class WebSocketTransport:
         cls, socket_path: str | os.PathLike[str], timeout: float
     ) -> "WebSocketTransport":
         """Connect a normal controller to an app-server Unix socket."""
-        if not hasattr(socket, "AF_UNIX"):
+        if hasattr(socket, "AF_UNIX"):
+            connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            connection.settimeout(timeout)
+            try:
+                connection.connect(os.fspath(socket_path))
+            except BaseException:
+                connection.close()
+                raise
+        elif os.name == "nt":
+            connection = _connect_windows_unix_socket(socket_path)
+        else:
             raise RpcError("Unix controller transport is unavailable on this platform")
-        connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        connection.settimeout(timeout)
         try:
-            connection.connect(os.fspath(socket_path))
             transport = cls.__new__(cls)
             transport._initialize_socket(connection, timeout)
             transport._perform_handshake("localhost", "/rpc")

@@ -74,6 +74,7 @@ xedoc-tui-status = { workspace = true }
 xedoc-tui-thread-state = { workspace = true }
 xedoc-tui-transcript = { workspace = true }
 xedoc-tui-workspace = { workspace = true }
+xedoc-uds = { workspace = true }
 xedoc-utils-approval-presets = { workspace = true }
 xedoc-utils-absolute-path = { workspace = true }
 xedoc-utils-cli = { workspace = true }

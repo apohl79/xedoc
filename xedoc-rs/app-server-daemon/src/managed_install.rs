@@ -3,14 +3,12 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use anyhow::Result;
-#[cfg(unix)]
 use anyhow::anyhow;
 #[cfg(unix)]
 use sha2::Digest;
 #[cfg(unix)]
 use sha2::Sha256;
 use tokio::fs;
-#[cfg(unix)]
 use tokio::process::Command;
 
 pub(crate) fn managed_xedoc_bin(xedoc_home: &Path) -> PathBuf {
@@ -22,11 +20,17 @@ pub(crate) fn experimental_managed_xedoc_bin(xedoc_home: &Path) -> PathBuf {
 }
 
 fn standalone_xedoc_bin(xedoc_home: &Path, release_link: &str) -> PathBuf {
-    xedoc_home
+    let release = xedoc_home
         .join("packages")
         .join("standalone")
-        .join(release_link)
-        .join(managed_xedoc_file_name())
+        .join(release_link);
+    // Windows has no top-level symlink to bin\xedoc.exe; the binary must run from
+    // bin\ so it finds its packaged resources.
+    if cfg!(windows) {
+        release.join("bin").join("xedoc.exe")
+    } else {
+        release.join("xedoc")
+    }
 }
 
 pub(crate) async fn resolved_managed_xedoc_bin(xedoc_bin: &Path) -> Result<PathBuf> {
@@ -38,7 +42,6 @@ pub(crate) async fn resolved_managed_xedoc_bin(xedoc_bin: &Path) -> Result<PathB
     })
 }
 
-#[cfg(unix)]
 pub(crate) async fn managed_xedoc_version(xedoc_bin: &Path) -> Result<String> {
     let output = Command::new(xedoc_bin)
         .arg("--version")
@@ -88,11 +91,6 @@ pub(crate) fn executable_identity_from_bytes(bytes: &[u8]) -> ExecutableIdentity
     }
 }
 
-fn managed_xedoc_file_name() -> &'static str {
-    if cfg!(windows) { "xedoc.exe" } else { "xedoc" }
-}
-
-#[cfg(unix)]
 fn parse_xedoc_version(output: &str) -> Result<String> {
     let version = output
         .split_whitespace()

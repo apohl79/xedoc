@@ -53,6 +53,7 @@ xedoc-home = { workspace = true }
 xedoc-exec-server = { workspace = true }
 xedoc-extension-api = { workspace = true }
 xedoc-features = { workspace = true }
+xedoc-install-context = { workspace = true }
 xedoc-goal-extension = { workspace = true }
 xedoc-git-utils = { workspace = true }
 xedoc-file-watcher = { workspace = true }
@@ -111,9 +112,6 @@ tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["log"] }
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "json"] }
 uuid = { workspace = true, features = ["serde", "v7"] }
-
-[target.'cfg(unix)'.dependencies]
-xedoc-install-context = { workspace = true }
 
 [dev-dependencies]
 app_test_support = { workspace = true }

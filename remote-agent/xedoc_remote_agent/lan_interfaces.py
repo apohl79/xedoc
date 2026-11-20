@@ -9,11 +9,13 @@ import sys
 
 def ipv4_broadcasts() -> tuple[str, ...]:
     if os.name == "nt":
-        return _windows_broadcasts()
+        return _windows_ipv4("broadcast")
     return _unix_ipv4("broadcast")
 
 
 def ipv4_addresses() -> tuple[str, ...]:
+    if os.name == "nt":
+        return _windows_ipv4("address")
     return _unix_ipv4("address")
 
 
@@ -68,7 +70,7 @@ def _unix_ipv4(address_field: str) -> tuple[str, ...]:
     return tuple(sorted(addresses))
 
 
-def _windows_broadcasts() -> tuple[str, ...]:
+def _windows_ipv4(address_field: str) -> tuple[str, ...]:
     from ctypes import wintypes
 
     class AddressRow(ctypes.Structure):
@@ -98,14 +100,17 @@ def _windows_broadcasts() -> tuple[str, ...]:
     count = wintypes.DWORD.from_buffer(buffer).value
     if count > 256 or 4 + count * ctypes.sizeof(AddressRow) > len(buffer):
         raise OSError("Invalid network interface table")
-    broadcasts = set()
+    values = set()
     for index in range(count):
         row = AddressRow.from_buffer(buffer, 4 + index * ctypes.sizeof(AddressRow))
         address = ipaddress.IPv4Address(row.address.to_bytes(4, "little"))
         mask = socket.inet_ntoa(row.mask.to_bytes(4, "little"))
         if address.is_loopback or address.is_unspecified:
             continue
+        if address_field == "address":
+            values.add(str(address))
+            continue
         network = ipaddress.IPv4Network(f"{address}/{mask}", strict=False)
         if network.prefixlen < 31:
-            broadcasts.add(str(network.broadcast_address))
-    return tuple(sorted(broadcasts))
+            values.add(str(network.broadcast_address))
+    return tuple(sorted(values))

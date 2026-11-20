@@ -1,4 +1,6 @@
 mod pid;
+#[cfg(windows)]
+pub(crate) mod windows;
 
 use std::ffi::OsString;
 use std::path::Path;

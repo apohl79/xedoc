@@ -47,12 +47,13 @@ remote Xedoc hosts.
 curl -fsSL https://raw.githubusercontent.com/apohl79/xedoc/main/scripts/install/install.sh | sh
 ```
 
-On macOS and Linux, the installer offers to install the desktop app too.
-On Windows, install only the desktop app from PowerShell:
+On Windows, run the installer from PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/apohl79/xedoc/main/scripts/install/install_windows_app.ps1 | iex
+irm https://raw.githubusercontent.com/apohl79/xedoc/main/scripts/install/install.ps1 | iex
 ```
+
+Both installers offer to install the desktop app too.
 
 ## Project resources
 

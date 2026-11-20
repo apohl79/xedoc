@@ -68,7 +68,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--include-session-control",
         action="store_true",
-        help="Include the Unix xedoc-session control CLI in the package.",
+        help="Include the xedoc-session control CLI in the package.",
     )
     parser.add_argument(
         "--cargo",
@@ -173,32 +173,28 @@ def main() -> int:
         raise RuntimeError("--macos-codesign-identity requires a macOS target")
     model_router_runtime = runtime_reference_from_args(args)
     prepare_package_dir(package_dir, force=args.force)
-    remote_agent_runtime = (
-        None
-        if spec.is_windows
-        else build_remote_agent_runtime(
-            spec,
-            package_dir.parent / f".{package_dir.name}-remote-agent-runtime",
-            force=True,
-            source=(
-                args.remote_agent_runtime_dir.resolve()
-                if args.remote_agent_runtime_dir is not None
-                else None
-            ),
-            sign_macho=(
-                lambda path: (
-                    sign_macos_runtime_binary(
-                        path,
-                        args.macos_codesign_identity,
-                        REPO_ROOT / ".github/scripts/macos-signing/sign_macos_code.sh",
-                        REPO_ROOT
-                        / ".github/scripts/macos-signing/xedoc.entitlements.plist",
-                    )
-                    if args.macos_codesign_identity
-                    else None
+    remote_agent_runtime = build_remote_agent_runtime(
+        spec,
+        package_dir.parent / f".{package_dir.name}-remote-agent-runtime",
+        force=True,
+        source=(
+            args.remote_agent_runtime_dir.resolve()
+            if args.remote_agent_runtime_dir is not None
+            else None
+        ),
+        sign_macho=(
+            lambda path: (
+                sign_macos_runtime_binary(
+                    path,
+                    args.macos_codesign_identity,
+                    REPO_ROOT / ".github/scripts/macos-signing/sign_macos_code.sh",
+                    REPO_ROOT
+                    / ".github/scripts/macos-signing/xedoc.entitlements.plist",
                 )
-            ),
-        )
+                if args.macos_codesign_identity
+                else None
+            )
+        ),
     )
     inputs = PackageInputs(
         entrypoint_bin=source_outputs.entrypoint_bin,

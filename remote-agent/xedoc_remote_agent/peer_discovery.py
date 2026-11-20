@@ -42,8 +42,11 @@ MAX_DISCOVERY_PACKET_BYTES = 8 * 1024
 MAX_DISCOVERY_RESULTS = 128
 MAX_DIRECT_DESTINATIONS = 16
 MAX_HOSTNAME_BYTES = 255
-_LOCAL_DISCOVERY_DIRECTORY = (
-    Path(tempfile.gettempdir()) / f"xedoc-remote-agent-discovery-{os.getuid()}"
+# Windows has no getuid, and its temporary directory is already per user.
+_LOCAL_DISCOVERY_DIRECTORY = Path(tempfile.gettempdir()) / (
+    f"xedoc-remote-agent-discovery-{os.getuid()}"
+    if hasattr(os, "getuid")
+    else "xedoc-remote-agent-discovery"
 )
 
 

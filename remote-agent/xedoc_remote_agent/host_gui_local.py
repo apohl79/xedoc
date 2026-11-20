@@ -11,6 +11,8 @@ import threading
 
 class LocalHostServer(ThreadingHTTPServer):
     daemon_threads = True
+    # On Windows, SO_REUSEADDR lets other sockets take over the bound port.
+    allow_reuse_address = os.name != "nt"
     secure = False
     tls_context = None
     device_pairing = None

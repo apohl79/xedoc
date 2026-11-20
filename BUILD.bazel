@@ -37,6 +37,7 @@ platform(
         "@platforms//os:windows",
         "@rules_rs//rs/experimental/platforms/constraints:windows_gnullvm",
     ],
+    visibility = ["//xedoc-rs/cli:__pkg__"],
 )
 
 platform(

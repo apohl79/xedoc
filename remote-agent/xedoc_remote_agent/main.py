@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -361,6 +362,8 @@ def _spawn_daemon(args: argparse.Namespace, xedoc_home: Path) -> None:
         sys.executable,
         "-B",
         "-I",
+        # Like the Windows launchers: text I/O must not use the ANSI code page.
+        *(("-X", "utf8") if os.name == "nt" else ()),
         str(payload),
         "daemon",
         "serve",
@@ -378,6 +381,14 @@ def _spawn_daemon(args: argparse.Namespace, xedoc_home: Path) -> None:
             command,
             close_fds=True,
             start_new_session=True,
+            # Windows: CREATE_NO_WINDOW gives the broker a hidden console that its
+            # console children share; DETACHED_PROCESS would make each child open
+            # a visible window.
+            creationflags=(
+                subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+                if os.name == "nt"
+                else 0
+            ),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

@@ -8,6 +8,7 @@ import queue
 import select
 import sys
 import threading
+import time
 from typing import Any, Callable, Mapping, Sequence
 
 from .errors import BrokerError
@@ -855,8 +856,7 @@ def main(_argv: Sequence[str] | None = None) -> int:
             if client.has_buffered_message():
                 client.handle_message(client.receive_message())
                 continue
-            readable, _, _ = select.select([sys.stdin], [], [], 0.1)
-            if readable:
+            if _stdin_ready(0.1):
                 client.handle_message(client.receive_message())
     except (BrokerError, sdk.RpcError, EOFError, OSError, RuntimeError) as error:
         message = str(error).encode("utf-8", "replace")[:512].decode(
@@ -871,6 +871,36 @@ def main(_argv: Sequence[str] | None = None) -> int:
             except BrokerError:
                 pass
         client.close()
+
+
+def _stdin_ready(timeout: float) -> bool:
+    if os.name != "nt":
+        return bool(select.select([sys.stdin], [], [], timeout)[0])
+    # Windows select() only accepts sockets; the app-server stdin is a pipe.
+    import ctypes
+    from ctypes import wintypes
+    import msvcrt
+
+    peek = ctypes.WinDLL("kernel32", use_last_error=True).PeekNamedPipe
+    peek.argtypes = [
+        wintypes.HANDLE,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        ctypes.POINTER(wintypes.DWORD),
+        wintypes.LPVOID,
+    ]
+    peek.restype = wintypes.BOOL
+    handle = msvcrt.get_osfhandle(sys.stdin.fileno())
+    available = wintypes.DWORD()
+    deadline = time.monotonic() + timeout
+    while True:
+        if not peek(handle, None, 0, None, ctypes.byref(available), None):
+            # A closed pipe fails the peek; the read then reports EOF.
+            return True
+        if available.value or time.monotonic() >= deadline:
+            return bool(available.value)
+        time.sleep(0.01)
 
 
 if __name__ == "__main__":

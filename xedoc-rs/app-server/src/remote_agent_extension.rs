@@ -109,8 +109,7 @@ impl BuiltInRemoteAgentExtension {
             enabled: config
                 .remote_agent
                 .as_ref()
-                .is_some_and(|remote_agent| remote_agent.role == RemoteAgentRole::Coordinator)
-                && !cfg!(windows),
+                .is_some_and(|remote_agent| remote_agent.role == RemoteAgentRole::Coordinator),
             outgoing,
             session_script_registry,
             session_script_host,

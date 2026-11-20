@@ -16,8 +16,8 @@ if not exist "%PAYLOAD%" (
 )
 
 if "%~1"=="" (
-  "%PYTHON%" -I "%PAYLOAD%" daemon
+  "%PYTHON%" -B -I -X utf8 "%PAYLOAD%" daemon
 ) else (
-  "%PYTHON%" -I "%PAYLOAD%" daemon %*
+  "%PYTHON%" -B -I -X utf8 "%PAYLOAD%" daemon %*
 )
 exit /b %ERRORLEVEL%

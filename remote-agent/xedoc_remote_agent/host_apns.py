@@ -91,13 +91,18 @@ class HostAPNs:
             if not material.startswith(b"-----BEGIN"):
                 material = bytes.fromhex(material.decode("ascii"))
         else:
-            descriptor = os.open(key["privateKeyFile"], os.O_RDONLY | os.O_NOFOLLOW)
+            descriptor = os.open(
+                key["privateKeyFile"],
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0),
+            )
             with os.fdopen(descriptor, "rb") as stream:
                 info = os.fstat(stream.fileno())
                 if (
                     not stat.S_ISREG(info.st_mode)
-                    or info.st_uid != os.getuid()
-                    or info.st_mode & 0o077
+                    or (
+                        os.name != "nt"
+                        and (info.st_uid != os.getuid() or info.st_mode & 0o077)
+                    )
                     or info.st_size > 16 * 1024
                 ):
                     raise OSError("APNs signing key must be owner-private")
