@@ -13,6 +13,7 @@ use crate::history_cell::AgentMessageCell;
 use crate::history_cell::FinalMessageSeparator;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::ImageOutputCell;
+use crate::history_cell::PrefixedWrappedHistoryCell;
 use crate::history_cell::ProposedPlanCell;
 use crate::history_cell::ToolCallCountSummaryCell;
 use crate::history_cell::ToolCallSummaryCell;
@@ -177,6 +178,8 @@ pub(crate) fn history_cell_html(
             let lines = cell.display_lines(u16::MAX);
             let (class, lines) = if cell.as_any().is::<AgentMessageCell>() {
                 ("history-agent", lines)
+            } else if cell.as_any().is::<PrefixedWrappedHistoryCell>() {
+                ("history-notice", lines)
             } else if let Some(exec) = cell.as_any().downcast_ref::<ExecCell>() {
                 if exec.is_exploring_cell() {
                     ("history-tool history-command", lines)

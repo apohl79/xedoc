@@ -119,7 +119,7 @@ a { color: #8fc4e7; }
 .history-tool > div, .history-agent > div { padding-left: 2ch; text-indent: -2ch; margin-left: -2ch; }
 .history-agent > div { background-color: transparent !important; }
 .history-tool span, .history-tool-slice .line, .history-tool-slice span { background-color: transparent !important; }
-.history-edit-summary, .history-turn-summary { padding: 0 8px 0 26px; font-family: var(--mono); font-size: inherit; }
+.history-edit-summary, .history-turn-summary { padding: 0 8px 0 26px; font-size: inherit; }
 .history-turn-summary {
   display: flex;
   min-height: 1.4em;
@@ -138,17 +138,18 @@ a { color: #8fc4e7; }
 .history-slice { padding: 0 8px; }
 .history-user-slice .line, .history-user-slice span, .history-slice .line { background-color: transparent !important; }
 #composer { flex: none; min-width: 0; }
-#activity { max-height: 32dvh; overflow-y: auto; overflow-x: hidden; padding-left: 10px; font-family: var(--mono); font-size: 13px; margin-bottom: 10px; }
+#activity { max-height: 32dvh; overflow-y: auto; overflow-x: hidden; padding-left: 10px; font-family: var(--sans); font-size: 13px; margin-bottom: 10px; }
 #activity:empty { display: none; }
+#activity .activity-status { color: var(--accent) !important; opacity: 1; }
+#activity .activity-status .activity-shimmer-char { color: var(--accent) !important; opacity: var(--activity-shimmer-opacity, 1); }
 #activity .activity-meta, #activity .activity-meta * { color: var(--fg-dim) !important; opacity: 1; }
-#activity .task-heading, #activity .task-row, #activity .agent-heading, #activity .agent-row { font-family: var(--mono); font-size: 13px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }
-#activity .task-heading *, #activity .task-row *, #activity .agent-heading, #activity .agent-row, #activity .agent-heading *, #activity .agent-row *, #activity .agent-overflow { font-family: var(--mono); }
+#activity .task-heading, #activity .task-row, #activity .agent-heading, #activity .agent-row { font-size: 13px; line-height: 1.3; white-space: normal; overflow-wrap: anywhere; }
 #activity .task-heading span[style*="background-color:"], #activity .agent-heading span[style*="background-color:"] { padding: 1px 4px; border-radius: 3px; }
 #activity .task-heading { margin-bottom: 2px; }
 #activity .task-row { display: grid; grid-template-columns: 1.15em minmax(0, 1fr); gap: 8px; margin: 1px 0 0 2em; }
 #activity .agent-row { display: grid; grid-template-columns: 1.15em minmax(0, 1fr); gap: 8px; margin: 1px 0 0 2em; }
 #activity .agent-label { min-width: 0; }
-#activity .task-marker { display: inline-grid; place-items: center; place-self: center; width: .9em; height: .9em; border: 2px solid #59616a; border-radius: 2px; font-family: var(--mono); font-size: inherit; line-height: 1; }
+#activity .task-marker { display: inline-grid; place-items: center; place-self: center; width: .9em; height: .9em; border: 2px solid #59616a; border-radius: 2px; font-size: inherit; line-height: 1; }
 #activity .task-marker-checked { border-color: #47c78a; background: #47c78a; color: var(--bg-main); }
 #activity .task-marker-checked::after { content: "✓"; font-size: .75em; font-weight: 700; }
 #activity .agent-marker, #activity .task-marker-running { display: inline-block; place-self: center; width: .9em; height: .9em; border: 2px solid #59616a; border-top-color: #00a8b5; border-radius: 50%; animation: activity-spin .85s linear infinite; }
@@ -162,7 +163,7 @@ a { color: #8fc4e7; }
 .prompt-history-results { overflow: auto; max-height: 55vh; }
 .prompt-history-results button { display: block; width: 100%; text-align: left; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
 #activity .task-label { min-width: 0; }
-#activity .task-overflow { margin: 2px 0 0 calc(2em + 1.15em + 8px); color: var(--fg-dim); font-family: var(--mono); font-size: 13px; line-height: 1.3; white-space: normal; }
+#activity .task-overflow { margin: 2px 0 0 calc(2em + 1.15em + 8px); color: var(--fg-dim); font-size: 13px; line-height: 1.3; white-space: normal; }
 #live { width: 100%; font-family: var(--mono); font-size: 13px; overflow: auto; max-height: min(82dvh, 720px); line-height: 1; }
 #live-frame { display: block; width: max-content; margin-inline: auto; }
 #live .line > span { display: inline-block; height: 1lh; vertical-align: top; }
