@@ -286,8 +286,7 @@ def _payload_sources() -> dict[str, Path]:
         }:
             entries[f"xedoc_remote_agent/host_assets/{path.name}"] = path
     for name in (
-        "IosevkaAile-Regular.woff2",
-        "IosevkaEtoile-Regular.woff2",
+        "XedocAile-Regular.woff2",
         "Iosevka-LICENSE.txt",
     ):
         entries[f"xedoc_remote_agent/host_assets/{name}"] = WEB_UI_ASSETS_SOURCE / name

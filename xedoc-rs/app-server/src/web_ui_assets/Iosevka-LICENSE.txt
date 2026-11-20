@@ -1,6 +1,8 @@
-IosevkaAile-Regular.woff2 and IosevkaEtoile-Regular.woff2 are unmodified
-Iosevka 34.9.1 web fonts from:
+XedocAile-Regular.woff2 is a modified Iosevka Aile 34.9.1 web font from:
 https://github.com/be5invis/Iosevka/releases/tag/v34.9.1
+
+Built as "Xedoc Aile" with a 500-unit base width instead of 600, retaining
+quasi-proportional spacing. Build configuration: scripts/fonts/private-build-plans.toml.
 
 Copyright (c) 2015-2026, Renzhi Li (aka. Belleve Invis, belleve@typeof.net)
 

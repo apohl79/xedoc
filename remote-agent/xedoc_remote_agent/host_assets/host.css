@@ -5,11 +5,7 @@
 }
 @font-face {
   font-family: "Iosevka Aile";
-  src: url("/IosevkaAile-Regular.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Iosevka Etoile";
-  src: url("/IosevkaEtoile-Regular.woff2") format("woff2");
+  src: url("/XedocAile-Regular.woff2") format("woff2");
 }
 :root {
   color-scheme: dark;

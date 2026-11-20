@@ -73,25 +73,23 @@ wire_api = "responses"
     let page = url::Url::parse(&opened.url)?;
     let host = page.host_str().context("missing web UI host")?;
     let port = page.port().context("missing web UI port")?;
-    for font in ["IosevkaAile-Regular.woff2", "IosevkaEtoile-Regular.woff2"] {
-        let response = reqwest::get(format!("http://{host}:{port}/{font}")).await?;
-        assert_eq!(response.status(), reqwest::StatusCode::OK);
-        assert_eq!(
-            response
-                .headers()
-                .get(reqwest::header::CONTENT_TYPE)
-                .unwrap(),
-            "font/woff2"
-        );
-        assert!(
-            response
-                .headers()
-                .get("content-security-policy")
-                .and_then(|value| value.to_str().ok())
-                .is_some_and(|policy| policy.contains("font-src 'self'"))
-        );
-        assert_eq!(&response.bytes().await?[..4], b"wOF2");
-    }
+    let response = reqwest::get(format!("http://{host}:{port}/XedocAile-Regular.woff2")).await?;
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .unwrap(),
+        "font/woff2"
+    );
+    assert!(
+        response
+            .headers()
+            .get("content-security-policy")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|policy| policy.contains("font-src 'self'"))
+    );
+    assert_eq!(&response.bytes().await?[..4], b"wOF2");
     let token = page
         .fragment()
         .and_then(|fragment| fragment.strip_prefix("capability="))

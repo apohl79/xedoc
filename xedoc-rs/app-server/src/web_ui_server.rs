@@ -178,8 +178,7 @@ impl WebUiServer {
             let router = Router::new()
                 .route("/", get(page))
                 .route("/favicon.svg", get(favicon))
-                .route("/IosevkaAile-Regular.woff2", get(aile_font))
-                .route("/IosevkaEtoile-Regular.woff2", get(etoile_font))
+                .route("/XedocAile-Regular.woff2", get(aile_font))
                 .route("/webui.js", get(script))
                 .route("/webui.css", get(styles))
                 .route("/session/{token}", get(browser_upgrade))
@@ -424,14 +423,7 @@ async fn favicon() -> Response {
 
 async fn aile_font() -> Response {
     asset(
-        axum::body::Body::from(&include_bytes!("web_ui_assets/IosevkaAile-Regular.woff2")[..]),
-        "font/woff2",
-    )
-}
-
-async fn etoile_font() -> Response {
-    asset(
-        axum::body::Body::from(&include_bytes!("web_ui_assets/IosevkaEtoile-Regular.woff2")[..]),
+        axum::body::Body::from(&include_bytes!("web_ui_assets/XedocAile-Regular.woff2")[..]),
         "font/woff2",
     )
 }

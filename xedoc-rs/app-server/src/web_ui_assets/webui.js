@@ -9,7 +9,7 @@
   };
   const applySansFont = () => {
     const saved = localStorage.getItem("xedoc-sans-font")?.trim();
-    const font = saved === "" || saved === "Iosevka Etoile" ? saved : "Iosevka Aile";
+    const font = saved === "" ? "" : "Iosevka Aile";
     document.documentElement.style.setProperty("--sans",
       font ? `${JSON.stringify(font)}, var(--system-sans)` : "var(--system-sans)");
   };

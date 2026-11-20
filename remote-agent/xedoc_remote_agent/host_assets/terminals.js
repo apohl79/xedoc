@@ -13,7 +13,7 @@ window.xedocMonoFontFamily = () => {
 };
 window.xedocSansFont = () => {
   const font = localStorage.getItem("xedoc-sans-font");
-  return font === "" || font === "Iosevka Etoile" ? font : "Iosevka Aile";
+  return font === "" ? "" : "Iosevka Aile";
 };
 window.xedocApplySansFont = () => {
   const font = window.xedocSansFont();

@@ -7,18 +7,14 @@
 }
 @font-face {
   font-family: "Iosevka Aile";
-  src: url("/IosevkaAile-Regular.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Iosevka Etoile";
-  src: url("/IosevkaEtoile-Regular.woff2") format("woff2");
+  src: url("/XedocAile-Regular.woff2") format("woff2");
 }
 :root {
   color-scheme: dark;
   --system-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --sans: "Iosevka Aile", var(--system-sans);
   font-family: var(--sans);
-  font-size: 15px;
+  font-size: 13.5px;
   line-height: 1.55;
   color: #a0b3c5;
   --bg-main: #1a2128;
@@ -94,7 +90,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .history-cell h1, .history-cell h2, .history-cell h3, .history-cell h4, .history-cell h5, .history-cell h6 { margin: .75em 0; }
 .history-cell h1, .history-cell h2, .history-cell h3 { font-size: 1.15em; color: #c5d3de; }
 .history-cell pre { overflow-x: auto; padding: 12px 16px; background: var(--bg-prompt); border-radius: 6px; white-space: pre; }
-code, pre, .history-tool, .history-terminal, .history-user-slice, .history-slice, .mono { font-family: var(--mono); font-size: .9em; }
+code, pre, .history-tool, .history-terminal, .history-user-slice, .history-slice, .mono { font-family: var(--mono); font-size: inherit; }
 code { color: #92b3f4; background: #26323b; border-radius: 3px; padding: 1px 4px; }
 pre code { color: inherit; background: transparent; padding: 0; font-size: inherit; }
 a { color: #8fc4e7; }
@@ -123,7 +119,7 @@ a { color: #8fc4e7; }
 .history-tool > div, .history-agent > div { padding-left: 2ch; text-indent: -2ch; margin-left: -2ch; }
 .history-agent > div { background-color: transparent !important; }
 .history-tool span, .history-tool-slice .line, .history-tool-slice span { background-color: transparent !important; }
-.history-edit-summary, .history-turn-summary { padding: 0 8px 0 26px; font-family: var(--mono); font-size: .9em; }
+.history-edit-summary, .history-turn-summary { padding: 0 8px 0 26px; font-family: var(--mono); font-size: inherit; }
 .history-turn-summary {
   display: flex;
   min-height: 1.4em;
