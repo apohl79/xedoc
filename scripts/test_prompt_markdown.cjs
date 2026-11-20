@@ -57,6 +57,52 @@ module.exports = async function verifyPromptMarkdown(page) {
     }
   }
   await page.waitForFunction(() => document.querySelector("#input")?.isContentEditable);
+  for (const [key, delimiter] of [[`${modifier}+b`, "**"], [`${modifier}+i`, "*"]]) {
+    await replace("clear");
+    await page.keyboard.press(`${modifier}+A`);
+    await page.keyboard.press("Backspace");
+    await page.keyboard.press(key);
+    await waitForSource(`${delimiter}${delimiter} `);
+    await page.keyboard.type("inside");
+    await waitForSource(`${delimiter}inside${delimiter} `);
+  }
+  for (const [key, delimiter] of [
+    [`${modifier}+b`, "**"], [`${modifier}+i`, "*"], ["*", "*"], ["_", "_"],
+    ["~", "~"], ["`", "`"], ['"', '"'], ["'", "'"],
+  ]) {
+    await replace("selected");
+    await page.keyboard.press(`${modifier}+A`);
+    await page.keyboard.press(key);
+    const space = ["~", '"', "'"].includes(delimiter) ? "" : " ";
+    await waitForSource(`${delimiter}selected${delimiter}${space}`);
+    await page.keyboard.press("Backspace");
+    await waitForSource("selected");
+  }
+  for (const markdown of [
+    "**bold**", "*italic*", "__bold__", "_italic_", "~~strike~~", "`code`",
+    "``a`b``", "[link](https://example.com)", "**bold _nested_**",
+  ]) {
+    await input.click();
+    await page.keyboard.press(`${modifier}+A`);
+    await page.keyboard.press("Backspace");
+    await page.keyboard.type(markdown);
+    await waitForSource(`${markdown} `);
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.type("outside");
+    await waitForSource(`${markdown} outside`);
+    assert.equal(await input.locator("strong, em, s, code, a").evaluateAll(nodes =>
+      nodes.some(node => node.textContent.includes("outside"))), false);
+  }
+  await replace("selected");
+  await page.keyboard.press(`${modifier}+A`);
+  await page.keyboard.press(`${modifier}+b`);
+  await page.keyboard.press(`${modifier}+z`);
+  await waitForSource("selected");
+  await page.keyboard.press(`${modifier}+Shift+z`);
+  await waitForSource("**selected** ");
+  await page.keyboard.press(`${modifier}+A`);
+  await page.keyboard.type("replacement");
+  await waitForSource("replacement");
   for (const marker of ["-", "- "]) {
     await replace("Existing row");
     await page.keyboard.press("Shift+Enter");

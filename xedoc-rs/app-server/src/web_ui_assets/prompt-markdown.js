@@ -189,8 +189,11 @@ window.XedocPromptMarkdown = (() => {
     parent.append(document.createTextNode(text.slice(offset)));
   }
 
-  function render(text) {
+  function render(text, selection = null) {
     const content = document.createElement("div");
+    const cursor = selection?.[0] === selection?.[1] ? selection?.[0] : null;
+    const emptyPairLine = cursor != null && /^(\*\*|__)\1$/.test(text.slice(cursor - 2, cursor + 2))
+      ? text.slice(0, cursor).split("\n").length - 1 : -1;
     const rendered = [];
     let group = null;
     const append = (element) => {
@@ -219,6 +222,11 @@ window.XedocPromptMarkdown = (() => {
     for (const [index, line] of lines.entries()) {
       const element = document.createElement(line.code ? "pre" : line.quote ? "blockquote" : "div");
       element.className = "editor-line";
+      if (!line.code && index === emptyPairLine) {
+        element.append(document.createTextNode(line.text));
+        append(element);
+        continue;
+      }
       if (line.quote) {
         element.classList.add("editor-quote");
         const depth = (line.quote.match(/>/g) || []).length;
@@ -380,43 +388,129 @@ window.XedocPromptMarkdown = (() => {
 
   function bindSelectionWrapping(root, editor, changed) {
     let wrapped = null;
+    let composing = false;
     const clear = () => { wrapped = null; };
-    root.addEventListener("input", clear);
-    root.addEventListener("pointerdown", clear);
-    root.addEventListener("compositionstart", clear);
-    root.addEventListener("keydown", (event) => {
-      if (event.defaultPrevented || event.isComposing || !root.isContentEditable
-          || event.ctrlKey || event.metaKey || event.altKey) {
-        clear();
-        return;
+    const spaced = (text, selection) => {
+      if (!selection) return;
+      const content = render(text);
+      const positions = [];
+      let offset = 0;
+      for (const line of content.querySelectorAll(".editor-line")) {
+        for (const closing of line.querySelectorAll(".syntax-marker:last-child")) {
+          const span = closing.parentElement;
+          if (span === line || span.firstChild === closing
+              || !span.firstChild?.classList?.contains("syntax-marker")) continue;
+          let parent = span.parentElement;
+          while (parent !== line && !(parent.firstChild?.classList?.contains("syntax-marker")
+              && parent.lastChild?.classList?.contains("syntax-marker"))) parent = parent.parentElement;
+          if (parent !== line) continue;
+          const range = document.createRange();
+          range.selectNodeContents(line);
+          range.setEndAfter(span);
+          const end = offset + range.toString().length;
+          const start = end - span.textContent.length;
+          if (Math.max(...selection) < start || Math.min(...selection) > end || /\s/.test(text[end] || "")) continue;
+          positions.push(end);
+        }
+        offset += line.textContent.length + 1;
       }
-      if (["Shift", "Control", "Meta", "Alt"].includes(event.key)) return;
+      if (!positions.length) return;
+      let result = text;
+      for (const end of positions.sort((a, b) => b - a)) {
+        result = `${result.slice(0, end)} ${result.slice(end)}`;
+      }
+      return { text: result, selection: selection.map(value =>
+        value + positions.filter(end => end < value).length) };
+    };
+    const keepSpace = () => {
+      if (composing || !root.isContentEditable || document.activeElement !== root) return;
+      const selection = editor.selection(root);
+      if (!selection || selection[0] !== selection[1]) return;
+      const result = spaced(editor.text(root), selection);
+      if (!result) return;
+      editor.render(result.text, result.selection, root);
+      changed();
+    };
+    const commit = (text, selection) => {
+      const result = spaced(text, selection);
+      editor.render(result?.text ?? text, result?.selection ?? selection, root);
+      changed();
+    };
+    const edit = (key, shortcut = false, insertion = false) => {
       const text = editor.text(root);
       const selection = editor.selection(root);
       const previous = wrapped;
       clear();
-      if (!selection) return;
-      if (event.key === "Backspace" && previous && text === previous.text
+      if (!selection) return false;
+      if (key === "Backspace" && previous && text === previous.text
           && selection.every((offset, index) => offset === previous.selection[index])) {
-        event.preventDefault();
         editor.render(previous.source, previous.originalSelection, root);
         changed();
-      } else if (["Backspace", "Delete"].includes(event.key) && selection[0] !== selection[1]) {
-        event.preventDefault();
-        const start = Math.min(...selection), end = Math.max(...selection);
-        editor.render(text.slice(0, start) + text.slice(end), [start, start], root);
-        changed();
-      } else if (['"', "'", "`"].includes(event.key) && selection[0] !== selection[1]) {
-        event.preventDefault();
-        const start = Math.min(...selection), end = Math.max(...selection);
-        const result = text.slice(0, start) + event.key + text.slice(start, end)
-          + event.key + text.slice(end);
-        const selected = selection[0] < selection[1] ? [start, end + 2] : [end + 2, start];
-        editor.render(result, selected, root);
-        changed();
-        wrapped = { text: editor.text(root), selection: editor.selection(root),
-          source: text, originalSelection: selection };
+        return true;
       }
+      const start = Math.min(...selection), end = Math.max(...selection);
+      if (["Backspace", "Delete"].includes(key) && start !== end) {
+        commit(text.slice(0, start) + text.slice(end), [start, start]);
+        return true;
+      }
+      if (!['"', "'", "`", "*", "_", "~", "**"].includes(key)
+          || start === end && !shortcut) {
+        const caret = window.getSelection();
+        const previous = caret?.focusNode?.nodeType === Node.TEXT_NODE && caret.focusOffset === 0
+          ? caret.focusNode.previousSibling : null;
+        const boundary = previous?.lastChild?.classList?.contains("syntax-marker");
+        if (!insertion || start === end && !boundary) return false;
+        commit(text.slice(0, start) + key + text.slice(end),
+          [start + key.length, start + key.length]);
+        return true;
+      }
+      const space = start === end && !/\s/.test(text[end] || "") ? " " : "";
+      const result = text.slice(0, start) + key + text.slice(start, end) + key + space + text.slice(end);
+      const selected = start === end ? [start + key.length, start + key.length]
+        : selection[0] < selection[1] ? [start, end + key.length * 2] : [end + key.length * 2, start];
+      commit(result, selected);
+      wrapped = { text: editor.text(root), selection: editor.selection(root),
+        source: text, originalSelection: selection };
+      return true;
+    };
+    root.addEventListener("input", (event) => {
+      clear();
+      if (!event.isComposing && !["historyUndo", "historyRedo"].includes(event.inputType)) keepSpace();
+    }, true);
+    root.addEventListener("pointerdown", clear);
+    root.addEventListener("compositionstart", () => { composing = true; clear(); });
+    root.addEventListener("compositionend", () => { composing = false; keepSpace(); }, true);
+    const selectionChanged = () => {
+      const previous = editor.text(root);
+      keepSpace();
+      if (wrapped && previous !== editor.text(root)) clear();
+    };
+    root.addEventListener("focus", () => document.addEventListener("selectionchange", selectionChanged));
+    root.addEventListener("blur", () => {
+      clear();
+      document.removeEventListener("selectionchange", selectionChanged);
+    });
+    root.addEventListener("beforeinput", (event) => {
+      if (event.defaultPrevented || composing || event.isComposing || !root.isContentEditable) return;
+      const key = event.inputType === "deleteContentBackward" ? "Backspace"
+        : event.inputType === "deleteContentForward" ? "Delete"
+        : event.inputType === "insertText" ? event.data : null;
+      if (key && edit(key, false, event.inputType === "insertText")) event.preventDefault();
+    });
+    root.addEventListener("keydown", (event) => {
+      if (event.defaultPrevented || composing || event.isComposing || !root.isContentEditable
+          || event.altKey) {
+        clear();
+        return;
+      }
+      if (["Shift", "Control", "Meta", "Alt"].includes(event.key)) return;
+      const shortcut = (event.ctrlKey || event.metaKey) && !event.shiftKey
+        && ["b", "i"].includes(event.key.toLowerCase());
+      if ((event.ctrlKey || event.metaKey) && !shortcut) {
+        clear();
+        return;
+      }
+      if (edit(shortcut ? event.key.toLowerCase() === "b" ? "**" : "*" : event.key, shortcut)) event.preventDefault();
     });
   }
 

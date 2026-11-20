@@ -397,6 +397,9 @@
             const syntax = node.parentElement?.closest(".syntax-entity, .syntax-marker");
             if (syntax && offset <= node.length) {
               const marker = syntax.closest(".syntax-entity") || syntax;
+              const span = marker.parentNode;
+              if (offset === node.length && span !== line && marker === span.lastChild
+                  && span.nextSibling?.nodeType === Node.TEXT_NODE) return [span.nextSibling, 0];
               const index = Array.prototype.indexOf.call(marker.parentNode.childNodes, marker);
               return [marker.parentNode, index
                 + (offset > 0 || index === 0 && offsets[0] === offsets[1] ? 1 : 0)];
@@ -415,7 +418,7 @@
 
   function renderEditor(text, selection = null, root = input) {
     editorHistories.get(root)?.record(text, selection);
-    const content = window.XedocPromptMarkdown.render(text);
+    const content = window.XedocPromptMarkdown.render(text, selection);
     if (root.innerHTML !== content.innerHTML) root.replaceChildren(...content.childNodes);
     restoreSelection(selection, root);
     if (!editorHistories.has(root)) {
@@ -1315,18 +1318,6 @@
       const selection = window.getSelection();
       selection?.removeAllRanges();
       selection?.addRange(range);
-    } else if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey
-        && ["b", "i"].includes(event.key.toLowerCase())) {
-      event.preventDefault();
-      const text = editorText();
-      const selection = editorSelection() || [text.length, text.length];
-      const start = Math.min(...selection);
-      const end = Math.max(...selection);
-      const delimiter = event.key.toLowerCase() === "b" ? "**" : "*";
-      renderEditor(text.slice(0, start) + delimiter + text.slice(start, end) + delimiter + text.slice(end),
-        [start + delimiter.length, end + delimiter.length]);
-      dirty = true;
-      flushDraft();
     } else if (event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey
         && event.key.toLowerCase() === "c"
         && (!window.getSelection()?.rangeCount || window.getSelection().isCollapsed)) {
@@ -1390,32 +1381,6 @@
       if (!editList("Enter")) insertText("\n");
     }
   });
-  function keepSpaceAfterCodeSpan() {
-    const selection = editorSelection();
-    if (!selection || selection[0] !== selection[1]) return false;
-    const text = editorText();
-    const cursor = selection[0];
-    const lineStart = text.lastIndexOf("\n", cursor - 1) + 1;
-    const lineEndIndex = text.indexOf("\n", cursor);
-    const lineEnd = lineEndIndex === -1 ? text.length : lineEndIndex;
-    const lineIndex = text.slice(0, lineStart).split("\n").length - 1;
-    if (window.XedocPromptMarkdown.lines(text)[lineIndex]?.code) return false;
-    for (const match of text.slice(lineStart, lineEnd).matchAll(/\\[\s\S]|(`+)[^\n]*?\1/g)) {
-      if (!match[1]) continue;
-      const start = lineStart + match.index;
-      const end = start + match[0].length;
-      if (cursor < start + match[1].length || cursor > end) continue;
-      if (text[end] === " ") return false;
-      renderEditor(`${text.slice(0, end)} ${text.slice(end)}`, [cursor, cursor]);
-      return true;
-    }
-    return false;
-  }
-  document.addEventListener("selectionchange", () => {
-    if (composing || document.activeElement !== input || !keepSpaceAfterCodeSpan()) return;
-    dirty = true;
-    flushDraft();
-  });
   input.addEventListener("compositionend", () => {
     composing = false;
     renderEditor(editorText(), editorSelection());
@@ -1441,7 +1406,6 @@
       }
     }
     renderEditor(text, selection);
-    keepSpaceAfterCodeSpan();
     dirty = true;
     flushDraft();
   });

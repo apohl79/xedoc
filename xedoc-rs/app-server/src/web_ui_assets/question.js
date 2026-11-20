@@ -210,18 +210,6 @@ window.XedocQuestion = class {
           }
           return;
         }
-        if ((event.ctrlKey || event.metaKey) && ["b", "i"].includes(event.key.toLowerCase())) {
-          event.preventDefault();
-          const selection = this.editor.selection(this.notes);
-          if (!selection) return;
-          const text = this.editor.text(this.notes);
-          const start = Math.min(...selection), end = Math.max(...selection);
-          const delimiter = event.key.toLowerCase() === "b" ? "**" : "*";
-          this.editor.render(text.slice(0, start) + delimiter + text.slice(start, end)
-            + delimiter + text.slice(end), [start + delimiter.length, end + delimiter.length], this.notes);
-          this.changed();
-          return;
-        }
         if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
           event.preventDefault();
           this.closeSearch();

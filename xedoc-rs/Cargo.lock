@@ -12277,7 +12277,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-cli"
-version = "1.99.3"
+version = "1.99.4"
 dependencies = [
  "anyhow",
  "app_test_support",
@@ -12432,7 +12432,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-core"
-version = "1.99.3"
+version = "1.99.4"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -14335,7 +14335,7 @@ dependencies = [
 
 [[package]]
 name = "xedoc-tui"
-version = "1.99.3"
+version = "1.99.4"
 dependencies = [
  "anyhow",
  "app_test_support",
