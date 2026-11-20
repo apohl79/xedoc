@@ -31,6 +31,16 @@
     viewport.content = "width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no";
     const scrollingStyle = document.createElement("style");
     scrollingStyle.textContent = `
+      :root { font-size: 16px; }
+      .entry-footer, .status-row, .session-tab, .session-heading h2,
+      .history-image figcaption, .image-viewer figcaption,
+      .question-meta, #question h2, .question-description, .question-notes-label,
+      .question-actions button, .attachment figcaption, .attachment-filename,
+      #menu button, .menu-empty, #plugin-composer-menu, #link-target-preview,
+      #link-target-preview.link-actions,
+      #activity, #activity .task-heading, #activity .task-row,
+      #activity .agent-heading, #activity .agent-row, #activity .task-overflow,
+      #live { font-size: 16px; }
       * { touch-action: pan-y !important; overscroll-behavior-x: none !important; }
       html, body, #session, #activity, #live, .session-tabs,
       .history-cell pre, .table-scroll { overflow-x: hidden !important; }
@@ -220,8 +230,10 @@
       #host-view { padding-left: 222px; }
       #host-view.sidebar-hidden { padding-left: 2px !important; }
       #sidebar { left: 2px; }
-      #sidebar, #sidebar h2, #sidebar .sidebar-brand strong { font-size: 16px; }
-      #sidebar #identity, #sidebar #host-name-button { font-size: 14px; }
+      #sidebar h2, #sidebar .sidebar-brand strong { font-size: 16px; }
+      #sidebar #identity, #sidebar #host-name-button,
+      .login-hostname, .host-candidate small, .project-search-empty,
+      .loading-row, .session-state > .resume-session-running { font-size: 16px; }
       #sidebar button.workspace, #sidebar button.project { min-height: 44px; }
       #sidebar .workspace-remove, #sidebar .project-pin {
         width: 34px; height: 44px; opacity: 1; pointer-events: auto;
