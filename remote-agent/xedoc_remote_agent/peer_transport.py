@@ -12,6 +12,7 @@ from typing import Any, Mapping
 
 from .errors import BrokerError
 from .models import Role
+from .peer_connection import connect_peer
 from .peer_identity import CertificateMaterial, HostIdentity, certificate_from_der
 from .peer_protocol import (
     CONTROL_KINDS,
@@ -294,27 +295,18 @@ class PeerClient:
         )
         context = bootstrap_client_tls_context()
         try:
-            with socket.create_connection(
-                (endpoint.host, endpoint.port),
-                timeout=request_timeout,
-            ) as raw_connection:
-                raw_connection.settimeout(request_timeout)
-                with context.wrap_socket(
-                    raw_connection,
-                    server_hostname=endpoint.host,
-                ) as connection:
-                    certificate = certificate_from_der(
-                        connection.getpeercert(binary_form=True)
-                    )
-                    if (
-                        not secrets.compare_digest(certificate.host_id, host_id)
-                        or not secrets.compare_digest(
-                            certificate.fingerprint, fingerprint
-                        )
-                    ):
-                        raise BrokerError.unauthorized()
-                    write_frame(connection, request, self._max_request_bytes)
-                    response = read_frame(connection, self._max_response_bytes)
+            with connect_peer(
+                endpoint,
+                context,
+                host_id=host_id,
+                fingerprint=fingerprint,
+                timeout_seconds=request_timeout,
+            ) as connection:
+                certificate = certificate_from_der(
+                    connection.getpeercert(binary_form=True)
+                )
+                write_frame(connection, request, self._max_request_bytes)
+                response = read_frame(connection, self._max_response_bytes)
         except BrokerError:
             raise
         except (OSError, ssl.SSLError, TimeoutError) as error:
@@ -344,24 +336,15 @@ class PeerClient:
         )
         context = client_tls_context(self._state, peer.certificate)
         try:
-            with socket.create_connection(
-                (peer.endpoint.host, peer.endpoint.port),
-                timeout=request_timeout,
-            ) as raw_connection:
-                raw_connection.settimeout(request_timeout)
-                with context.wrap_socket(
-                    raw_connection,
-                    server_hostname=peer.endpoint.host,
-                ) as connection:
-                    certificate = certificate_from_der(
-                        connection.getpeercert(binary_form=True)
-                    )
-                    if not secrets.compare_digest(
-                        certificate.fingerprint, peer.certificate.fingerprint
-                    ):
-                        raise BrokerError.unauthorized()
-                    write_frame(connection, request, self._max_request_bytes)
-                    response = read_frame(connection, self._max_response_bytes)
+            with connect_peer(
+                peer.endpoint,
+                context,
+                host_id=peer.certificate.host_id,
+                fingerprint=peer.certificate.fingerprint,
+                timeout_seconds=request_timeout,
+            ) as connection:
+                write_frame(connection, request, self._max_request_bytes)
+                response = read_frame(connection, self._max_response_bytes)
         except BrokerError:
             raise
         except (OSError, ssl.SSLError, TimeoutError) as error:

@@ -4,7 +4,7 @@ import secrets
 import threading
 
 from .peer_discovery import DiscoveryCandidate
-from .peer_protocol import PeerTarget
+from .peer_protocol import PeerEndpoint, PeerTarget
 from .peer_state import PeerState, Relationship
 
 
@@ -48,4 +48,24 @@ class PeerRelocation:
             endpoint=record.endpoint,
             certificate=relationship.certificate,
             role=relationship.peer_role,
+        )
+
+    def targets(self, relationship: Relationship) -> tuple[PeerTarget, ...]:
+        """Prefer fresh discovery, then the saved route and a verified DNS name."""
+
+        endpoint = PeerEndpoint.parse(relationship.endpoint)
+        endpoints = [endpoint]
+        hostname = self._state.verified_hostname(relationship.peer_host_id)
+        if hostname is not None:
+            endpoints.append(PeerEndpoint(host=hostname, port=endpoint.port))
+        hint = self.take(relationship)
+        if hint is not None:
+            endpoints.insert(0, hint.endpoint)
+        return tuple(
+            PeerTarget(
+                endpoint=destination,
+                certificate=relationship.certificate,
+                role=relationship.peer_role,
+            )
+            for destination in dict.fromkeys(endpoints)
         )

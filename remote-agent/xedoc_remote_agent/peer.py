@@ -372,7 +372,11 @@ class PeerService:
 
     def _cached_hostname(self, host_id: str) -> str | None:
         candidate = self._candidates.get(host_id)
-        return candidate.hostname if candidate is not None else None
+        return (
+            candidate.hostname
+            if candidate is not None
+            else self.state.verified_hostname(host_id)
+        )
 
     def _on_announce(self, record: DiscoveryCandidate) -> None:
         """Fold one unauthenticated announcement into the presence cache.
@@ -482,14 +486,12 @@ class PeerService:
             target: tuple[Relationship | None, StaticPeer],
         ) -> tuple[Relationship | None, DiscoveredPeer | None]:
             relationship, peer = target
-            hint = (
-                self._relocation.take(relationship)
+            destinations = (
+                self._relocation.targets(relationship)
                 if relationship is not None
-                else None
+                else (peer,)
             )
-            for destination in (hint, peer):
-                if destination is None:
-                    continue
+            for destination in destinations:
                 try:
                     response = self._client.operation(
                         destination,
@@ -512,9 +514,9 @@ class PeerService:
                     continue
                 if (
                     relationship is not None
-                    and candidate.endpoint != relationship.endpoint
+                    and relationship.status in {"paired", "suspended"}
                     and not self.state.refresh_endpoint(
-                        relationship, candidate.endpoint
+                        relationship, candidate.endpoint, hostname=candidate.hostname
                     )
                 ):
                     continue

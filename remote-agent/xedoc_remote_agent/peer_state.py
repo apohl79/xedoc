@@ -512,8 +512,25 @@ class PeerState:
             ).fetchall()
         return tuple(_relationship_from_row(row) for row in rows)
 
-    def refresh_endpoint(self, verified: Relationship, endpoint: str) -> bool:
-        """Update an authenticated address without changing trust or grants.
+    def verified_hostname(self, peer_host_id: str) -> str | None:
+        """Return a describe-verified name bound to the current pairing."""
+
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT h.hostname FROM peer_hostnames h
+                JOIN relationships r ON r.peer_host_id = h.peer_host_id
+                  AND r.fingerprint = h.fingerprint AND r.paired_at IS h.paired_at
+                WHERE r.peer_host_id = ?
+                """,
+                (peer_host_id,),
+            ).fetchone()
+        return row[0] if row is not None else None
+
+    def refresh_endpoint(
+        self, verified: Relationship, endpoint: str, *, hostname: str
+    ) -> bool:
+        """Save authenticated address/name hints without changing trust or grants.
 
         Compare the probed relationship so a concurrent revoke, removal, or
         re-pair cannot be undone by an in-flight network refresh.
@@ -522,15 +539,24 @@ class PeerState:
         _validate_relationship_input(
             verified.peer_host_id, verified.peer_role, verified.certificate, endpoint
         )
+        if (
+            not isinstance(hostname, str)
+            or not hostname
+            or len(hostname.encode("utf-8")) > 255
+            or any(character.isspace() or ord(character) < 33 for character in hostname)
+        ):
+            raise BrokerError.invalid_request()
         with self._lock, self._transaction() as connection:
             cursor = connection.execute(
                 """
-                UPDATE relationships SET endpoint = ?, updated_at = ?
+                UPDATE relationships SET endpoint = ?,
+                  updated_at = CASE WHEN endpoint = ? THEN updated_at ELSE ? END
                 WHERE peer_host_id = ? AND fingerprint = ? AND endpoint = ?
                   AND status = ? AND status IN ('paired', 'suspended')
                   AND paired_at IS ?
                 """,
                 (
+                    endpoint,
                     endpoint,
                     _now(),
                     verified.peer_host_id,
@@ -540,7 +566,25 @@ class PeerState:
                     verified.paired_at,
                 ),
             )
-            return cursor.rowcount == 1
+            if cursor.rowcount != 1:
+                return False
+            connection.execute(
+                """
+                INSERT INTO peer_hostnames (peer_host_id, fingerprint, paired_at, hostname)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(peer_host_id) DO UPDATE SET
+                    fingerprint = excluded.fingerprint,
+                    paired_at = excluded.paired_at,
+                    hostname = excluded.hostname
+                """,
+                (
+                    verified.peer_host_id,
+                    verified.certificate.fingerprint,
+                    verified.paired_at,
+                    hostname,
+                ),
+            )
+            return True
 
     def trusted_certificates(self) -> tuple[CertificateMaterial, ...]:
         """Return non-revoked persisted certificates for listener trust roots."""
@@ -1240,6 +1284,13 @@ class PeerState:
                         direction TEXT NOT NULL,
                         pairing_id TEXT NOT NULL,
                         expires_at INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS peer_hostnames (
+                        peer_host_id TEXT PRIMARY KEY
+                            REFERENCES relationships(peer_host_id) ON DELETE CASCADE,
+                        fingerprint TEXT NOT NULL,
+                        paired_at INTEGER,
+                        hostname TEXT NOT NULL
                     );
                     CREATE TABLE IF NOT EXISTS managed_enrollment_codes (
                         code_hash TEXT PRIMARY KEY,
