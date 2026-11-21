@@ -280,7 +280,7 @@ restart_model_router_daemon() {
   fi
 
   step "Gracefully restarting model-router semantic runtime"
-  if "$python" "$embedder" "$runtime_dir" --stop-daemon "$state_path"; then
+  if "$python" -B "$embedder" "$runtime_dir" --stop-daemon "$state_path"; then
     step "Model-router semantic runtime stopped"
   else
     printf 'WARNING: Could not stop the running model-router semantic runtime. Leaving it unchanged.\n' >&2
@@ -1114,7 +1114,7 @@ warm_router_runtime() {
 
   [ -x "$python" ] && [ -f "$embedder" ] || return
   step "Starting model-router semantic runtime"
-  if ! "$python" "$embedder" "$runtime_dir" \
+  if ! "$python" -B "$embedder" "$runtime_dir" \
     --start-daemon "$state_path"; then
     printf 'WARNING: Model-router semantic runtime did not start. Router diagnostics will report the failure.\n' >&2
   fi

@@ -393,7 +393,7 @@ function Restart-ModelRouterDaemon([string]$ReleaseDir) {
         return
     }
     Step "Gracefully restarting model-router semantic runtime"
-    & $embedder.Python $embedder.Embedder $embedder.RuntimeDir --stop-daemon $statePath
+    & $embedder.Python -B $embedder.Embedder $embedder.RuntimeDir --stop-daemon $statePath
     if ($LASTEXITCODE -eq 0) {
         Step "Model-router semantic runtime stopped"
     } else {
@@ -427,7 +427,7 @@ function Start-RouterRuntime([string]$ReleaseDir) {
     $embedder = Get-EmbedderState $ReleaseDir
     if (-not (Test-Path -LiteralPath $embedder.Python -PathType Leaf) -or -not (Test-Path -LiteralPath $embedder.Embedder -PathType Leaf)) { return }
     Step "Starting model-router semantic runtime"
-    & $embedder.Python $embedder.Embedder $embedder.RuntimeDir --start-daemon $embedder.StatePath
+    & $embedder.Python -B $embedder.Embedder $embedder.RuntimeDir --start-daemon $embedder.StatePath
     if ($LASTEXITCODE -ne 0) {
         Warn "Model-router semantic runtime did not start. Router diagnostics will report the failure."
     }
@@ -614,23 +614,6 @@ function Initialize-RemoteAgent {
     }
 }
 
-function Initialize-HostBridge {
-    $command = Get-RemoteAgentCommand
-    if (-not $command) { return }
-    $help = (Invoke-Native $command @("device-pairing", "--help")).Output
-    if ($help -notmatch 'setup') { return }
-    if (-not (Test-Path -LiteralPath (Join-Path $XedocHome "bridge\host-gui\server.json"))) {
-        if (-not (Read-YesNo "Configure a sendnix bridge for this host behind NAT (requires its transport certificate and key)?")) { return }
-    }
-    Step "Setting up the host bridge connector and verifying its public route"
-    & $command device-pairing setup --xedoc-home $XedocHome
-    if ($LASTEXITCODE -eq 0) {
-        Step "Host bridge connector is ready"
-    } else {
-        Warn "Bridge setup is incomplete. Direct host login is unchanged. Provision this host's transport credentials, then run:`n  `"$command`" device-pairing setup --xedoc-home `"$XedocHome`""
-    }
-}
-
 function Install-DesktopApp([string]$Tag) {
     if ($LocalZipPath -or $IsExperimental -or $Tag -match '-(alpha|beta)') { return }
     if (-not (Read-YesNo "Install or update the Xedoc desktop app?")) {
@@ -779,7 +762,7 @@ try {
 
     Initialize-HostPush
     Initialize-RemoteAgent
-    Initialize-HostBridge
+    Step "Skipping NAT bridge connector setup: automatic setup supports macOS and Linux only. Direct host login is unchanged."
 
     if (-not $IsExperimental) { Write-AutostartSummary }
     Write-Host "Xedoc CLI $releaseVersion installed successfully."

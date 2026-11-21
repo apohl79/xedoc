@@ -249,7 +249,14 @@ def start_daemon(runtime_dir: Path, state_path: Path) -> int:
         except (OSError, ValueError, KeyError, json.JSONDecodeError):
             pass
     state_path.unlink(missing_ok=True)
-    command = [sys.executable, __file__, str(runtime_dir), "--daemon", str(state_path)]
+    command = [
+        sys.executable,
+        "-B",
+        __file__,
+        str(runtime_dir),
+        "--daemon",
+        str(state_path),
+    ]
     kwargs = {
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.DEVNULL,
