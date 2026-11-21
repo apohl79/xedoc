@@ -133,6 +133,7 @@ a { color: #8fc4e7; }
   border-top: 1px solid currentColor;
 }
 .history-turn-summary:empty::after { display: none; }
+.history-edit-summary > div + div { font-family: var(--mono); }
 .history-edit-summary > div { padding-left: 2ch; text-indent: -2ch; margin-left: -2ch; }
 .history-user-slice { padding: 14px 8px; background: var(--bg-history); border-radius: 6px; }
 .history-slice { padding: 0 8px; }
@@ -245,6 +246,7 @@ a { color: #8fc4e7; }
 #settings { display: flex; margin-left: auto; min-width: 0; gap: 2px; }
 #settings button { padding: 4px 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 35vw; }
 #router, #routerTable { display: inline-flex; align-items: center; gap: 5px; color: #9dbda7; }
+#router .router-mode, #routerTable .router-table { font-family: var(--sans); }
 #routerTable[hidden] { display: none; }
 .router-icon { width: 1em; height: 1em; flex: none; }
 .router-mode, .router-table { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
