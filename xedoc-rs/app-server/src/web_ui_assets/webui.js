@@ -1016,11 +1016,10 @@
         range.setEnd(endNode, endOffset);
         return range.cloneContents();
       };
-      const statusLine = activityLines.find((line) =>
-        /^\s*[•◦]?\s*(?:Working|Compacting)\b/.test(line.textContent));
-      if (statusLine) {
+      const statusPattern = /^\s*[•◦]?\s*(Working|Compacting|Routing|Running (?:\d+ )?[A-Za-z]+ hooks?)\b/;
+      for (const statusLine of activityLines.filter((line) => statusPattern.test(line.textContent))) {
         const text = statusLine.textContent;
-        const statusMatch = /^\s*[•◦]?\s*(Working|Compacting)\b/.exec(text);
+        const statusMatch = statusPattern.exec(text);
         const statusStart = text.indexOf(statusMatch[1]);
         const statusEnd = statusStart + statusMatch[1].length;
         const statusWalker = document.createTreeWalker(statusLine, NodeFilter.SHOW_TEXT);
@@ -1042,7 +1041,7 @@
           shimmerSpan.className = "activity-shimmer-char";
           shimmerSpan.style.setProperty(
             "--activity-shimmer-delay",
-            `${activityAnimationOrigin - performance.now() - index * 120}ms`,
+            `${activityAnimationOrigin - performance.now() + index * 120 - 1600}ms`,
           );
           const range = document.createRange();
           range.setStart(node, offset);

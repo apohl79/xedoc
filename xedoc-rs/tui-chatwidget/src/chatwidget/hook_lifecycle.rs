@@ -14,6 +14,9 @@ impl ChatWidget {
     }
 
     pub(super) fn on_hook_started(&mut self, run: xedoc_app_server_protocol::HookRunSummary) {
+        if !self.config.show_hook_output {
+            return;
+        }
         self.flush_answer_stream_with_separator();
         self.flush_completed_hook_output();
         match self.active_hook_cell.as_mut() {
@@ -37,6 +40,9 @@ impl ChatWidget {
         &mut self,
         completed: xedoc_app_server_protocol::HookRunSummary,
     ) {
+        if !self.config.show_hook_output {
+            return;
+        }
         let completed_existing_run = self
             .active_hook_cell
             .as_mut()

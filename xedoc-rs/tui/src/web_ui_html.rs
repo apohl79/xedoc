@@ -1,5 +1,7 @@
 //! Browser-flowing transcript content and escaped terminal overlays.
 
+mod info;
+
 use std::fmt::Write;
 
 use ratatui::buffer::Buffer;
@@ -10,6 +12,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::history_cell::AgentMarkdownCell;
 use crate::history_cell::AgentMessageCell;
+use crate::history_cell::DeprecationNoticeCell;
 use crate::history_cell::FinalMessageSeparator;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::HookCell;
@@ -18,9 +21,11 @@ use crate::history_cell::ModelRouterHistoryCell;
 use crate::history_cell::PlainHistoryCell;
 use crate::history_cell::PrefixedWrappedHistoryCell;
 use crate::history_cell::ProposedPlanCell;
+use crate::history_cell::SafetyAccessBlockCell;
 use crate::history_cell::ToolCallCountSummaryCell;
 use crate::history_cell::ToolCallSummaryCell;
 use crate::history_cell::UserHistoryCell;
+use crate::history_cell::WebHyperlinkHistoryCell;
 use xedoc_tui_transcript::exec_cell::ExecCell;
 
 const HISTORY_LINES_PER_PAGE: usize = 240;
@@ -181,11 +186,16 @@ pub(crate) fn history_cell_html(
             let lines = cell.display_lines(u16::MAX);
             let (class, lines) = if cell.as_any().is::<AgentMessageCell>() {
                 ("history-agent", lines)
-            } else if cell.as_any().is::<PrefixedWrappedHistoryCell>() {
+            } else if cell.as_any().is::<PrefixedWrappedHistoryCell>()
+                || cell.as_any().is::<DeprecationNoticeCell>()
+                || cell.as_any().is::<SafetyAccessBlockCell>()
+            {
                 ("history-notice", lines)
             } else if cell.as_any().is::<HookCell>() {
                 ("history-hook", lines)
-            } else if cell.as_any().is::<PlainHistoryCell>() {
+            } else if cell.as_any().is::<PlainHistoryCell>()
+                || cell.as_any().is::<WebHyperlinkHistoryCell>()
+            {
                 ("history-prose", lines)
             } else if cell.as_any().is::<ModelRouterHistoryCell>() {
                 ("history-router", lines)
@@ -362,6 +372,17 @@ pub(crate) fn stream_page_html(kind: StreamHtmlKind, source: &str, first_page: b
 }
 
 fn styled_lines_html(class: &str, lines: &[ratatui::text::Line<'static>]) -> String {
+    if matches!(
+        class,
+        "history-agent"
+            | "history-notice"
+            | "history-hook"
+            | "history-prose"
+            | "history-router"
+            | "history-edit-summary"
+    ) {
+        return info::styled_info_lines_html(class, lines);
+    }
     let mut html = format!("<div class=\"{class} history-lines\">");
     let command_cell = class
         .split_ascii_whitespace()
