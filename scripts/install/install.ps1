@@ -228,6 +228,18 @@ function Test-ReparsePoint([string]$Path) {
     return $item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)
 }
 
+# Windows PowerShell's .NET filesystem APIs still enforce MAX_PATH. Access deep
+# package trees through a short junction without changing their installed location.
+function Invoke-WithDirectoryAlias([string]$Path, [scriptblock]$Action) {
+    $aliasPath = Join-Path ([IO.Path]::GetTempPath()) ("xr-" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Junction -Path $aliasPath -Target ([IO.Path]::GetFullPath($Path)) | Out-Null
+    try {
+        & $Action $aliasPath
+    } finally {
+        [IO.Directory]::Delete($aliasPath)
+    }
+}
+
 # Deletes a file, junction, or directory tree without following junctions into their targets.
 function Remove-PathSafely([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) {
@@ -240,12 +252,21 @@ function Remove-PathSafely([string]$Path) {
         return
     }
     if (-not $item.PSIsContainer) { [IO.File]::Delete($Path); return }
-    foreach ($child in Get-ChildItem -LiteralPath $Path -Force) {
-        if (-not ($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -and -not $child.PSIsContainer) {
-            $child.Attributes = $child.Attributes -band -bnot [IO.FileAttributes]::ReadOnly
+    $removeContents = {
+        param([string]$Directory)
+        foreach ($child in Get-ChildItem -LiteralPath $Directory -Force) {
+            if ($child.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                if ($child.PSIsContainer) { [IO.Directory]::Delete($child.FullName) } else { [IO.File]::Delete($child.FullName) }
+            } elseif ($child.PSIsContainer) {
+                & $removeContents $child.FullName
+                [IO.Directory]::Delete($child.FullName)
+            } else {
+                $child.Attributes = $child.Attributes -band -bnot [IO.FileAttributes]::ReadOnly
+                [IO.File]::Delete($child.FullName)
+            }
         }
-        Remove-PathSafely $child.FullName
     }
+    Invoke-WithDirectoryAlias $Path $removeContents
     [IO.Directory]::Delete($Path)
 }
 
@@ -272,7 +293,16 @@ function Install-ZipRelease([string]$ReleaseDir, [string]$ArchivePath) {
     $stage = Join-Path $ReleasesDir ".staging.$(Split-Path -Leaf $ReleaseDir).$PID"
     New-Item -ItemType Directory -Force -Path $ReleasesDir | Out-Null
     Remove-PathSafely $stage
-    [IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $stage)
+    New-Item -ItemType Directory -Path $stage | Out-Null
+    try {
+        Invoke-WithDirectoryAlias $stage {
+            param([string]$Directory)
+            [IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $Directory)
+        }
+    } catch {
+        Remove-PathSafely $stage
+        throw
+    }
     foreach ($relative in @("bin\xedoc.exe", "xedoc-path\rg.exe")) {
         if (-not (Test-Path -LiteralPath (Join-Path $stage $relative) -PathType Leaf)) {
             Remove-PathSafely $stage
@@ -310,19 +340,22 @@ function Test-RuntimeComplete([string]$RuntimeDir, [string]$ExpectedTarget, [str
     if (-not $manifest -or $manifest.target -cne $ExpectedTarget -or $manifest.runtimeId -cne $ExpectedRuntimeId -or -not $manifest.files) {
         return $false
     }
-    $fileCount = 0
-    foreach ($file in $manifest.files.PSObject.Properties) {
-        $relative = $file.Name
-        if ($relative -match '(^|/)__pycache__(/|$)' -or $relative -match '\.pyc$') { continue }
-        if (-not $relative -or -not $file.Value -or $relative.StartsWith("/") -or "/$relative/".Contains("/../") -or $relative.Contains("\")) {
-            return $false
+    return Invoke-WithDirectoryAlias $RuntimeDir {
+        param([string]$Directory)
+        $fileCount = 0
+        foreach ($file in $manifest.files.PSObject.Properties) {
+            $relative = $file.Name
+            if ($relative -match '(^|/)__pycache__(/|$)' -or $relative -match '\.pyc$') { continue }
+            if (-not $relative -or -not $file.Value -or $relative.StartsWith("/") -or "/$relative/".Contains("/../") -or $relative.Contains("\")) {
+                return $false
+            }
+            $path = Join-Path $Directory ($relative -replace '/', '\')
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+            if ((Get-Sha256 $path) -ne $file.Value) { return $false }
+            $fileCount++
         }
-        $path = Join-Path $RuntimeDir ($relative -replace '/', '\')
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
-        if ((Get-Sha256 $path) -ne $file.Value) { return $false }
-        $fileCount++
+        return $fileCount -gt 0
     }
-    return $fileCount -gt 0
 }
 
 function Assert-RuntimeMetadata($Runtime, [string]$RuntimeTarget) {
@@ -409,7 +442,16 @@ function Install-RouterRuntime([string]$ReleaseDir, [string]$RuntimeTarget, [str
     } else {
         $stage = Join-Path $ModelRouterRuntimeRoot "$RuntimeTarget\.$RuntimeId.$PID.staging"
         Remove-PathSafely $stage
-        [IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $stage)
+        New-Item -ItemType Directory -Force -Path $stage | Out-Null
+        try {
+            Invoke-WithDirectoryAlias $stage {
+                param([string]$Directory)
+                [IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $Directory)
+            }
+        } catch {
+            Remove-PathSafely $stage
+            throw
+        }
         if (-not (Test-RuntimeComplete $stage $RuntimeTarget $RuntimeId)) {
             Remove-PathSafely $stage
             Die "Model-router runtime archive is incomplete, invalid, or targets another platform."
