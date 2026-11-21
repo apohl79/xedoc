@@ -244,6 +244,32 @@ window.XedocHostTerminals = class {
     entry.fit = new window.FitAddon.FitAddon();
     entry.term.loadAddon(entry.fit);
     entry.term.open(entry.frame);
+    entry.term.attachCustomKeyEventHandler((event) => {
+      if (!event.isTrusted && event.type === "keydown" && event.altKey) {
+        const macOptionIsMeta = entry.term.options.macOptionIsMeta;
+        entry.term.options.macOptionIsMeta = true;
+        queueMicrotask(() => { entry.term.options.macOptionIsMeta = macOptionIsMeta; });
+      }
+      if (event.isTrusted || event.type !== "keydown" || !event.metaKey
+          || event.ctrlKey || event.altKey || event.shiftKey) return true;
+      switch (event.key.toLowerCase()) {
+        case "a":
+          entry.term.selectAll();
+          return false;
+        case "c":
+          if (entry.term.hasSelection()) {
+            void navigator.clipboard?.writeText(entry.term.getSelection()).catch(() => {});
+          }
+          return false;
+        case "v":
+          void navigator.clipboard?.readText().then((text) => {
+            if (entry.frame?.isConnected && !entry.frame.hidden) entry.term.paste(text);
+          }).catch(() => {});
+          return false;
+        default:
+          return true;
+      }
+    });
     entry.term.onData((data) => this.send(entry, this.encoder.encode(data)));
     entry.term.onBinary((data) => {
       this.send(entry, Uint8Array.from(data, (character) => character.charCodeAt(0)));
