@@ -32,8 +32,7 @@ const MESSAGES_ENDPOINT: &str = "messages";
 const REQUEST_ID_HEADER: &str = "request-id";
 const X_REQUEST_ID_HEADER: &str = "x-request-id";
 const THINKING_BINDING_BETA: &str = "thinking-binding-controls-2026-08-01";
-const CLAUDE_CODE_SYSTEM_PREFIX: &str =
-    "You are Claude Code, Anthropic's official CLI for Claude.";
+const CLAUDE_CODE_SYSTEM_PREFIX: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
 const RESPONSE_STREAM_CHANNEL_CAPACITY: usize = 1600;
 
 pub struct AnthropicClient<T: HttpTransport> {
