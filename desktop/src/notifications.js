@@ -3,6 +3,7 @@
 // Port of DesktopNotifications.swift: input-needed and turn-finished alerts that open their session.
 const { Notification } = require("electron");
 const { validatedHostURL } = require("./urls");
+const { displayHostName } = require("./ui/host-display-name");
 
 function sessionRoute(info) {
   const host = validatedHostURL(info?.host);
@@ -29,7 +30,7 @@ function receive(event, host, username) {
   if (!route || !Notification.isSupported()) return;
   const identifier = `${host}:${username}:${route.threadId}:${kind}`;
   delivered.get(identifier)?.close();
-  const hostname = new URL(host).hostname;
+  const hostname = displayHostName(new URL(host).hostname);
   const notification = new Notification({
     title: kind === "inputNeeded" ? "Xedoc needs your input" : "Xedoc turn finished",
     body: `${hostname} · ${route.projectName.slice(0, 120)}`,

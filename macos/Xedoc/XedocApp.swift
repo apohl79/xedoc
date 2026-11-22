@@ -84,7 +84,7 @@ final class DesktopAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             return
         }
         let connection = HostConnection(url: url)
-        let window = makeWindow(title: url.host ?? "Xedoc", size: NSSize(width: 1200, height: 800))
+        let window = makeWindow(title: DiscoveredHost.displayName(for: url.host ?? "Xedoc"), size: NSSize(width: 1200, height: 800))
         if let port = url.port { window.title += ":\(port)" }
         window.minSize = NSSize(width: 720, height: 480)
         window.setFrameAutosaveName(isLocalHost ? "LocalHost" : "Host:\(key)")

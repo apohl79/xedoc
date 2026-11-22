@@ -15,6 +15,13 @@ struct DiscoveredHost: Identifiable {
     var route: HostRoute = .direct
     var id: String { url.absoluteString }
 
+    var displayName: String { Self.displayName(for: hostname) }
+
+    static func displayName(for hostname: String) -> String {
+        hostname.replacingOccurrences(
+            of: "^([^.]+)-[0-9]+(?=\\.|$)", with: "$1", options: .regularExpression)
+    }
+
     static func validatedURL(_ origin: String) -> URL? {
         guard origin.count <= 512,
               origin.unicodeScalars.allSatisfy({ (33...126).contains($0.value) }),

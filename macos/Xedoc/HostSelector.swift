@@ -170,7 +170,7 @@ struct HostSelector: View {
                     .background(HostSelectorPalette.iconBackground, in: RoundedRectangle(cornerRadius: 6))
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(host.hostname)
+                    Text(host.displayName)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(HostSelectorPalette.primary)
                         .lineLimit(1)

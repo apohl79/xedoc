@@ -13,7 +13,7 @@ let discovery = { hosts: [], scanning: true, status: "Searching local network…
 
 function hostRow(host) {
   const row = $("host-row").content.firstElementChild.cloneNode(true);
-  row.querySelector(".name").textContent = host.hostname;
+  row.querySelector(".name").textContent = displayHostName(host.hostname);
   row.querySelector(".url").textContent = host.url;
   row.querySelector(".route").textContent = host.route === "bridge" ? "Bridge" : "Direct";
   row.addEventListener("click", () => api.invoke("select", host.url));

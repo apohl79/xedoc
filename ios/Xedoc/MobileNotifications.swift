@@ -33,7 +33,7 @@ final class MobileNotifications: NSObject, UNUserNotificationCenterDelegate {
         let content = UNMutableNotificationContent()
         content.title = kind == "inputNeeded" ? "Xedoc needs your input" : "Xedoc turn finished"
         content.body = String(project.prefix(120))
-        content.subtitle = host.host ?? "Xedoc"
+        content.subtitle = DiscoveredHost.displayName(for: host.host ?? "Xedoc")
         content.sound = .default
         content.userInfo = PushSubscription.shared.notificationInfo
         let identifier = "\(host.absoluteString):\(thread):\(kind)"

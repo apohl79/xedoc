@@ -1,6 +1,7 @@
 "use strict";
 (() => {
   const byId = (id) => document.getElementById(id);
+  const displayHostName = (hostname) => hostname.replace(/^([^.]+)-[0-9]+(?=\.|$)/, "$1");
   document.querySelector('#login a[href="/trust"]').hidden = location.protocol !== "https:";
   let state = null;
   let selectedWorkspace = null;
@@ -389,7 +390,7 @@
       if (!response.ok) return;
       const result = await response.json();
       if (typeof result.hostname !== "string" || !result.hostname.trim()) return;
-      const hostname = result.hostname.trim();
+      const hostname = displayHostName(result.hostname.trim());
       byId("login-hostname").textContent = `Host: ${hostname}`;
       byId("login-hostname").hidden = false;
       if (!state) document.title = `Xedoc - ${hostname}`;
@@ -428,7 +429,7 @@
         link.href = url.href;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
-        link.append(text("strong", host.hostname), text("small", url.host));
+        link.append(text("strong", displayHostName(host.hostname)), text("small", url.host));
         link.addEventListener("click", () => dialog.close());
         links.push(link);
       }
@@ -556,12 +557,13 @@
       selectedProject = restoredView.projectName;
       activeThread = restoredView.threadId;
     }
-    document.title = `Xedoc - ${state.hostname || "Host"}`;
-    byId("login-hostname").textContent = `Host: ${state.hostname || "Host"}`;
+    const hostname = displayHostName(state.hostname || "Host");
+    document.title = `Xedoc - ${hostname}`;
+    byId("login-hostname").textContent = `Host: ${hostname}`;
     byId("login-hostname").hidden = false;
-    byId("host-name-button").textContent = state.hostname || "Host";
-    byId("host-name-button").title = `Discover Xedoc hosts from ${state.hostname || "Host"}`;
-    byId("host-name-button").setAttribute("aria-label", `Discover Xedoc hosts from ${state.hostname || "Host"}`);
+    byId("host-name-button").textContent = hostname;
+    byId("host-name-button").title = `Discover Xedoc hosts from ${hostname}`;
+    byId("host-name-button").setAttribute("aria-label", `Discover Xedoc hosts from ${hostname}`);
     byId("host-name-button").hidden = false;
     activity.setAccount(state.account.username);
     byId("login-view").hidden = true;

@@ -65,7 +65,7 @@ final class HostConnection: NSObject, ObservableObject, WKNavigationDelegate, WK
         if isLocalHost, let local = HostSelector.localAccess() {
             url = local.url.appendingPathComponent("")
             localAccessToken = local.token
-            window?.title = url.host.map { "\($0):\(url.port ?? 80)" } ?? "Xedoc"
+            window?.title = url.host.map { "\(DiscoveredHost.displayName(for: $0)):\(url.port ?? 80)" } ?? "Xedoc"
         }
         let controller = webView.configuration.userContentController
         controller.removeAllUserScripts()

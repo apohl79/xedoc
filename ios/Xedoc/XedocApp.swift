@@ -61,7 +61,7 @@ private struct HostSelector: View {
                         HStack {
                             Image(systemName: "desktopcomputer")
                             VStack(alignment: .leading) {
-                                Text(host.hostname).foregroundStyle(.primary)
+                                Text(host.displayName).foregroundStyle(.primary)
                                 Text(host.url.absoluteString).font(.caption).foregroundStyle(.secondary)
                                 Text(host.route.label).font(.caption).foregroundStyle(.secondary)
                             }

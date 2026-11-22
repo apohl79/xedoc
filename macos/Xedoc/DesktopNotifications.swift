@@ -56,7 +56,7 @@ final class DesktopNotifications: NSObject, UNUserNotificationCenterDelegate {
         else { return }
         let content = UNMutableNotificationContent()
         content.title = kind == "inputNeeded" ? "Xedoc needs your input" : "Xedoc turn finished"
-        content.subtitle = host.host ?? "Xedoc"
+        content.subtitle = DiscoveredHost.displayName(for: host.host ?? "Xedoc")
         content.body = String(route.projectName.prefix(120))
         content.sound = .default
         content.userInfo = route.info

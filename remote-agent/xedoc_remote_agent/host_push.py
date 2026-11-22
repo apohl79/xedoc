@@ -227,10 +227,13 @@ class HostPush:
             if entry is None:
                 continue
             workspace_id, session = entry
+            display_hostname = re.sub(
+                r"^([^.]+)-[0-9]+(?=\.|$)", r"\1", self.hostname
+            )
             payload = {
                 "aps": {
                     "alert": {
-                        "title": f"Xedoc · {self.hostname[:128]}",
+                        "title": f"Xedoc · {display_hostname[:128]}",
                         "body": f"{session['projectName'][:128]} — "
                         + (
                             "Input needed" if kind == "inputNeeded" else "Turn finished"

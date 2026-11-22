@@ -11,6 +11,7 @@ const { localAccess, readLocalHost } = require("./local-host");
 const { registerUI, uiWebPreferences, uiPage, autosaveBounds } = require("./ui-bridge");
 const { WebsitePanel, describeLoadError } = require("./website-panel");
 const { validatedHostURL, validatedWebsiteURL, sameOrigin } = require("./urls");
+const { displayHostName } = require("./ui/host-display-name");
 
 const background = "#12171c";
 const configuredSessions = new WeakSet();
@@ -469,7 +470,8 @@ class HostConnection {
 
 function windowTitle(url) {
   const parsed = new URL(url);
-  return parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname || "Xedoc";
+  const hostname = displayHostName(parsed.hostname);
+  return parsed.port ? `${hostname}:${parsed.port}` : hostname || "Xedoc";
 }
 
 module.exports = { HostConnection, isLocalHostURL, partitionFor };
