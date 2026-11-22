@@ -32,6 +32,8 @@ const MESSAGES_ENDPOINT: &str = "messages";
 const REQUEST_ID_HEADER: &str = "request-id";
 const X_REQUEST_ID_HEADER: &str = "x-request-id";
 const THINKING_BINDING_BETA: &str = "thinking-binding-controls-2026-08-01";
+const CLAUDE_CODE_SYSTEM_PREFIX: &str =
+    "You are Claude Code, Anthropic's official CLI for Claude.";
 const RESPONSE_STREAM_CHANNEL_CAPACITY: usize = 1600;
 
 pub struct AnthropicClient<T: HttpTransport> {
@@ -69,6 +71,17 @@ impl<T: HttpTransport> AnthropicClient<T> {
     ) -> Result<ResponseStream, ApiError> {
         let translated = translate_request(&request)
             .map_err(|error| ApiError::Stream(format!("failed to translate request: {error}")))?;
+        let mut translated = translated;
+        // Subscription OAuth tokens are only accepted (otherwise: 429) when the
+        // system prompt starts with the Claude Code identity block.
+        if self.auth.recovery_identity().is_some() {
+            translated.system.insert(
+                0,
+                crate::types::AnthropicSystemBlock::Text {
+                    text: CLAUDE_CODE_SYSTEM_PREFIX.to_string(),
+                },
+            );
+        }
         let mut translated_json = serde_json::to_value(&translated)
             .map_err(|error| ApiError::Stream(format!("failed to encode request: {error}")))?;
         let selection = select_ttl(request.prompt_cache_key.as_deref());
