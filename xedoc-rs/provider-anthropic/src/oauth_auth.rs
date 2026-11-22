@@ -19,6 +19,7 @@ use crate::oauth_refresh::AnthropicRefreshOutcome;
 use crate::oauth_refresh::refresh_anthropic_oauth_account;
 
 const ANTHROPIC_OAUTH_BETA: &str = "oauth-2025-04-20";
+const CLAUDE_CODE_BETA: &str = "claude-code-20250219";
 
 pub struct AnthropicOAuthAuthProvider {
     account_path: PathBuf,
@@ -64,7 +65,12 @@ impl AuthProvider for AnthropicOAuthAuthProvider {
         if let Ok(value) = HeaderValue::from_str(&format!("Bearer {}", credential.access_token)) {
             let _ = headers.insert(http::header::AUTHORIZATION, value);
         }
+        merge_beta_header(headers, CLAUDE_CODE_BETA);
         merge_beta_header(headers, ANTHROPIC_OAUTH_BETA);
+        let _ = headers.insert(
+            http::header::USER_AGENT,
+            HeaderValue::from_static("claude-cli/2.1.0 (external, cli)"),
+        );
         let _ = headers.insert(
             "anthropic-dangerous-direct-browser-access",
             HeaderValue::from_static("true"),
