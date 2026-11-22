@@ -161,3 +161,12 @@ api.invoke("refresh").then((value) => {
   localHost = value;
   render();
 });
+let localHostPolls = 0;
+const localHostPoll = setInterval(async () => {
+  if (localHost || ++localHostPolls > 30) {
+    clearInterval(localHostPoll);
+    return;
+  }
+  localHost = await api.invoke("localHost");
+  if (localHost) render();
+}, 1000);

@@ -763,25 +763,42 @@ fn run_update_action(action: UpdateAction) -> anyhow::Result<()> {
 }
 
 fn relaunch_xedoc() -> anyhow::Result<()> {
-    let install_dir = std::env::var_os("XEDOC_INSTALL_DIR")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/bin")))
-        .ok_or_else(|| anyhow::anyhow!("cannot locate the Xedoc install directory"))?;
-    let binary = install_dir.join("xedoc");
-    #[cfg(unix)]
+    #[cfg(windows)]
     {
-        use std::os::unix::process::CommandExt;
-        Err(std::process::Command::new(binary)
-            .args(std::env::args_os().skip(1))
-            .exec()
-            .into())
-    }
-    #[cfg(not(unix))]
-    {
+        let xedoc_home = std::env::var_os("XEDOC_HOME")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("USERPROFILE").map(|home| PathBuf::from(home).join(".xedoc"))
+            })
+            .ok_or_else(|| anyhow::anyhow!("cannot locate the Xedoc home directory"))?;
+        let binary = xedoc_home.join("packages/standalone/current/bin/xedoc.exe");
         let status = std::process::Command::new(binary)
             .args(std::env::args_os().skip(1))
             .status()?;
         std::process::exit(status.code().unwrap_or(1));
+    }
+    #[cfg(not(windows))]
+    {
+        let install_dir = std::env::var_os("XEDOC_INSTALL_DIR")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/bin")))
+            .ok_or_else(|| anyhow::anyhow!("cannot locate the Xedoc install directory"))?;
+        let binary = install_dir.join("xedoc");
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            Err(std::process::Command::new(binary)
+                .args(std::env::args_os().skip(1))
+                .exec()
+                .into())
+        }
+        #[cfg(not(unix))]
+        {
+            let status = std::process::Command::new(binary)
+                .args(std::env::args_os().skip(1))
+                .status()?;
+            std::process::exit(status.code().unwrap_or(1));
+        }
     }
 }
 
@@ -797,7 +814,7 @@ fn run_update_command() -> anyhow::Result<()> {
     {
         let Some(action) = xedoc_tui::get_update_action() else {
             anyhow::bail!(
-                "Xedoc self-update is only available on macOS. Please update manually: https://github.com/apohl79/xedoc/releases/latest"
+                "Xedoc self-update is only available on macOS and Windows. Please update manually: https://github.com/apohl79/xedoc/releases/latest"
             );
         };
         run_update_action(action)?;

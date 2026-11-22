@@ -263,7 +263,21 @@ class HostGuiService:
         self.thread: threading.Thread | None = None
 
     def start(self) -> bool:
-        if not HostAuth(self.home).users:
+        auth = HostAuth(self.home)
+        local_only = self.config.listen_address in ("127.0.0.1", "::1", "localhost")
+        if (
+            os.name == "nt"
+            and not auth.users
+            and self.config.origin.startswith("http://")
+            and local_only
+        ):
+            auth.save_user(
+                "local-desktop",
+                "admin",
+                [],
+                secrets.token_urlsafe(64),
+            )
+        if not auth.users:
             return False
         server = HostServer(
             (self.config.listen_address, self.config.port),

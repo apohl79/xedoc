@@ -7,7 +7,7 @@ const pairing = require("./pairing");
 const state = require("./state");
 const { HostConnection, partitionFor } = require("./host-connection");
 const { HostDiscovery } = require("./discovery");
-const { readLocalHost } = require("./local-host");
+const { ensureWindowsLocalHostService, readLocalHost } = require("./local-host");
 const { registerUI, uiWebPreferences, uiPage, autosaveBounds } = require("./ui-bridge");
 const { validatedHostURL, sameOrigin } = require("./urls");
 
@@ -42,6 +42,7 @@ function showHosts() {
   const failure = (error) => ({ error: error instanceof Error ? error.message : String(error) });
   registerUI(window.webContents, {
     state: () => ({ localHost: readLocalHost(), discovery: discovery.snapshot() }),
+    localHost: () => readLocalHost(),
     refresh: () => {
       discovery.scan();
       return readLocalHost();
@@ -200,6 +201,7 @@ app.on("before-quit", () => {
 });
 
 app.whenReady().then(() => {
+  ensureWindowsLocalHostService();
   // Website panels and the app's own pages use the default session; websites get no device or
   // notification access and cannot launch external protocol handlers.
   const allowed = new Set(["clipboard-sanitized-write", "fullscreen"]);

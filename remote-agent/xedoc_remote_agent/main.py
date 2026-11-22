@@ -12,6 +12,7 @@ import sys
 import time
 from typing import Sequence
 
+from .controller import _default_client_factory
 from .daemon import MAX_OWNER_IPC_BYTES
 from .daemon import RemoteAgentDaemon
 from .errors import BrokerError, ErrorCode
@@ -162,6 +163,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--version")
     parser.add_argument("--host-id")
+    parser.add_argument("--initialize-empty-config-if-fresh", action="store_true")
     parser.add_argument("--peer-host-id")
     parser.add_argument("--fingerprint")
     parser.add_argument("--role", choices=("coordinator", "managed"))
@@ -274,6 +276,8 @@ def _ensure(args: argparse.Namespace) -> dict[str, object]:
         _request_shutdown(xedoc_home, args.timeout)
         _wait_until_stopped(xedoc_home, deadline)
 
+    if args.initialize_empty_config_if_fresh:
+        _initialize_empty_config_if_fresh(xedoc_home, args.timeout)
     _spawn_daemon(args, xedoc_home)
     _wait_until_matching_controller(
         xedoc_home,
@@ -281,6 +285,80 @@ def _ensure(args: argparse.Namespace) -> dict[str, object]:
         deadline,
     )
     return {"status": "started", "controllerId": expected_controller_id}
+
+
+def _initialize_empty_config_if_fresh(xedoc_home: Path, timeout: float) -> None:
+    descriptor = load_bootstrap_descriptor(xedoc_home=xedoc_home)
+    client = _default_client_factory(descriptor.socket_path, timeout)
+    try:
+        client.initialize("xedoc-host-gui", "Xedoc Host GUI", "1.0.0")
+        response = client.request("config/read", {"includeLayers": True})
+        config = response.get("config")
+        if not isinstance(config, dict) or config.get("remote_agent") is not None:
+            return
+        layers = response.get("layers")
+        if not isinstance(layers, list) or len(layers) != 2:
+            return
+        system = next(
+            (
+                layer
+                for layer in layers
+                if isinstance(layer, dict)
+                and isinstance(layer.get("name"), dict)
+                and layer["name"].get("type") == "system"
+            ),
+            None,
+        )
+        user = next(
+            (
+                layer
+                for layer in layers
+                if isinstance(layer, dict)
+                and isinstance(layer.get("name"), dict)
+                and layer["name"].get("type") == "user"
+                and layer["name"].get("profile") is None
+            ),
+            None,
+        )
+        system_name = system.get("name") if isinstance(system, dict) else None
+        name = user.get("name") if isinstance(user, dict) else None
+        if (
+            not isinstance(system_name, dict)
+            or not isinstance(system_name.get("file"), str)
+            or Path(system_name["file"]).exists()
+            or not isinstance(system.get("config"), dict)
+            or system["config"]
+            or not isinstance(name, dict)
+            or not isinstance(name.get("file"), str)
+            or not isinstance(user.get("version"), str)
+            or Path(name["file"]).exists()
+        ):
+            return
+        result = client.request(
+            "config/value/write",
+            {
+                "keyPath": "remote_agent",
+                "value": {
+                    "role": "coordinator",
+                    "workspaces": {},
+                    "limits": {
+                        "max_attached_sessions": 8,
+                        "max_message_bytes": 16_384,
+                        "max_result_bytes": 65_536,
+                        "max_wait_seconds": 120,
+                        "max_discovery_seconds": 10,
+                        "audit_retention_days": 90,
+                    },
+                },
+                "mergeStrategy": "replace",
+                "filePath": name["file"],
+                "expectedVersion": user["version"],
+            },
+        )
+        if result.get("status") != "ok":
+            raise BrokerError.conflict()
+    finally:
+        client.close()
 
 
 def _daemon(args: argparse.Namespace) -> RemoteAgentDaemon:

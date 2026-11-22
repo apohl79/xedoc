@@ -130,7 +130,7 @@ window.XedocHostUpdates = class {
         interrupted: "Installer stopped unexpectedly",
       };
       this.byId("status").textContent = result.supported
-        ? messages[result.status] : "Updates require a macOS or Linux host";
+        ? messages[result.status] : "Updates require a macOS, Linux, or Windows host";
       this.byId("progress-area").hidden = !job;
       const progress = this.byId("progress");
       if (Number.isFinite(result.progress)) progress.value = result.progress;

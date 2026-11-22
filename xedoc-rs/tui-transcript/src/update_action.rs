@@ -3,6 +3,8 @@
 pub enum UpdateAction {
     /// Update via the SHA-256-verified Xedoc macOS package installer, then relaunch.
     StandaloneMacos,
+    /// Update via the SHA-256-verified Xedoc Windows package installer, then relaunch.
+    StandaloneWindows,
 }
 
 impl UpdateAction {
@@ -14,6 +16,17 @@ impl UpdateAction {
                 &[
                     "-c",
                     "curl -fsSL https://raw.githubusercontent.com/apohl79/xedoc/main/scripts/install/install.sh | sh",
+                ],
+            ),
+            UpdateAction::StandaloneWindows => (
+                "powershell.exe",
+                &[
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-Command",
+                    "irm https://raw.githubusercontent.com/apohl79/xedoc/main/scripts/install/install.ps1 | iex",
                 ],
             ),
         }
@@ -30,5 +43,11 @@ impl UpdateAction {
 /// Returns the update action for this build, if Xedoc can update itself on this platform.
 #[cfg(not(debug_assertions))]
 pub fn get_update_action() -> Option<UpdateAction> {
-    cfg!(target_os = "macos").then_some(UpdateAction::StandaloneMacos)
+    if cfg!(target_os = "macos") {
+        Some(UpdateAction::StandaloneMacos)
+    } else if cfg!(target_os = "windows") {
+        Some(UpdateAction::StandaloneWindows)
+    } else {
+        None
+    }
 }

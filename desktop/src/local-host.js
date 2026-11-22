@@ -4,7 +4,96 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { spawn } = require("node:child_process");
+const crypto = require("node:crypto");
 const { validatedHostURL, canonicalOrigin } = require("./urls");
+
+function ensureWindowsLocalHostService() {
+  if (process.platform !== "win32") return;
+  const home = process.env.XEDOC_HOME || path.join(os.homedir(), ".xedoc");
+  const resources = path.join(home, "packages", "standalone", "current", "xedoc-resources", "remote-agent");
+  const python = path.join(resources, "runtime", "python", "python.exe");
+  const payload = path.join(resources, "remote-agent.pyz");
+  if (!fs.existsSync(python) || !fs.existsSync(payload)) return;
+  const xedoc = path.join(home, "packages", "standalone", "current", "bin", "xedoc.exe");
+  if (!fs.existsSync(xedoc)) return;
+
+  const bootstrapOverride = process.env.XEDOC_REMOTE_AGENT_BOOTSTRAP;
+  const bootstrap = bootstrapOverride || path.join(home, "remote-agent", "bootstrap.toml");
+  if (bootstrapOverride && !fs.existsSync(bootstrap)) return;
+  if (!bootstrapOverride && fs.existsSync(path.join(home, "remote-agent", "bootstrap-experimental.toml"))) return;
+  const ensureBroker = () => {
+    const child = spawn(
+      python,
+      [
+        "-B",
+        "-I",
+        "-X",
+        "utf8",
+        payload,
+        "daemon",
+        "ensure",
+        "--initialize-empty-config-if-fresh",
+      ],
+      {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      },
+    );
+    child.on("error", () => {});
+    child.unref();
+  };
+  const start = spawn(xedoc, ["app-server", "daemon", "start"], {
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  start.on("error", () => {});
+  start.on("close", (code) => {
+    if (code !== 0) {
+      if (!fs.existsSync(bootstrap)) return;
+      const probe = spawn(xedoc, ["app-server", "daemon", "version"], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      probe.on("error", () => {});
+      probe.on("close", (probeCode) => {
+        if (probeCode === 0) ensureBroker();
+      });
+      return;
+    }
+    if (!fs.existsSync(bootstrap)) {
+      const socket = path.join(home, "app-server-control", "app-server-control.sock");
+      const directory = path.dirname(bootstrap);
+      let temporary;
+      try {
+        fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+        temporary = path.join(directory, `.bootstrap-${crypto.randomUUID()}.tmp`);
+        const descriptor = fs.openSync(temporary, "wx", 0o600);
+        try {
+          fs.writeFileSync(descriptor, `controller = ${JSON.stringify(`unix://${socket}`)}\n`);
+          fs.fsyncSync(descriptor);
+        } finally {
+          fs.closeSync(descriptor);
+        }
+        try {
+          fs.linkSync(temporary, bootstrap);
+        } catch (error) {
+          if (error.code !== "EEXIST") throw error;
+        }
+      } catch (error) {
+        return;
+      } finally {
+        if (temporary) {
+          try {
+            fs.unlinkSync(temporary);
+          } catch {}
+        }
+      }
+    }
+    ensureBroker();
+  });
+}
 
 function localAccess() {
   const home = process.env.XEDOC_HOME || path.join(os.homedir(), ".xedoc");
@@ -107,4 +196,4 @@ async function readBounded(response, limit) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-module.exports = { localAccess, readLocalHost, LocalDevicePairing };
+module.exports = { ensureWindowsLocalHostService, localAccess, readLocalHost, LocalDevicePairing };
