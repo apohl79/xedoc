@@ -67,11 +67,12 @@
       </div>
       <div class="stack scroll">
         <div class="stack" data-step="0">
-          <p>Directly reachable hosts only need sign-in. Pair a host to reach it through the sendnix bridge.</p>
+          <p>Hosts in external network mode and hosts reached through the sendnix bridge require pairing. Internal direct connections only need sign-in.</p>
           <h2>On a trusted computer connected to the host</h2>
-          <p>In Xedoc, open the host and sign in as an administrator. Choose Pair Device… and create an invitation.</p>
+          <p>In Xedoc, open the host and sign in as an administrator. Choose File → Pair Device… and create an invitation.</p>
           <p>If you only have terminal access to the host, run this command there:</p>
           <p class="mono selectable">xedoc-remote-agentd device-pairing invite</p>
+          <p>For a direct host in external network mode, use host-gui pair-device instead of device-pairing invite.</p>
           <p>For first-time setup, use Pair Device on a trusted computer to check for an unused sendnix bridge port, then run device-pairing setup on the host to install and start its connector. Each public port serves one host; all devices pairing with that host share it.</p>
           <h2>Then return to this device</h2>
           <p>Transfer the invitation directly using a trusted channel. Never get it from sendnix or the bridge.</p>

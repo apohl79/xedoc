@@ -221,10 +221,10 @@ fn merge_dynamic_tools(
     }
     dynamic_tools.retain(|tool| match tool {
         xedoc_protocol::dynamic_tools::DynamicToolSpec::Function(function) => {
-            !function.name.starts_with("remote_")
+            !function.name.starts_with("remote_") && !function.name.starts_with("browser_panel_")
         }
         xedoc_protocol::dynamic_tools::DynamicToolSpec::Namespace(namespace) => {
-            namespace.name != "remote"
+            namespace.name != "remote" && namespace.name != "browser_panel"
         }
     });
     dynamic_tools.extend(overlay);

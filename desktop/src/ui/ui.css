@@ -113,3 +113,34 @@ input[type="text"], input[type="password"], input[type="url"] {
 .dialog-page .scroll { flex: 1; overflow: auto; }
 .dialog-page .actions { display: flex; align-items: center; gap: 10px; }
 .dialog-page .actions .spacer { flex: 1; }
+
+html[data-platform="darwin"] .dialog-page {
+  --background: #222;
+  --surface: #333;
+  --border: #454545;
+  --primary: #f1f1f1;
+  --secondary: #a3a3a3;
+  font: 13px/16px system-ui, sans-serif;
+}
+html[data-platform="darwin"] .dialog-page h1 { margin-bottom: 16px; font-size: 17px; line-height: 20px; font-weight: 700; }
+html[data-platform="darwin"] .dialog-page h2 { line-height: 16px; }
+html[data-platform="darwin"] .dialog-page > div > .secondary { font-size: 12px; line-height: 14px; }
+html[data-platform="darwin"] .dialog-page .stack > p.secondary { font-size: 12px; line-height: 15px; }
+html[data-platform="darwin"] .dialog-page .scroll { min-height: 0; }
+html[data-platform="darwin"] .dialog-page > .actions { flex: none; }
+html[data-platform="darwin"] .dialog-page button {
+  padding: 2px 11px;
+  border-radius: 5px;
+  border-color: transparent;
+}
+html[data-platform="darwin"] .dialog-page button.primary { background: var(--surface); color: var(--primary); font-weight: 400; }
+html[data-platform="darwin"] .dialog-page input { padding: 4px 7px; }
+
+html[data-platform="darwin"] .website-prompt { padding: 19px 15px 15px; overflow: auto; }
+html[data-platform="darwin"] .website-prompt form { gap: 14px; }
+html[data-platform="darwin"] .website-prompt h2 { text-align: center; line-height: 18px; }
+html[data-platform="darwin"] .website-prompt input { height: 26px; padding: 2px 4px; }
+html[data-platform="darwin"] .website-prompt .actions { justify-content: center; gap: 6px; }
+html[data-platform="darwin"] .website-prompt .spacer { display: none; }
+html[data-platform="darwin"] .website-prompt button { width: 112px; height: 30px; border-radius: 15px; }
+html[data-platform="darwin"] .website-prompt button.primary { background: #0a84ff; }

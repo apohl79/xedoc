@@ -1,4 +1,4 @@
-"""Build the universal Developer ID-signed macOS host app."""
+"""Build the universal Developer ID-signed Electron host app."""
 
 from pathlib import Path
 import plistlib
@@ -20,42 +20,39 @@ def build_macos_release(
     notarytool_keychain_profile: str | None = None,
 ) -> Path:
     if sys.platform != "darwin":
-        raise RuntimeError("Building the macOS app requires macOS and Xcode.")
-    for command in ("xcodegen", "xcodebuild", "codesign", "ditto", "lipo", "xcrun"):
+        raise RuntimeError("Building the macOS app requires macOS and Xcode tools.")
+    for command in ("pnpm", "codesign", "ditto", "lipo", "xcrun"):
         if shutil.which(command) is None:
             raise RuntimeError(f"Building the macOS app requires {command}.")
     archive_output = output_dir / version / f"xedoc-macos-{version}.zip"
     if archive_output.exists() and not force:
         raise RuntimeError(f"Archive output already exists: {archive_output}")
-    macos_root = source_root / "macos"
-    derived_data = output_dir / ".macos-derived-data"
     numeric_version = version.split("-", maxsplit=1)[0]
-    run(["xcodegen", "generate", "--spec", str(macos_root / "project.yml")])
-    run(
-        [
-            "xcodebuild",
-            "-project",
-            str(macos_root / "Xedoc.xcodeproj"),
-            "-scheme",
-            "Xedoc",
-            "-configuration",
-            "Release",
-            "-destination",
-            "generic/platform=macOS",
-            "-derivedDataPath",
-            str(derived_data),
-            "ARCHS=arm64 x86_64",
-            "ONLY_ACTIVE_ARCH=NO",
-            "CODE_SIGNING_ALLOWED=NO",
-            f"MARKETING_VERSION={numeric_version}",
-            f"CURRENT_PROJECT_VERSION={numeric_version}",
-            "build",
-        ]
-    )
+    signing_name = codesign_identity.removeprefix("Developer ID Application: ")
+    run(["pnpm", "install", "--frozen-lockfile"], cwd=source_root)
     archive_output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="xedoc-macos-release-") as temp_dir:
-        app = Path(temp_dir) / "Xedoc.app"
-        run(["ditto", str(derived_data / "Build/Products/Release/Xedoc.app"), str(app)])
+        # electron-builder signs nested Chromium frameworks and helper apps inside-out.
+        run(
+            [
+                "pnpm",
+                "--filter",
+                "xedoc-desktop",
+                "exec",
+                "electron-builder",
+                "--mac",
+                "--universal",
+                "--dir",
+                "--publish",
+                "never",
+                f"-c.extraMetadata.version={numeric_version}",
+                f"-c.mac.identity={signing_name}",
+                "-c.forceCodeSigning=true",
+                f"-c.directories.output={temp_dir}",
+            ],
+            cwd=source_root,
+        )
+        app = Path(temp_dir) / "mac-universal/Xedoc.app"
         with (app / "Contents/Info.plist").open("rb") as info_file:
             info = plistlib.load(info_file)
         if (
@@ -72,18 +69,6 @@ def build_macos_release(
                 "-verify_arch",
                 "arm64",
                 "x86_64",
-            ]
-        )
-        run(
-            [
-                "codesign",
-                "--force",
-                "--options",
-                "runtime",
-                "--timestamp",
-                "--sign",
-                codesign_identity,
-                str(app),
             ]
         )
         run(["codesign", "--verify", "--deep", "--strict", str(app)])
@@ -115,10 +100,10 @@ def build_macos_release(
     return archive_output
 
 
-def run(command: list[str]) -> None:
+def run(command: list[str], *, cwd: Path | None = None) -> None:
     print("+ " + shlex.join(command), flush=True)
     try:
-        subprocess.run(command, check=True)
+        subprocess.run(command, check=True, cwd=cwd)
     except (OSError, subprocess.CalledProcessError) as err:
         raise RuntimeError(
             f"macOS release command failed: {shlex.join(command)}"

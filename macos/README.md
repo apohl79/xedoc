@@ -1,11 +1,13 @@
 # Xedoc for macOS
 
-Native Bonjour host discovery and independent WebKit host windows. Requires
-macOS 14 or newer. The icon and discovery implementation are shared with iOS.
+The macOS app now uses the shared Electron desktop shell in `desktop/`, including
+the same Chromium website panels and deep browser automation as Linux and Windows.
+Requires macOS 14 or newer. The Swift sources here are legacy, not the shipped app.
 
 ```sh
-xcodegen generate --spec macos/project.yml
-open macos/Xedoc.xcodeproj
+pnpm install --frozen-lockfile
+pnpm --filter xedoc-desktop start
+pnpm --filter xedoc-desktop run dist:mac
 ```
 
 Choose a host or enter its HTTPS origin. Hosts… (`⌘N`) opens discovery without
@@ -17,6 +19,19 @@ Host windows have edge-to-edge session tabs, native window controls, and no
 browser toolbar. Reload Host (`⌘R`) reloads the active connection. New Tab
 (`⌘T`) opens the session “+” menu with its first entry selected; use the arrow
 keys and Return to choose an entry.
+
+Open Website… (`⌘L`) opens a session website panel. Pair Device… is available
+in the File menu. Standard macOS editing shortcuts continue to work inside pages.
+Closing the last window keeps the app running; the Dock icon reopens Hosts.
+`⌘+` and `⌘-` resize the entire UI, including website panels; `⌘0` resets it.
+The size is shared by all windows and remembered across launches.
+
+On first Electron launch, safe saved host origins and the selected
+workspace/project/session are imported from the old app's preferences, without
+overwriting existing Electron settings. Cookies, WebKit data, and device keys or
+certificates are not imported. Website and host sign-in may be needed again;
+previously paired remote hosts need a new pairing. Same-Mac access remains
+login-free through the local Host GUI.
 
 The sidebar’s lightning button starts an instant chat (administrators only).
 Set `"instant_chat_directory": "/absolute/project/path"` in the host’s

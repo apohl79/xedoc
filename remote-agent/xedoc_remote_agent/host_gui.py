@@ -44,6 +44,7 @@ from .host_outside_projects import OTHER_WORKSPACE, outside_directory, session_i
 from .host_session_gui import HostSessionGuis, proxy_session_gui
 from .host_terminals import HostTerminals, serve_terminal_socket
 from .host_plugin_panels import HostPluginPanels
+from .host_browser import HostBrowser
 from .host_panel_transport import PanelBroker, proxy_plugin_panel
 from .host_updates import HostUpdates
 from .host_push import HostPush
@@ -106,6 +107,7 @@ class HostServer(ThreadingHTTPServer):
         self.plugin_panels = HostPluginPanels(
             home, self.workspaces, self.auth, self.session_guis
         )
+        self.browser = HostBrowser(self.plugin_panels)
         self.slots = threading.BoundedSemaphore(48)
         self._last_accept_error = 0.0
         super().__init__(address, HostHandler)
@@ -405,13 +407,18 @@ class HostHandler(BaseHTTPRequestHandler):
             parsed = urlsplit(self.path)
             path = parsed.path
             local_token = getattr(self.server, "local_access_token", None)
+            local_browser = False
             if local_token is not None:
                 authorization = self.headers.get("Authorization", "")
+                local_browser = (
+                    self.command == "POST" and path == "/api/browser/command"
+                    and secrets.compare_digest(authorization, f"Bearer {local_token}")
+                )
                 if self.command == "GET" and self.path == "/" and secrets.compare_digest(
                     authorization, f"Bearer {local_token}"
                 ):
                     self.local_session_cookie = self.server.auth.local_login()
-                elif not path.startswith("/plugin-ui/"):
+                elif not local_browser and not path.startswith("/plugin-ui/"):
                     cookies = SimpleCookie(self.headers.get("Cookie", ""))
                     token = cookies["xedoc_host"].value if "xedoc_host" in cookies else ""
                     self.server.auth.account(token)
@@ -439,14 +446,24 @@ class HostHandler(BaseHTTPRequestHandler):
                     self.reply(403, {"error": "Unexpected origin"})
                     return
                 size = int(self.headers.get("Content-Length", "0"))
+                limit = 6 * 1024 * 1024 if path == "/api/browser/result" else 64 * 1024
                 if (
-                    not 0 < size <= 64 * 1024
+                    not 0 < size <= limit
                     or self.headers.get_content_type() != "application/json"
                 ):
                     raise ValueError("Expected bounded JSON request")
                 body = json.loads(self.rfile.read(size))
                 if not isinstance(body, dict):
                     raise ValueError("Expected JSON object")
+            if local_browser:
+                self.connection.settimeout(125)
+                local_login = self.server.auth.local_login()
+                try:
+                    account = self.server.auth.account(local_login)
+                finally:
+                    self.server.auth.logout(local_login)
+                self.reply(200, self.server.browser.command(account, body))
+                return
             if enrollment and pairing is not None:
                 self.reply(200, pairing.enroll(body, self.server.origin))
                 return
@@ -456,6 +473,8 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/activity.js",
                 "/updates.js",
                 "/plugin-panels.js",
+                "/browser-automation.js",
+                "/browser-page.js",
                 "/terminals.js",
                 "/xterm.js",
                 "/xterm-addon-fit.js",
@@ -473,6 +492,8 @@ class HostHandler(BaseHTTPRequestHandler):
                     "/activity.js": "activity.js",
                     "/updates.js": "updates.js",
                     "/plugin-panels.js": "plugin-panels.js",
+                    "/browser-automation.js": "browser-automation.js",
+                    "/browser-page.js": "browser-page.js",
                     "/terminals.js": "terminals.js",
                     "/xterm.js": "xterm.js",
                     "/xterm-addon-fit.js": "xterm-addon-fit.js",
@@ -490,6 +511,8 @@ class HostHandler(BaseHTTPRequestHandler):
                     "/activity.js": "text/javascript",
                     "/updates.js": "text/javascript",
                     "/plugin-panels.js": "text/javascript",
+                    "/browser-automation.js": "text/javascript",
+                    "/browser-page.js": "text/javascript",
                     "/terminals.js": "text/javascript",
                     "/xterm.js": "text/javascript",
                     "/xterm-addon-fit.js": "text/javascript",
@@ -714,6 +737,9 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/api/plugin/composer",
                 "/api/plugin/open",
                 "/api/plugin/close",
+                "/api/browser/command",
+                "/api/browser/poll",
+                "/api/browser/result",
             ):
                 if not admin and (
                     workspace_id == OTHER_WORKSPACE
@@ -726,6 +752,27 @@ class HostHandler(BaseHTTPRequestHandler):
                     if self.command == "POST"
                     else parse_qs(parsed.query).get("projectName", [""])[0]
                 )
+                if path == "/api/browser/command":
+                    raise BrokerError.unauthorized(
+                        "Browser commands require local host authentication"
+                    )
+                if path.startswith("/api/browser/"):
+                    if self.command != "POST":
+                        self.reply(405, {"error": "Method not allowed"})
+                        return
+                    thread_id = body.get("threadId")
+                    browser = self.server.browser
+                    if path == "/api/browser/poll":
+                        self.reply(200, browser.poll(
+                            account, workspace_id, project_name, thread_id
+                        ))
+                    elif path == "/api/browser/result":
+                        self.reply(200, browser.complete(
+                            account, workspace_id, project_name, thread_id, body
+                        ))
+                    else:
+                        self.reply(404, {"error": "Not found"})
+                    return
                 if path.startswith("/api/plugin/"):
                     params = body if self.command == "POST" else {
                         key: values[0] for key, values in parse_qs(parsed.query).items()

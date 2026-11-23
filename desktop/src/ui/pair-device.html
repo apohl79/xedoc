@@ -19,7 +19,10 @@
     </div>
     <div id="invitation" class="stack" hidden>
       <p>On the other computer, iPhone, or iPad: open Xedoc → Hosts → Pair a host. Choose I have an invitation, paste the invitation, then choose Verify host.</p>
-      <div class="row"><button id="copy" type="button">Copy invitation</button></div>
+      <div class="row">
+        <button id="copy" type="button">Copy invitation</button>
+        <button id="share" type="button" hidden>Share</button>
+      </div>
       <p class="secondary">Transfer only through a trusted channel, never through the bridge. Treat the invitation like a password.</p>
       <p>On both devices: compare this host address and fingerprint. On the other device: confirm the match and choose Pair this device.</p>
       <div>
@@ -58,7 +61,7 @@
     <div id="checking" class="row" hidden><span class="spinner"></span><span>Checking host protection…</span></div>
     <div id="failure" class="stack" hidden>
       <p class="failure"></p>
-      <p>For this computer’s host, connect using This computer in Hosts. For another host, sign in as an administrator and retry.</p>
+      <p id="local-help">For this computer’s host, connect using This computer in Hosts. For another host, sign in as an administrator and retry.</p>
     </div>
   </div>
   <div class="actions">

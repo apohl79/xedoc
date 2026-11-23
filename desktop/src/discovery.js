@@ -3,6 +3,7 @@
 // Port of HostDiscovery.swift: nearby hosts over mDNS (_xedoc-gui._tcp) plus reachable paired hosts.
 const { EventEmitter } = require("node:events");
 const { Bonjour } = require("bonjour-service");
+const { MacOSDiscovery } = require("./macos-discovery");
 const pairing = require("./pairing");
 const { validatedHostURL } = require("./urls");
 
@@ -16,6 +17,8 @@ class HostDiscovery extends EventEmitter {
     this.nearbyHosts = [];
     this.pairedHosts = [];
     this.timers = [];
+    this.scanTimer = null;
+    this.discoveryUnavailable = false;
   }
 
   snapshot() {
@@ -30,6 +33,8 @@ class HostDiscovery extends EventEmitter {
     this.generation += 1;
     this.timers.forEach(clearTimeout);
     this.timers = [];
+    clearTimeout(this.scanTimer);
+    this.scanTimer = null;
     this.browser?.stop();
     this.browser = null;
     this.bonjour?.destroy();
@@ -44,32 +49,60 @@ class HostDiscovery extends EventEmitter {
     this.nearbyHosts = [];
     this.pairedHosts = [];
     this.scanning = true;
+    this.discoveryUnavailable = false;
     this.status = "Searching nearby and paired hosts…";
     this.publish();
     this.probePaired(current);
+    const ready = () => {
+      if (this.generation !== current || !this.browser) return;
+      clearTimeout(this.scanTimer);
+      this.scanning = true;
+      this.discoveryUnavailable = false;
+      this.status = "Searching nearby and paired hosts…";
+      this.publish();
+      this.scanTimer = setTimeout(() => {
+        if (this.generation !== current || !this.browser) return;
+        this.scanning = false;
+        this.status = this.hosts.length
+          ? "Hosts available"
+          : "No hosts found. Check that your firewall allows mDNS (UDP 5353) or enter a host URL.";
+        this.publish();
+      }, 5_000);
+    };
     try {
-      this.bonjour = new Bonjour({}, (error) => this.unavailable(current, error));
-      this.browser = this.bonjour.find({ type: "xedoc-gui", protocol: "tcp" });
+      if (process.platform === "darwin") {
+        this.browser = new MacOSDiscovery();
+        this.browser.on("error", (error) => this.unavailable(current, error));
+        this.browser.on("ready", ready);
+        this.browser.on("waiting", (error) => {
+          if (this.generation !== current) return;
+          clearTimeout(this.scanTimer);
+          this.scanning = false;
+          this.discoveryUnavailable = true;
+          this.status = `Discovery unavailable: ${error.message}. Check Local Network access in Settings.`;
+          this.publish();
+        });
+      } else {
+        this.bonjour = new Bonjour({}, (error) => this.unavailable(current, error));
+        this.browser = this.bonjour.find({ type: "xedoc-gui", protocol: "tcp" });
+      }
       const changed = () => this.updateNearby(current);
-      for (const event of ["up", "down", "txt-update", "srv-update"]) this.browser.on(event, changed);
+      for (const event of ["up", "down", "txt-update", "srv-update", "change"]) this.browser.on(event, changed);
     } catch (error) {
       this.unavailable(current, error);
       return;
     }
-    this.timers.push(setTimeout(() => {
-      if (this.generation !== current) return;
-      this.scanning = false;
-      this.status = this.hosts.length
-        ? "Hosts available"
-        : "No hosts found. Check that your firewall allows mDNS (UDP 5353) or enter a host URL.";
-      this.publish();
-    }, 5_000));
+    ready();
   }
 
   unavailable(current, error) {
     if (this.generation !== current) return;
+    clearTimeout(this.scanTimer);
     this.scanning = false;
-    this.status = `Discovery unavailable: ${error?.message ?? error}. Check your firewall and network settings.`;
+    this.discoveryUnavailable = true;
+    const guidance = process.platform === "darwin"
+      ? "Check Local Network access in Settings." : "Check your firewall and network settings.";
+    this.status = `Discovery unavailable: ${error?.message ?? error}. ${guidance}`;
     this.browser?.stop();
     this.browser = null;
     this.publish();
@@ -112,7 +145,7 @@ class HostDiscovery extends EventEmitter {
     const paired = this.pairedHosts.filter((host) => !this.nearbyHosts.some((nearby) => nearby.url === host.url));
     this.hosts = [...this.nearbyHosts, ...paired]
       .sort((left, right) => left.hostname.localeCompare(right.hostname, undefined, { numeric: true }));
-    if (!this.scanning) this.status = this.hosts.length ? "Hosts available" : "No hosts found";
+    if (!this.scanning && !this.discoveryUnavailable) this.status = this.hosts.length ? "Hosts available" : "No hosts found";
     this.publish();
   }
 }

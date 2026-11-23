@@ -1,11 +1,12 @@
-# Xedoc for Linux and Windows
+# Xedoc desktop
 
-Electron port of the macOS app (`macos/`): mDNS host discovery, one window per
-host, paired-device access, notifications, and the website panel.
+Shared Electron app for macOS, Linux and Windows: mDNS host discovery, one
+window per host, paired-device access, notifications, and Chromium website panels.
 
 ```sh
 pnpm install
 pnpm --filter xedoc-desktop start
+pnpm --filter xedoc-desktop run dist:mac     # universal macOS ZIP
 pnpm --filter xedoc-desktop run dist:linux   # dist/*.AppImage and dist/*.deb
 pnpm --filter xedoc-desktop run dist:win     # dist/*.exe (NSIS) and dist/*-win.zip
 ```
@@ -18,12 +19,24 @@ pairing. Authenticated hosts reopen on launch; without a saved login,
 discovery opens first. Each origin has its own persistent session data.
 Certificates use normal system trust; discovery does not grant trust.
 Discovery needs mDNS (UDP 5353) allowed through the firewall.
+On macOS it uses the native network discovery service through a small packaged
+helper. Developing or packaging the macOS app requires Xcode command-line tools;
+the installed app does not compile Swift or require developer tools.
 
-Shortcuts use `Ctrl+Shift` so plain `Ctrl` keys reach the terminal:
+Linux and Windows shortcuts use `Ctrl+Shift` so plain `Ctrl` keys reach the terminal:
 Hosts… (`N`), New Tab (`T`, opens the session “+” menu), Reload Host (`R`),
 Open Website… (`L`), and Quit (`Q`). There is no menu bar; right-click the
 host page for the same commands and Pair Device…. `Ctrl`+click opens a link in
-the external browser. Closing the last window quits the app.
+the external browser. Closing the last window quits the app on Linux and Windows.
+macOS uses a native File menu with `⌘N`, `⌘T`, `⌘R` and `⌘L`; closing the last
+window keeps the app running. See `macos/README.md` for signed macOS releases.
+`⌘+`, `⌘-` and `⌘0` on macOS (`Ctrl` elsewhere) increase, decrease and reset
+the app-wide UI size, including website panels. The size persists across launches.
+
+The first macOS launch imports only safe host/session preferences from the
+legacy Swift app, preserving existing Electron settings. It does not import
+cookies, device keys or certificates. Sign in again where needed and pair remote
+hosts again; same-machine Host GUI access still requires neither.
 
 Pair Device… stores the device key in the app’s user data directory
 (`paired-hosts.json`). The key is encrypted with the OS keystore (`safeStorage`)

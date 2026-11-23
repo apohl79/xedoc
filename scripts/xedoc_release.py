@@ -404,7 +404,7 @@ def build_release(args: argparse.Namespace) -> None:
     if ios_only and not include_ios:
         raise RuntimeError("--ios-only requires macOS and Xcode.")
     if macos_only and not include_macos:
-        raise RuntimeError("--macos-app-only requires macOS and Xcode.")
+        raise RuntimeError("--macos-app-only requires macOS and Xcode tools.")
     targets = [] if ios_only or macos_only or desktop_only else release_targets(args)
     ensure_target_specific_paths_are_unambiguous(args, targets)
     if getattr(args, "allow_dirty", False) and not args.skip_github_release:

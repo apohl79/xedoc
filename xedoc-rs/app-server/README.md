@@ -1681,6 +1681,31 @@ Each entry in `dynamicTools` is either a top-level function or a namespace conta
 
 Each function may set `deferLoading`. When omitted, it defaults to `false`. Deferred functions must belong to a namespace. Set it to `true` to keep the function registered while excluding it from the model-facing tool list sent on ordinary turns. When `tool_search` is available, deferred dynamic tools are searchable and can be exposed by a matching search result.
 
+The server also registers built-in `browser_panel` tools (or `browser_panel_*`
+functions for providers without namespace support) on thread start, resume, and
+fork. These names are reserved and are handled by the server, not forwarded to
+the client as `item/tool/call`. Commands are bound to the calling thread and
+require that session active in a connected native Host GUI. They fail without
+one; there is no CLI or headless fallback. Desktop clients share Chromium, DOM,
+same-origin frame/open-shadow-root targeting, page-world evaluation, inspection,
+waits, and bounded console/fetch/XHR observation. Visible panels additionally
+accept native pointer, key, and text input. Screenshot results use `inputImage`;
+text results are capped at 8 KiB. Observation starts explicitly with `observe`,
+is document-scoped, and retains at most 50 events per kind. Response body prefixes
+are opt-in and capped at 2,048 characters.
+
+For deeper access, `cdp` sends Chrome DevTools Protocol commands through that
+panel's in-process debugger, without opening a debugging port. This includes
+cross-origin iframe/dedicated-worker sessions, DOM/CSS/Accessibility, runtime
+evaluation, debugging/profiling, network bodies/interception/WebSocket events,
+dialogs, and input. `cdp_events` returns child session IDs and a cursor-paginated
+128-event ring; enable the relevant protocol domains first. Events over 2 KiB
+become previews. Commands cannot select arbitrary browser targets, use browser
+or profile-wide cookie/cache APIs, upload local files, or enable downloads.
+Command results are capped at 7,000 bytes; `resultPath` selects a nested result
+and `offset`/`limit` pages an array or string. Website diagnostics may contain
+private data and remain subject to the agent's authorization instructions.
+
 When a dynamic tool is invoked during a turn, the server sends an `item/tool/call` JSON-RPC request to the client:
 
 ```json

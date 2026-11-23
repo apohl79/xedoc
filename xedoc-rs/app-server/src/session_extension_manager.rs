@@ -213,16 +213,18 @@ impl SessionExtensionManager {
         config: &Config,
         dynamic_tools: Vec<xedoc_app_server_protocol::DynamicToolSpec>,
     ) -> Result<Vec<xedoc_app_server_protocol::DynamicToolSpec>, String> {
+        let dynamic_tools =
+            crate::browser_tools::augment(dynamic_tools, config.model_provider.namespace_tools)?;
         self.inner
             .remote_agent
             .augment_dynamic_tools(config, dynamic_tools)
     }
 
-    pub(crate) fn remote_dynamic_tools(
+    pub(crate) fn builtin_dynamic_tools(
         &self,
         config: &Config,
     ) -> Result<Vec<xedoc_app_server_protocol::DynamicToolSpec>, String> {
-        self.inner.remote_agent.dynamic_tools(config, &[])
+        self.augment_dynamic_tools(config, Vec::new())
     }
 
     pub(crate) async fn start_remote_for_thread(&self, thread_id: ThreadId) -> Result<(), String> {
@@ -237,11 +239,18 @@ impl SessionExtensionManager {
         self.inner.remote_agent.control(thread_id, params).await
     }
 
-    pub(crate) async fn dispatch_remote_dynamic_tool(
+    pub(crate) async fn dispatch_builtin_dynamic_tool(
         &self,
         params: DynamicToolCallParams,
         conversation: Arc<XedocThread>,
     ) -> bool {
+        if crate::browser_tools::dispatch(
+            self.inner.config.xedoc_home.to_path_buf(),
+            params.clone(),
+            conversation.clone(),
+        ) {
+            return true;
+        }
         let Some(tool_name) = remote_tool_name(&params) else {
             return false;
         };

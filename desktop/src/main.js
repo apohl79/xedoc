@@ -1,7 +1,7 @@
 "use strict";
 
 // Port of XedocApp.swift (DesktopAppDelegate): host windows, the Hosts window, and remembered hosts.
-const { app, BrowserWindow, ipcMain, powerMonitor, session } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, powerMonitor, session } = require("electron");
 const notifications = require("./notifications");
 const pairing = require("./pairing");
 const state = require("./state");
@@ -10,6 +10,7 @@ const { HostDiscovery } = require("./discovery");
 const { ensureWindowsLocalHostService, readLocalHost } = require("./local-host");
 const { registerUI, uiWebPreferences, uiPage, autosaveBounds } = require("./ui-bridge");
 const { validatedHostURL, sameOrigin } = require("./urls");
+const { installZoom, zoomMenu, sizeDialog } = require("./zoom");
 
 const background = "#12171c";
 const connections = new Map();
@@ -19,6 +20,8 @@ let quitting = false;
 if (!app.requestSingleInstanceLock()) {
   app.exit(0);
 }
+
+installZoom();
 
 function showHosts() {
   if (selector) {
@@ -40,14 +43,20 @@ function showHosts() {
     if (!window.isDestroyed()) window.webContents.send("xedoc:ui-event", "discovery", snapshot);
   });
   const failure = (error) => ({ error: error instanceof Error ? error.message : String(error) });
-  registerUI(window.webContents, {
+  let pairingWindow = null;
+  let pairingDismissDisabled = false;
+  const handlers = {
     state: () => ({ localHost: readLocalHost(), discovery: discovery.snapshot() }),
     localHost: () => readLocalHost(),
     refresh: () => {
       discovery.scan();
       return readLocalHost();
     },
-    select: (url) => openHost(url),
+    select: (url) => {
+      openHost(url);
+      pairingDismissDisabled = false;
+      pairingWindow?.close();
+    },
     connect: (text) => {
       const url = validatedHostURL(String(text ?? "").trim());
       if (!url) return false;
@@ -63,14 +72,44 @@ function showHosts() {
       }
     },
     pair: async (text) => {
+      pairingDismissDisabled = true;
       try {
         return { url: await pairing.pair(pairing.parseInvitation(String(text ?? "")), pairing.deviceName()) };
       } catch (error) {
+        pairingDismissDisabled = false;
         return failure(error);
       }
     },
-    pairingClosed: () => discovery.scan(),
-  });
+    openPairing: () => {
+      if (process.platform !== "darwin") return;
+      if (pairingWindow) { pairingWindow.focus(); return; }
+      const [parentWidth, parentHeight] = window.getSize();
+      const width = Math.min(520, parentWidth - 50);
+      const height = Math.min(520, parentHeight - 40);
+      const sheet = new BrowserWindow({
+        parent: window, modal: true, width, height, useContentSize: true,
+        resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+        show: false, title: "Pair a host", backgroundColor: "#222222",
+        webPreferences: uiWebPreferences(),
+      });
+      pairingWindow = sheet;
+      pairingDismissDisabled = false;
+      sizeDialog(sheet, width, height);
+      sheet.on("close", (event) => {
+        if (pairingDismissDisabled && !quitting) event.preventDefault();
+      });
+      sheet.removeMenu();
+      registerUI(sheet.webContents, handlers);
+      sheet.once("ready-to-show", () => sheet.show());
+      sheet.once("closed", () => { pairingWindow = null; discovery.scan(); });
+      sheet.loadFile(uiPage("hosts.html"), { query: { pairing: "true" } });
+    },
+    pairingClosed: () => {
+      if (pairingWindow) pairingWindow.close();
+      else discovery.scan();
+    },
+  };
+  registerUI(window.webContents, handlers);
   window.on("closed", () => {
     discovery.stop();
     if (selector === window) selector = null;
@@ -152,7 +191,7 @@ function connectionFor(contents) {
   return null;
 }
 
-// The macOS File menu shortcuts. Ctrl+Shift keeps the plain Ctrl keys for terminals in the host page.
+// Ctrl+Shift keeps plain Ctrl keys for terminals; macOS uses the native application menu.
 const shortcuts = {
   n: () => showHosts(),
   t: () => focusedConnection()?.openSessionMenu(),
@@ -162,6 +201,7 @@ const shortcuts = {
 };
 
 app.on("web-contents-created", (_event, contents) => {
+  if (process.platform === "darwin") return;
   contents.on("before-input-event", (event, input) => {
     const modifier = process.platform === "darwin" ? input.meta && !input.control : input.control && !input.meta;
     const action = shortcuts[input.key.toLowerCase()];
@@ -196,11 +236,42 @@ app.on("login", (event, _contents, _details, authInfo, callback) => {
 });
 
 app.on("second-instance", () => showHosts());
+app.on("activate", () => {
+  if (!BrowserWindow.getAllWindows().some((window) => window.isVisible())) showHosts();
+});
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
 app.on("before-quit", () => {
   quitting = true;
 });
 
 app.whenReady().then(() => {
+  require("./macos-migration").migrateMacOSState(state);
+  if (process.platform === "darwin") {
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { role: "appMenu" },
+      {
+        label: "File",
+        submenu: [
+          { label: "Hosts…", accelerator: "Cmd+N", click: shortcuts.n },
+          { label: "New Tab…", accelerator: "Cmd+T", click: shortcuts.t },
+          { label: "Reload Host", accelerator: "Cmd+R", click: shortcuts.r },
+          { label: "Pair Device…", click: () => {
+            const connection = focusedConnection();
+            if (connection) connection.pairDevice();
+            else showHosts();
+          } },
+          { label: "Open Website…", accelerator: "Cmd+L", click: shortcuts.l },
+          { type: "separator" },
+          { role: "close" },
+        ],
+      },
+      { role: "editMenu" },
+      { label: "View", submenu: zoomMenu() },
+      { role: "windowMenu" },
+    ]));
+  }
   ensureWindowsLocalHostService();
   // Website panels and the app's own pages use the default session; websites get no device or
   // notification access and cannot launch external protocol handlers.

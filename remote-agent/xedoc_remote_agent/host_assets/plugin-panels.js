@@ -29,6 +29,7 @@ window.XedocPluginPanels = class {
       entry.forward.disabled = !state.canGoForward;
       entry.error.textContent = state.error || "";
       entry.error.hidden = !state.error;
+      entry.loading = state.loading === true;
       this.render();
     };
     const syncOverlay = () => this.layoutWebsite();
@@ -226,12 +227,25 @@ window.XedocPluginPanels = class {
   }
 
   websiteCommand(command, detail = {}) {
-    window.webkit?.messageHandlers?.xedocDesktop?.postMessage({ kind: "website", command, ...detail });
+    const bridge = window.webkit?.messageHandlers?.xedocDesktop;
+    if (!bridge) return false;
+    bridge.postMessage({ kind: "website", command, ...detail });
+    return true;
   }
 
-  openWebsite(url) {
+  openWebsite(url, requireNative = false) {
     const key = this.contextKey(this.context());
-    if (!key || [...this.entries.values()].filter((entry) => entry.website).length >= 64) return;
+    if (!key || [...this.entries.values()].filter((entry) => entry.website).length >= 64) {
+      if (requireNative) throw new Error("No active website panel slot is available.");
+      return;
+    }
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+      throw new Error("Only HTTP and HTTPS website URLs are allowed.");
+    }
+    if (requireNative && !window.webkit?.messageHandlers?.xedocDesktop) {
+      throw new Error("Native website panels are unavailable in this Host GUI.");
+    }
     const panelId = crypto.randomUUID();
     const frame = document.createElement("div");
     frame.className = "plugin-panel-frame website-panel";
@@ -265,13 +279,44 @@ window.XedocPluginPanels = class {
     viewport.className = "website-viewport";
     frame.append(toolbar, error, viewport);
     this.entries.set(panelId, {
-      panelId, title: new URL(url).hostname, url, key, frame, website: true,
+      panelId, title: parsed.hostname, url: parsed.href, key, frame, website: true,
       address, back, forward, error, viewport,
     });
     this.frames.append(frame);
     this.selected.set(key, panelId);
-    this.websiteCommand("open", { id: panelId, url });
+    this.websiteCommand("open", { id: panelId, url: parsed.href });
     this.render();
+    return panelId;
+  }
+
+  listWebsites() {
+    const key = this.contextKey(this.context());
+    return [...this.entries.values()]
+      .filter((entry) => entry.website && entry.key === key)
+      .map((entry) => ({
+        panelId: entry.panelId,
+        title: entry.title,
+        url: entry.url,
+        loading: entry.loading === true,
+        error: entry.error.textContent || null,
+      }));
+  }
+
+  getWebsite(panelId) {
+    const entry = this.entries.get(panelId);
+    if (!entry?.website || entry.key !== this.contextKey(this.context())) {
+      throw new Error("Website panel is closed or missing.");
+    }
+    return entry;
+  }
+
+  closeWebsite(panelId) {
+    const entry = this.getWebsite(panelId);
+    this.websiteCommand("close", { id: panelId });
+    entry.frame.remove();
+    this.entries.delete(panelId);
+    this.render();
+    return { ok: true };
   }
 
   layoutWebsite() {

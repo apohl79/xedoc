@@ -3,14 +3,15 @@
   "productName": "Xedoc",
   "version": "1.77.0",
   "private": true,
-  "description": "Xedoc host GUI app for Linux and Windows",
+  "description": "Xedoc host GUI app for macOS, Linux and Windows",
   "author": "e47",
   "homepage": "https://github.com/apohl79/xedoc",
   "license": "Apache-2.0",
   "main": "src/main.js",
   "desktopName": "xedoc-desktop.desktop",
   "scripts": {
-    "start": "electron .",
+    "start": "node scripts/build-macos-helper.cjs && electron .",
+    "dist:mac": "electron-builder --mac --universal",
     "dist:linux": "electron-builder --linux",
     "dist:win": "electron-builder --win"
   },
@@ -32,8 +33,26 @@
       "package.json"
     ],
     "icon": "../ios/Xedoc/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
+    "beforePack": "./scripts/build-macos-helper.cjs",
     "toolsets": {
       "appimage": "1.0.3"
+    },
+    "mac": {
+      "target": ["zip"],
+      "category": "public.app-category.developer-tools",
+      "minimumSystemVersion": "14.0",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "notarize": false,
+      "extraResources": [{
+        "from": "build/macos/${arch}/xedoc-macos-discovery",
+        "to": "bin/xedoc-macos-discovery"
+      }],
+      "extendInfo": {
+        "NSBonjourServices": ["_xedoc-gui._tcp"],
+        "NSLocalNetworkUsageDescription": "Find Xedoc hosts and connect to their GUI on your local network."
+      }
     },
     "linux": {
       "target": [

@@ -3,6 +3,10 @@
 // Port of PairDeviceView.swift; requests go through the main process (local access or the host page).
 const api = window.xedoc;
 const $ = (id) => document.getElementById(id);
+$("share").hidden = api.platform !== "darwin";
+if (api.platform === "darwin") {
+  $("local-help").textContent = "For this Mac’s host, connect using This Mac in Hosts. For another host, sign in as an administrator and retry.";
+}
 const model = {
   origin: "", enabled: null, canInvite: false, bridgeStatus: "", suggestedPort: null, invitation: "",
   invitationID: "", preview: null, expiresAt: 0, status: "pending", failure: null, working: false,
@@ -88,7 +92,7 @@ async function poll(invitationID) {
 function render() {
   const { status, preview, working } = model;
   const completed = status === "completed";
-  $("step").textContent = !model.invitation ? "Step 1 of 3 · On this computer"
+  $("step").textContent = !model.invitation ? `Step 1 of 3 · On this ${api.platform === "darwin" ? "Mac" : "computer"}`
     : completed ? "Step 3 of 3 · On the other device" : "Step 2 of 3 · On the other device";
   $("origin").textContent = preview?.origin ?? model.origin;
   $("completed").hidden = !completed;
@@ -100,6 +104,7 @@ function render() {
   if (preview) {
     $("fingerprint").textContent = preview.fingerprint;
     $("copy").disabled = status !== "pending";
+    $("share").disabled = status !== "pending";
     $("pending").hidden = status !== "pending";
     const time = new Date(model.expiresAt * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     $("expires").textContent = `Single use · Expires ${time}. Creating another invitation replaces this one.`;
@@ -131,6 +136,7 @@ function render() {
 }
 
 $("copy").addEventListener("click", () => api.invoke("copy", model.invitation));
+$("share").addEventListener("click", () => api.invoke("share", model.invitation));
 $("close").addEventListener("click", () => api.invoke("close"));
 $("action").addEventListener("click", () => update(model.canInvite));
 window.addEventListener("beforeunload", (event) => {

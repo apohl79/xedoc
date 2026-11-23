@@ -48,6 +48,7 @@
       projectName: selectedProject, threadId: activeThread, frame,
     };
   }, run);
+  new window.XedocBrowserAutomation(api, pluginPanels);
   const terminals = new window.XedocHostTerminals(api, {
     run,
     current: () => ({ workspaceId: selectedWorkspace, projectName: selectedProject }),

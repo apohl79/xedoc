@@ -1,7 +1,7 @@
 "use strict";
 
 // Main-process side of PairDeviceView.swift; the dialog page (ui/pair-device.html) owns the steps.
-const { clipboard } = require("electron");
+const { clipboard, ShareMenu } = require("electron");
 const pairing = require("./pairing");
 const { LocalDevicePairing } = require("./local-host");
 const { canonicalOrigin } = require("./urls");
@@ -71,6 +71,11 @@ function handlers(connection) {
       }
     },
     copy: (text) => clipboard.writeText(String(text ?? "")),
+    share: (text) => {
+      if (process.platform !== "darwin" || typeof text !== "string" || !text || text.length > 16_384) return false;
+      new ShareMenu({ texts: [text] }).popup({ window: connection.pairing });
+      return true;
+    },
   };
 }
 

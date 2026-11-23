@@ -6,7 +6,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 // Main-world host page integration, adapted from macos/Xedoc/Native.js. It runs before host scripts.
 // The window controls overlay sits at the top right on Linux and Windows, so the tab strip reserves
 // that area through the standard titlebar-area env() variables and serves as the drag region.
-function hostNativeScript() {
+function hostNativeScript(isMac) {
   const send = (body) => window.webkit.messageHandlers.xedocDesktop.postMessage(body);
   window.addEventListener("xedoc-host-view", (event) => send({
     kind: "viewState", view: event.detail,
@@ -36,13 +36,26 @@ function hostNativeScript() {
   });
   document.addEventListener("DOMContentLoaded", () => {
     const style = document.createElement("style");
-    style.textContent = `
+    style.textContent = (isMac ? `
+      #sidebar .sidebar-brand { padding-left: 76px; }
+      #sidebar .sidebar-brand strong { font-size: 0; }
+      #sidebar .brand-mark { display: none; }
+      #host-view { padding-left: 222px; }
+      #sidebar { left: 2px; transform: translateX(calc(-100% - 2px)); }
+      #host-view.sidebar-open #sidebar { transform: translateX(0); visibility: visible; }
+      #host-view.sidebar-hidden { padding-left: 2px !important; }
+      #host-view.sidebar-hidden #session-workspace > .tab-strip { padding-left: 80px; }
+      #sidebar-toggle { top: 32px; width: 2px; }
+      #notice:not([hidden]) { padding-top: 32px; }
+      #session-workspace > .tab-strip { -webkit-app-region: drag; }
+    ` : `
       :root { --xedoc-controls-width: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)); }
       #session-workspace > .tab-strip {
         padding-left: max(4px, env(titlebar-area-x, 0px));
         padding-right: max(4px, var(--xedoc-controls-width));
         -webkit-app-region: drag;
       }
+    `) + `
       #session-workspace > .tab-strip > *, #sidebar .sidebar-brand button { -webkit-app-region: no-drag; }
       #sidebar .sidebar-brand { -webkit-app-region: drag; }
       #notice:not([hidden]) { padding-right: max(12px, var(--xedoc-controls-width)); }
@@ -96,6 +109,6 @@ if (isMainFrame) {
   contextBridge.exposeInMainWorld("webkit", {
     messageHandlers: { xedocDesktop: { postMessage: (body) => ipcRenderer.send("xedoc:desktop", body) } },
   });
-  contextBridge.executeInMainWorld({ func: hostNativeScript });
+  contextBridge.executeInMainWorld({ func: hostNativeScript, args: [process.platform === "darwin"] });
 }
 installWebsiteLinks((body) => ipcRenderer.send("xedoc:website", body));

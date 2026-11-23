@@ -1192,7 +1192,7 @@ pub(crate) async fn apply_bespoke_event_handling(
             if let Some(params) = dynamic_tool_call_params {
                 if let Some(session_extension_manager) = session_extension_manager.as_ref()
                     && session_extension_manager
-                        .dispatch_remote_dynamic_tool(params.clone(), conversation.clone())
+                        .dispatch_builtin_dynamic_tool(params.clone(), conversation.clone())
                         .await
                 {
                     return;

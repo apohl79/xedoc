@@ -79,7 +79,7 @@ async fn on_resolved_call_response(
     submit_dynamic_tool_response(call_id, response, conversation).await;
 }
 
-async fn submit_dynamic_tool_response(
+pub(crate) async fn submit_dynamic_tool_response(
     call_id: String,
     response: DynamicToolCallResponse,
     conversation: Arc<XedocThread>,

@@ -3404,9 +3404,9 @@ impl ThreadRequestProcessor {
         {
             config.model_reasoning_effort = None;
         }
-        let remote_dynamic_tools = self
+        let builtin_dynamic_tools = self
             .session_extension_manager
-            .remote_dynamic_tools(&config)
+            .builtin_dynamic_tools(&config)
             .map_err(invalid_request)?;
 
         let response_history = thread_history.clone();
@@ -3419,7 +3419,7 @@ impl ThreadRequestProcessor {
                 self.auth_manager.clone(),
                 self.request_trace_context(&request_id).await,
                 supports_openai_form_elicitation,
-                remote_dynamic_tools,
+                builtin_dynamic_tools,
             )
             .await
         {
@@ -4336,9 +4336,9 @@ impl ThreadRequestProcessor {
             .load_for_cwd(request_overrides, typesafe_overrides, history_cwd)
             .await
             .map_err(|err| config_load_error(&err))?;
-        let remote_dynamic_tools = self
+        let builtin_dynamic_tools = self
             .session_extension_manager
-            .remote_dynamic_tools(&config)
+            .builtin_dynamic_tools(&config)
             .map_err(invalid_request)?;
         let goals_enabled = config.features.enabled(Feature::Goals);
 
@@ -4358,7 +4358,7 @@ impl ThreadRequestProcessor {
                 thread_source.map(Into::into),
                 self.request_trace_context(&request_id).await,
                 supports_openai_form_elicitation,
-                remote_dynamic_tools,
+                builtin_dynamic_tools,
             )
             .await
             .map_err(|err| match err {

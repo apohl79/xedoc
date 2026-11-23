@@ -78,6 +78,7 @@ mod app_server_tracing;
 mod auth_mode;
 mod auto_session_name;
 mod bespoke_event_handling;
+mod browser_tools;
 mod command_exec;
 mod config_layer;
 mod config_manager;

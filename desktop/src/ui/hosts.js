@@ -3,6 +3,9 @@
 // Port of HostSelector.swift and HostPairingView.swift. Host data is only ever set as textContent.
 const api = window.xedoc;
 const $ = (id) => document.getElementById(id);
+const pairingOnly = api.platform === "darwin" && new URLSearchParams(location.search).has("pairing");
+if (pairingOnly) document.body.classList.add("pairing-only");
+if (api.platform === "darwin") $("local-section").firstElementChild.textContent = "THIS MAC";
 const icons = {
   scanning: null,
   empty: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8"/><circle cx="12" cy="12" r="1"/></svg>',
@@ -89,6 +92,10 @@ function renderWizard() {
 }
 
 $("pair-host").addEventListener("click", () => {
+  if (api.platform === "darwin") {
+    api.invoke("openPairing");
+    return;
+  }
   Object.assign(wizard, { step: 0, preview: null, url: null, working: false, failure: null });
   $("invitation").value = "";
   $("verified").checked = false;
@@ -145,22 +152,28 @@ $("pairing-next").addEventListener("click", async () => {
     }
   } else {
     const url = wizard.url;
-    $("pairing").close();
+    if (!pairingOnly) $("pairing").close();
     api.invoke("select", url);
     return;
   }
   renderWizard();
 });
 
-api.invoke("state").then((value) => {
-  localHost = value.localHost;
-  discovery = value.discovery;
-  render();
-});
-api.invoke("refresh").then((value) => {
-  localHost = value;
-  render();
-});
+if (pairingOnly) {
+  document.title = "Pair a host";
+  renderWizard();
+  $("pairing").showModal();
+} else {
+  api.invoke("state").then((value) => {
+    localHost = value.localHost;
+    discovery = value.discovery;
+    render();
+  });
+  api.invoke("refresh").then((value) => {
+    localHost = value;
+    render();
+  });
+}
 let localHostPolls = 0;
 const localHostPoll = setInterval(async () => {
   if (localHost || ++localHostPolls > 30) {

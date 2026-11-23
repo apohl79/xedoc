@@ -3,6 +3,7 @@
 // Port of WebsitePanel.swift: a browser view the host page positions over its website panel.
 const { WebContentsView, session, shell } = require("electron");
 const { validatedWebsiteURL } = require("./urls");
+const { BrowserDevtools } = require("./browser-devtools");
 
 class WebsitePanel {
   constructor({ changed, openNew }) {
@@ -17,6 +18,7 @@ class WebsitePanel {
     this.changed = changed;
     this.openNew = openNew;
     const contents = this.view.webContents;
+    this.devtools = new BrowserDevtools(contents);
     contents.on("page-title-updated", (_event, title) => {
       this.title = title || hostname(contents.getURL()) || "Website";
       this.changed();
@@ -27,6 +29,8 @@ class WebsitePanel {
     };
     contents.on("did-navigate", navigated);
     contents.on("did-navigate-in-page", navigated);
+    contents.on("did-start-loading", () => this.changed());
+    contents.on("did-stop-loading", () => this.changed());
     contents.on("did-finish-load", () => {
       this.error = null;
       this.changed();
@@ -54,6 +58,7 @@ class WebsitePanel {
     return {
       id, title: this.title, address: this.address,
       canGoBack: history.canGoBack(), canGoForward: history.canGoForward(), error: this.error,
+      loading: this.view.webContents.isLoadingMainFrame(),
     };
   }
 

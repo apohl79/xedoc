@@ -10,6 +10,7 @@ const state = require("./state");
 const { localAccess, readLocalHost } = require("./local-host");
 const { registerUI, uiWebPreferences, uiPage, autosaveBounds } = require("./ui-bridge");
 const { WebsitePanel, describeLoadError } = require("./website-panel");
+const { browserInput } = require("./browser-input");
 const { validatedHostURL, validatedWebsiteURL, sameOrigin } = require("./urls");
 const { displayHostName } = require("./ui/host-display-name");
 
@@ -163,14 +164,15 @@ class HostConnection {
 
   // The window has no menu bar, so the commands of the macOS File menu live in the context menu too.
   commandMenu() {
+    const modifier = process.platform === "darwin" ? "Command+" : "Control+Shift+";
     return [
-      { label: "Hosts…", accelerator: "CommandOrControl+Shift+N", registerAccelerator: false, click: () => this.showHosts() },
-      { label: "New Tab…", accelerator: "CommandOrControl+Shift+T", registerAccelerator: false, click: () => this.openSessionMenu() },
-      { label: "Reload Host", accelerator: "CommandOrControl+Shift+R", registerAccelerator: false, click: () => this.load() },
+      { label: "Hosts…", accelerator: `${modifier}N`, registerAccelerator: false, click: () => this.showHosts() },
+      { label: "New Tab…", accelerator: `${modifier}T`, registerAccelerator: false, click: () => this.openSessionMenu() },
+      { label: "Reload Host", accelerator: `${modifier}R`, registerAccelerator: false, click: () => this.load() },
       { label: "Pair Device…", click: () => this.pairDevice() },
-      { label: "Open Website…", accelerator: "CommandOrControl+Shift+L", registerAccelerator: false, click: () => this.promptWebsite() },
+      { label: "Open Website…", accelerator: `${modifier}L`, registerAccelerator: false, click: () => this.promptWebsite() },
       { type: "separator" },
-      { label: "Quit Xedoc", accelerator: "CommandOrControl+Shift+Q", registerAccelerator: false, role: "quit" },
+      { label: "Quit Xedoc", accelerator: `${modifier}Q`, registerAccelerator: false, role: "quit" },
     ];
   }
 
@@ -269,6 +271,9 @@ class HostConnection {
         break;
       case "website":
         this.receiveWebsiteCommand(event);
+        break;
+      case "browserAutomation":
+        this.receiveBrowserAutomation(event);
         break;
       default:
         notifications.receive(event, this.url, this.username);
@@ -408,6 +413,94 @@ class HostConnection {
     }
   }
 
+  receiveBrowserAutomation(event) {
+    const requestId = event.requestId;
+    if (typeof requestId !== "string"
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) return;
+    const reply = (result, error) => {
+      if (this.contents.isDestroyed()) return;
+      const response = { requestId, result: result ?? null };
+      if (error !== undefined) response.error = String(error?.message || error || "Browser automation failed.").slice(0, 2048);
+      this.contents.executeJavaScript(`window.xedocBrowserResult?.(${JSON.stringify(response)})`).catch(() => {});
+    };
+    const id = typeof event.panelId === "string" ? event.panelId : "";
+    const panel = this.websites.get(id);
+    if (!panel || panel.view.webContents.isDestroyed()) {
+      reply(null, "Website panel is closed or missing.");
+      return;
+    }
+    const contents = panel.view.webContents;
+    switch (event.action) {
+      case "cdp":
+      case "cdp_events":
+        void (event.action === "cdp" ? panel.devtools.command(event.input || {}) : panel.devtools.read(event.input || {}))
+          .then((result) => reply(result)).catch((error) => reply(null, error));
+        break;
+      case "pointer":
+      case "key":
+      case "type":
+        void browserInput(panel, event.action, event.input || {})
+          .then((result) => reply(result)).catch((error) => reply(null, error));
+        break;
+      case "navigate":
+        if (typeof event.url !== "string") reply(null, "Website URL is required.");
+        else {
+          panel.submitAddress(event.url);
+          panel.changed();
+          reply({ ok: true });
+        }
+        break;
+      case "back":
+        if (contents.navigationHistory.canGoBack()) contents.navigationHistory.goBack();
+        reply({ ok: true });
+        break;
+      case "forward":
+        if (contents.navigationHistory.canGoForward()) contents.navigationHistory.goForward();
+        reply({ ok: true });
+        break;
+      case "reload":
+        contents.reload();
+        reply({ ok: true });
+        break;
+      case "close":
+        this.removeWebsite(id);
+        reply({ ok: true });
+        break;
+      case "screenshot":
+        void contents.capturePage(undefined, { stayHidden: true, stayAwake: true }).then((image) => {
+          const png = image.toPNG();
+          if (!png.length) throw new Error("Could not capture website screenshot.");
+          if (png.length > 4 * 1024 * 1024) throw new Error("Website screenshot exceeds 4 MiB.");
+          if (this.websites.get(id) !== panel || contents.isDestroyed()) {
+            throw new Error("Website panel was closed.");
+          }
+          reply({ base64: png.toString("base64"), mimeType: "image/png" });
+        }).catch((error) => reply(null, error));
+        break;
+      default: {
+        if (typeof event.script !== "string" || Buffer.byteLength(event.script) > 64 * 1024) {
+          reply(null, "Browser script is missing or exceeds 64 KiB.");
+          break;
+        }
+        void contents.executeJavaScript(`(async () => {
+            const value = await (${event.script});
+            const json = JSON.stringify(value === undefined ? null : value);
+            if (typeof json !== "string") throw new Error("Browser result is not JSON-serializable.");
+            if (new TextEncoder().encode(json).length > 49152) throw new Error("Browser result exceeds 48 KiB.");
+            return json;
+          })()`).then((json) => {
+          if (this.websites.get(id) !== panel || contents.isDestroyed()) {
+            throw new Error("Website panel was closed.");
+          }
+          if (typeof json !== "string" || Buffer.byteLength(json) > 48 * 1024) {
+            throw new Error("Browser result is invalid or exceeds 48 KiB.");
+          }
+          reply(JSON.parse(json));
+        }).catch((error) => reply(null, error));
+      }
+    }
+  }
+
   removeWebsite(id) {
     const panel = this.websites.get(id);
     this.websites.delete(id);
@@ -434,7 +527,8 @@ class HostConnection {
       this.prompt.focus();
       return;
     }
-    this.prompt = this.dialog("open-website.html", 420, 170, {
+    const [width, height] = process.platform === "darwin" ? [392, 136] : [420, 170];
+    this.prompt = this.dialog("open-website.html", width, height, {
       open: (text) => {
         const value = String(text ?? "").trim();
         const url = validatedWebsiteURL(value.includes("://") ? value : `https://${value}`);
@@ -450,9 +544,11 @@ class HostConnection {
   dialog(page, width, height, handler) {
     const window = new BrowserWindow({
       parent: this.window, modal: true, width, height, resizable: false, minimizable: false,
+      useContentSize: process.platform === "darwin",
       maximizable: false, show: false, backgroundColor: background, autoHideMenuBar: true,
       webPreferences: uiWebPreferences(),
     });
+    require("./zoom").sizeDialog(window, width, height);
     window.removeMenu();
     registerUI(window.webContents, { ...handler, close: () => window.close() });
     window.once("ready-to-show", () => window.show());

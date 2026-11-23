@@ -113,7 +113,8 @@ function localAccess() {
 
 function readLocalHost() {
   const access = localAccess();
-  return access && { hostname: "This computer — no setup required", url: access.url, route: "direct" };
+  const name = process.platform === "darwin" ? "This Mac" : "This computer";
+  return access && { hostname: `${name} — no setup required`, url: access.url, route: "direct" };
 }
 
 function pairingError(message) {
@@ -175,11 +176,14 @@ class LocalDevicePairing {
       result = null;
     }
     if (!result || typeof result !== "object" || Array.isArray(result)) {
-      throw pairingError("Unexpected response from this computer’s host.");
+      throw pairingError(process.platform === "darwin"
+        ? "Unexpected response from this Mac’s host." : "Unexpected response from this computer’s host.");
     }
     if (typeof result.error === "string") throw pairingError(result.error.slice(0, 1024));
     if (response.status !== 200) {
-      throw pairingError("Could not access this computer’s host. Reconnect using This computer in Hosts.");
+      throw pairingError(process.platform === "darwin"
+        ? "Could not access this Mac’s host. Reconnect using This Mac in Hosts."
+        : "Could not access this computer’s host. Reconnect using This computer in Hosts.");
     }
     return result;
   }
