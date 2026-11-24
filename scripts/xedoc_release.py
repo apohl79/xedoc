@@ -15,10 +15,14 @@ import tempfile
 import textwrap
 
 from xedoc_ios_release import build_ios_release, upload_ios_testflight
-from xedoc_desktop_release import build_desktop_release
+from xedoc_desktop_release import (
+    build_desktop_release,
+)
 from xedoc_macos_release import build_macos_release
 from xedoc_release_retry import run_with_retry
 from xedoc_release_preflight import preflight_release
+from xedoc_pnpm import pnpm_command
+from xedoc_release_resume import resumable_package
 from update_homebrew_cask import generate_cask, publish_cask
 from xedoc_package.targets import TARGET_SPECS
 from xedoc_package.targets import TargetSpec
@@ -228,6 +232,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Replace existing package directory and archive outputs.",
     )
     parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Reuse completed, valid release artifacts and continue with "
+            "unfinished build stages."
+        ),
+    )
+    parser.add_argument(
         "--notarize",
         action="store_true",
         help="Submit the signed macOS package ZIP to Apple notarization.",
@@ -420,6 +432,8 @@ def build_release(args: argparse.Namespace) -> None:
             "--allow-dirty requires --skip-github-release because a GitHub "
             "release must match its committed target."
         )
+    if args.force and args.resume:
+        raise RuntimeError("--force and --resume cannot be used together.")
 
     codesign_identity = (
         resolve_codesign_identity(args.codesign_identity)
@@ -452,6 +466,9 @@ def build_release(args: argparse.Namespace) -> None:
             env=github_env,
         )
 
+    package_manager = (
+        pnpm_command(source_root) if include_macos or include_desktop else []
+    )
     preflight_release(
         args,
         source_root=source_root,
@@ -468,17 +485,69 @@ def build_release(args: argparse.Namespace) -> None:
         print(f"Release preflight passed for Xedoc {version}.")
         return
 
-    if targets:
+    if package_manager:
+        install_env = os.environ.copy()
+        install_env["CI"] = "true"
+        install_command = [*package_manager, "install", "--frozen-lockfile"]
+        print("+ " + shlex.join(install_command), flush=True)
+        run_with_retry(install_command, cwd=source_root, env=install_env)
+
+    completed_packages: dict[str, ReleasePackage] = {}
+    if args.resume:
+        for target in targets:
+            package_dir = (
+                resolve_repo_path(args.package_dir)
+                if args.package_dir is not None
+                else output_dir / version / f"xedoc-package-{target}"
+            )
+            archive_outputs = [
+                resolve_repo_path(path) for path in args.archive_output
+            ] or [output_dir / version / f"xedoc-{target}-{version}.zip"]
+            runtime_id_value = runtime_id(target, codesign_identity)
+            runtime_archive_output = (
+                resolve_repo_path(args.model_router_runtime_archive_output)
+                if args.model_router_runtime_archive_output is not None
+                else output_dir
+                / "model-router-runtime"
+                / runtime_id_value
+                / runtime_asset_name(runtime_id_value, target)
+            )
+            remote_agent_runtime_output = (
+                output_dir / "remote-agent-runtime" / version / target
+            )
+            runtime_reference = resumable_package(
+                target=target,
+                version=version,
+                package_dir=package_dir,
+                archive_outputs=archive_outputs,
+                runtime_archive_output=runtime_archive_output,
+                remote_agent_runtime_output=remote_agent_runtime_output,
+                notarization_report_dir=output_dir / version / "notarization",
+                notarize=getattr(args, "notarize", False)
+                and not args.skip_github_release,
+                signing_identity=codesign_identity,
+            )
+            if runtime_reference is not None:
+                completed_packages[target] = ReleasePackage(
+                    target=target,
+                    package_dir=package_dir,
+                    archive_outputs=tuple(archive_outputs),
+                    runtime_reference=runtime_reference,
+                    runtime_archive_output=runtime_archive_output,
+                    remote_agent_runtime_output=remote_agent_runtime_output,
+                )
+    pending_targets = [target for target in targets if target not in completed_packages]
+    if pending_targets:
         repair_stale_release_lockfiles(
             cargo=args.cargo,
             source_root=source_root,
             cargo_toml=cargo_toml,
             cargo_lock=cargo_lock,
-            target=targets[0],
+            target=pending_targets[0],
         )
 
     build_system = getattr(args, "build_system", DEFAULT_BUILD_SYSTEM)
-    if not targets:
+    if not pending_targets:
         release_binaries_by_target = {}
     elif build_system == "bazel":
         built_binaries = build_bazel_release_binaries_for_targets(
@@ -489,14 +558,14 @@ def build_release(args: argparse.Namespace) -> None:
                 args, "bazel_remote_jobs", DEFAULT_BAZEL_REMOTE_JOBS
             ),
             source_root=source_root,
-            targets=targets,
+            targets=pending_targets,
         )
         release_binaries_by_target = {
             target: stage_release_binaries(
                 built_binaries[target],
                 output_dir / ".bazel-release" / version / target,
             )
-            for target in targets
+            for target in pending_targets
         }
     elif build_system == "cargo":
         release_binaries_by_target = {
@@ -507,13 +576,13 @@ def build_release(args: argparse.Namespace) -> None:
                 spec=TARGET_SPECS[target],
                 target=target,
             )
-            for target in targets
+            for target in pending_targets
         }
     else:
         raise RuntimeError(f"Unsupported release build system: {build_system}")
 
-    release_packages = [
-        package_release_target(
+    for target in pending_targets:
+        completed_packages[target] = package_release_target(
             args=args,
             codesign_identity=codesign_identity,
             output_dir=output_dir,
@@ -523,14 +592,14 @@ def build_release(args: argparse.Namespace) -> None:
             version=version,
             github_env=github_env,
         )
-        for target in targets
-    ]
+    release_packages = [completed_packages[target] for target in targets]
     ios_archive = (
         build_ios_release(
             source_root=source_root,
             output_dir=output_dir,
             version=version,
             force=args.force,
+            resume=args.resume,
         )
         if include_ios
         else None
@@ -543,6 +612,8 @@ def build_release(args: argparse.Namespace) -> None:
             force=args.force,
             codesign_identity=codesign_identity,
             notarize=not args.skip_github_release or getattr(args, "notarize", False),
+            pnpm_command=package_manager,
+            resume=args.resume,
             notarytool_keychain_profile=getattr(
                 args, "notarytool_keychain_profile", None
             ),
@@ -556,6 +627,8 @@ def build_release(args: argparse.Namespace) -> None:
             output_dir=output_dir,
             version=version,
             force=args.force,
+            pnpm_command=package_manager,
+            resume=args.resume,
         )
         if include_desktop
         else []

@@ -7,7 +7,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from xedoc_release_retry import run_with_retry
+from xedoc_release_resume import validate_app_archive
 
 
 def build_macos_release(
@@ -18,25 +20,51 @@ def build_macos_release(
     force: bool,
     codesign_identity: str,
     notarize: bool,
+    pnpm_command: list[str],
+    resume: bool = False,
     notarytool_keychain_profile: str | None = None,
 ) -> Path:
     if sys.platform != "darwin":
         raise RuntimeError("Building the macOS app requires macOS and Xcode tools.")
-    for command in ("pnpm", "codesign", "ditto", "lipo", "xcrun"):
+    for command in (pnpm_command[0], "codesign", "ditto", "lipo", "xcrun"):
         if shutil.which(command) is None:
             raise RuntimeError(f"Building the macOS app requires {command}.")
     archive_output = output_dir / version / f"xedoc-macos-{version}.zip"
-    if archive_output.exists() and not force:
+    if resume and archive_output.is_file():
+        try:
+            validate_app_archive(
+                archive_output,
+                version=version.split("-", maxsplit=1)[0],
+                info_plist_path="Xedoc.app/Contents/Info.plist",
+            )
+            notarization_summary = (
+                output_dir
+                / version
+                / "notarization/macos-app/notarization.zip-notarization-summary.txt"
+            )
+            notarization_complete = notarization_summary.is_file() and (
+                "notarization=completed"
+                in notarization_summary.read_text(encoding="utf-8").splitlines()
+            )
+            if not notarize or notarization_complete:
+                print(
+                    f"Resuming with completed macOS archive: {archive_output}",
+                    flush=True,
+                )
+                return archive_output
+        except (KeyError, OSError, ValueError, zipfile.BadZipFile):
+            pass
+        archive_output.unlink()
+    if archive_output.exists() and not force and not resume:
         raise RuntimeError(f"Archive output already exists: {archive_output}")
     numeric_version = version.split("-", maxsplit=1)[0]
     signing_name = codesign_identity.removeprefix("Developer ID Application: ")
-    run(["pnpm", "install", "--frozen-lockfile"], cwd=source_root)
     archive_output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="xedoc-macos-release-") as temp_dir:
         # electron-builder signs nested Chromium frameworks and helper apps inside-out.
         run(
             [
-                "pnpm",
+                *pnpm_command,
                 "--filter",
                 "xedoc-desktop",
                 "exec",
@@ -104,7 +132,11 @@ def build_macos_release(
 def run(command: list[str], *, cwd: Path | None = None) -> None:
     print("+ " + shlex.join(command), flush=True)
     try:
-        if command[0] == "pnpm" or command[1:3] == ["stapler", "staple"]:
+        if (
+            command[:1] == ["pnpm"]
+            or command[1:2] == ["pnpm"]
+            or command[1:3] == ["stapler", "staple"]
+        ):
             run_with_retry(command, cwd=cwd)
         else:
             subprocess.run(command, check=True, cwd=cwd)

@@ -9,11 +9,18 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from xedoc_release_retry import run_with_retry
+from xedoc_release_resume import validate_app_archive
 
 
 def build_ios_release(
-    *, source_root: Path, output_dir: Path, version: str, force: bool
+    *,
+    source_root: Path,
+    output_dir: Path,
+    version: str,
+    force: bool,
+    resume: bool = False,
 ) -> Path:
     if sys.platform != "darwin":
         raise RuntimeError("Building the iOS app requires macOS and Xcode.")
@@ -25,6 +32,17 @@ def build_ios_release(
     if not installer.is_file():
         raise RuntimeError(f"Missing iOS device installer: {installer}")
     archive_output = output_dir / version / f"xedoc-ios-{version}.zip"
+    if resume and archive_output.is_file():
+        try:
+            validate_app_archive(
+                archive_output,
+                version=version.split("-", maxsplit=1)[0],
+                info_plist_path="Xedoc.app/Info.plist",
+            )
+            print(f"Resuming with completed iOS archive: {archive_output}", flush=True)
+            return archive_output
+        except (KeyError, OSError, ValueError, zipfile.BadZipFile):
+            archive_output.unlink()
     if archive_output.exists() and not force:
         raise RuntimeError(f"Archive output already exists: {archive_output}")
 

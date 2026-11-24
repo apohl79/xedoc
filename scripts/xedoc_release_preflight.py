@@ -70,10 +70,9 @@ def preflight_release(
         )
         outputs.append((output_dir / version / f"xedoc-ios-{version}.zip", "archive"))
     if include_macos:
-        tools.update(("pnpm", "codesign", "ditto", "lipo", "xcrun", "spctl"))
+        tools.update(("codesign", "ditto", "lipo", "xcrun", "spctl"))
         outputs.append((output_dir / version / f"xedoc-macos-{version}.zip", "archive"))
     if include_desktop:
-        tools.add("pnpm")
         outputs.extend(
             (
                 output_dir / version / desktop_asset_name(version, arch, extension),
@@ -81,6 +80,8 @@ def preflight_release(
             )
             for _, _, _, arch, extension in DESKTOP_BUILDS
         )
+    if include_macos or include_desktop:
+        tools.add("corepack" if shutil.which("corepack") else "pnpm")
     if include_macos or include_desktop:
         resources.extend(
             source_root / name
@@ -181,7 +182,12 @@ def preflight_release(
             if path.is_dir() != directory:
                 raise RuntimeError(f"Release output has the wrong file type: {path}")
             empty_package = kind == "package" and not any(path.iterdir())
-            if not args.force and kind != "cached" and not empty_package:
+            if (
+                not args.force
+                and not getattr(args, "resume", False)
+                and kind != "cached"
+                and not empty_package
+            ):
                 raise RuntimeError(f"Release output already exists: {path}")
         parent = path.parent
         while not parent.exists():
