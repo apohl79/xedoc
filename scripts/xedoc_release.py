@@ -33,6 +33,7 @@ from xedoc_package.model_router_runtime import runtime_id
 from xedoc_package.model_router_runtime import runtime_reference
 from xedoc_package.model_router_runtime import runtime_release_tag
 from xedoc_package.model_router_runtime import RuntimeReference
+from xedoc_package.model_router_runtime import sha256_file
 from xedoc_package.remote_agent_runtime import build_remote_agent_runtime
 from xedoc_package.remote_agent_runtime import sign_macos_runtime_binary
 
@@ -522,13 +523,10 @@ def build_release(args: argparse.Namespace) -> None:
                 archive_outputs=archive_outputs,
                 runtime_archive_output=runtime_archive_output,
                 remote_agent_runtime_output=remote_agent_runtime_output,
-                notarization_report_dir=output_dir / version / "notarization",
-                notarize=getattr(args, "notarize", False)
-                and not args.skip_github_release,
                 signing_identity=codesign_identity,
             )
             if runtime_reference is not None:
-                completed_packages[target] = ReleasePackage(
+                package = ReleasePackage(
                     target=target,
                     package_dir=package_dir,
                     archive_outputs=tuple(archive_outputs),
@@ -536,6 +534,22 @@ def build_release(args: argparse.Namespace) -> None:
                     runtime_archive_output=runtime_archive_output,
                     remote_agent_runtime_output=remote_agent_runtime_output,
                 )
+                completed_packages[target] = package
+                if (
+                    args.resume
+                    and target.endswith("apple-darwin")
+                    and args.notarize
+                    and not args.skip_github_release
+                ):
+                    notarize_package_archive(
+                        package_dir=package.package_dir,
+                        archive_outputs=package.archive_outputs,
+                        target=target,
+                        output_dir=output_dir,
+                        version=version,
+                        source_root=source_root,
+                        notarytool_keychain_profile=args.notarytool_keychain_profile,
+                    )
     pending_targets = [target for target in targets if target not in completed_packages]
     if pending_targets:
         repair_stale_release_lockfiles(
@@ -873,31 +887,17 @@ def package_release_target(
         and getattr(args, "notarize", False)
         and not args.skip_github_release
     ):
-        notarization_zip = next(
-            (path for path in archive_outputs if path.suffix == ".zip"), None
-        )
-        with tempfile.TemporaryDirectory(prefix="xedoc-notarization-") as temp_dir:
-            if notarization_zip is None:
-                notarization_zip = Path(temp_dir) / "xedoc-package.zip"
-                write_archive(package_dir, notarization_zip, force=False)
-            notarization_command = [
-                str(
-                    source_root
-                    / ".github/scripts/macos-signing/notarize_macos_binary_with_rcodesign.sh"
-                ),
-                "--archive",
-                str(notarization_zip),
-                "--report-dir",
-                str(output_dir / version / "notarization" / target),
-            ]
-            notarytool_keychain_profile = getattr(
+        notarize_package_archive(
+            package_dir=package_dir,
+            archive_outputs=archive_outputs,
+            target=target,
+            output_dir=output_dir,
+            version=version,
+            source_root=source_root,
+            notarytool_keychain_profile=getattr(
                 args, "notarytool_keychain_profile", None
-            )
-            if notarytool_keychain_profile:
-                notarization_command.extend(
-                    ["--notarytool-keychain-profile", notarytool_keychain_profile]
-                )
-            run(notarization_command, cwd=source_root)
+            ),
+        )
 
     return ReleasePackage(
         target=target,
@@ -907,6 +907,51 @@ def package_release_target(
         runtime_archive_output=runtime_archive_output,
         remote_agent_runtime_output=remote_agent_runtime_output,
     )
+
+
+def notarize_package_archive(
+    *,
+    package_dir: Path,
+    archive_outputs: tuple[Path, ...] | list[Path],
+    target: str,
+    output_dir: Path,
+    version: str,
+    source_root: Path,
+    notarytool_keychain_profile: str | None,
+) -> None:
+    with tempfile.TemporaryDirectory(prefix="xedoc-notarization-") as temp_dir:
+        notarization_zip = next(
+            (path for path in archive_outputs if path.suffix == ".zip"), None
+        )
+        if notarization_zip is None:
+            notarization_zip = Path(temp_dir) / "xedoc-package.zip"
+            write_archive(package_dir, notarization_zip, force=False)
+
+        report_dir = output_dir / version / "notarization" / target
+        summary = report_dir / (f"{notarization_zip.name}-notarization-summary.txt")
+        if summary.is_file():
+            summary_lines = summary.read_text(encoding="utf-8").splitlines()
+            if (
+                "notarization=completed" in summary_lines
+                and f"input_sha256={sha256_file(notarization_zip)}" in summary_lines
+            ):
+                return
+
+        notarization_command = [
+            str(
+                source_root
+                / ".github/scripts/macos-signing/notarize_macos_binary_with_rcodesign.sh"
+            ),
+            "--archive",
+            str(notarization_zip),
+            "--report-dir",
+            str(report_dir),
+        ]
+        if notarytool_keychain_profile:
+            notarization_command.extend(
+                ["--notarytool-keychain-profile", notarytool_keychain_profile]
+            )
+        run(notarization_command, cwd=source_root)
 
 
 def build_cargo_release_binaries(

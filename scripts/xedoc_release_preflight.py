@@ -213,6 +213,13 @@ def preflight_release(
             subprocess.run(command, cwd=source_root, check=True)
         except (OSError, subprocess.CalledProcessError) as error:
             raise RuntimeError("macOS notarization preflight failed.") from error
+        resolved_profile = (
+            output_dir / version / "notarization/preflight/notarytool-profile.txt"
+        )
+        if resolved_profile.is_file():
+            profile = resolved_profile.read_text(encoding="utf-8").strip()
+            if profile:
+                args.notarytool_keychain_profile = profile
     try:
         if include_ios or include_macos:
             subprocess.run(["xcodebuild", "-version"], check=True)

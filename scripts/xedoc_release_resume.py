@@ -33,8 +33,6 @@ def resumable_package(
     archive_outputs: list[Path],
     runtime_archive_output: Path,
     remote_agent_runtime_output: Path,
-    notarization_report_dir: Path,
-    notarize: bool,
     signing_identity: str | None,
 ) -> RuntimeReference | None:
     spec = TARGET_SPECS[target]
@@ -96,26 +94,6 @@ def resumable_package(
             remote_agent_runtime=remote_reference,
             include_session_control=True,
         )
-        if notarize and target.endswith("apple-darwin"):
-            notarization_zip = next(
-                (path for path in archive_outputs if path.suffix == ".zip"), None
-            )
-            expected_name = (
-                notarization_zip.name
-                if notarization_zip is not None
-                else "xedoc-package.zip"
-            )
-            summary = (
-                notarization_report_dir
-                / target
-                / f"{expected_name}-notarization-summary.txt"
-            )
-            if (
-                not summary.is_file()
-                or "notarization=completed"
-                not in summary.read_text(encoding="utf-8").splitlines()
-            ):
-                raise ValueError("notarization is not complete")
         for archive_output in archive_outputs:
             validate_package_archive(
                 archive_output, package_dir, spec=spec, version=version

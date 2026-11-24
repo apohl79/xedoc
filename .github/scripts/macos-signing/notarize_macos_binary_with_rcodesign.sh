@@ -109,6 +109,7 @@ if [[ ! -r "$retry_script" ]]; then
   exit 1
 fi
 mkdir -p "$report_dir"
+rm -f "$report_dir/notarytool-profile.txt"
 notarization_temp_dir="$(mktemp -d)"
 trap 'rm -rf "$notarization_temp_dir" >/dev/null' EXIT
 
@@ -191,20 +192,24 @@ discover_notarytool_profiles_from_keychain() {
 }
 
 if [[ "$notarization_backend" == "notarytool" ]]; then
-  add_notarytool_profile_candidate "$notarytool_profile_arg"
-  while IFS= read -r candidate; do
-    add_notarytool_profile_candidate "$candidate"
-  done < <(discover_notarytool_profiles_from_keychain)
-  add_notarytool_profile_candidate "${NOTARYTOOL_PROFILE:-}"
-  profile_candidates="${NOTARYTOOL_PROFILE_CANDIDATES:-}"
-  for candidate in ${profile_candidates//,/ }; do
-    add_notarytool_profile_candidate "$candidate"
-  done
-  add_notarytool_profile_candidate "app-notary"
-  add_notarytool_profile_candidate "xedoc-notary"
-  add_notarytool_profile_candidate "xedoc"
-  add_notarytool_profile_candidate "notarytool"
+  if [[ -n "$notarytool_profile_arg" ]]; then
+    add_notarytool_profile_candidate "$notarytool_profile_arg"
+  else
+    while IFS= read -r candidate; do
+      add_notarytool_profile_candidate "$candidate"
+    done < <(discover_notarytool_profiles_from_keychain)
+    add_notarytool_profile_candidate "${NOTARYTOOL_PROFILE:-}"
+    profile_candidates="${NOTARYTOOL_PROFILE_CANDIDATES:-}"
+    for candidate in ${profile_candidates//,/ }; do
+      add_notarytool_profile_candidate "$candidate"
+    done
+    add_notarytool_profile_candidate "app-notary"
+    add_notarytool_profile_candidate "xedoc-notary"
+    add_notarytool_profile_candidate "xedoc"
+    add_notarytool_profile_candidate "notarytool"
+  fi
 
+  failed_notarytool_profiles=()
   for candidate in "${notarytool_profile_candidates[@]}"; do
     if python3 "$retry_script" -- xcrun notarytool history \
       --keychain-profile "$candidate" \
@@ -213,10 +218,12 @@ if [[ "$notarization_backend" == "notarytool" ]]; then
       notarytool_profile="$candidate"
       break
     fi
+    failed_notarytool_profiles+=("$candidate")
   done
   if [[ -z "$notarytool_profile" ]]; then
     cat "$notarization_temp_dir/history.log" >&2
-    echo "No usable notarytool keychain profile was found." >&2
+    printf 'No usable notarytool keychain profile was found (checked: %s).\n' \
+      "${failed_notarytool_profiles[*]}" >&2
     exit 1
   fi
 fi
@@ -280,6 +287,9 @@ if [[ "$notarization_backend" == "rcodesign" ]]; then
     >"$report_dir/credentials-preflight.log" 2>&1
 fi
 if [[ "$preflight" == true ]]; then
+  if [[ "$notarization_backend" == "notarytool" ]]; then
+    printf '%s\n' "$notarytool_profile" >"$report_dir/notarytool-profile.txt"
+  fi
   echo "Notarization preflight passed ($notarization_backend)."
   exit 0
 fi
