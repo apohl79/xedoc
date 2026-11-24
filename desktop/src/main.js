@@ -273,9 +273,12 @@ app.whenReady().then(() => {
     ]));
   }
   ensureWindowsLocalHostService();
-  // Website panels and the app's own pages use the default session; websites get no device or
-  // notification access and cannot launch external protocol handlers.
-  const allowed = new Set(["clipboard-sanitized-write", "fullscreen"]);
+  // Website panels need local connections for apps such as Okta Verify. Device and notification
+  // access and external protocol handlers remain blocked.
+  const allowed = new Set([
+    "clipboard-sanitized-write", "fullscreen",
+    "local-network-access", "local-network", "loopback-network",
+  ]);
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => {
     callback(allowed.has(permission));
   });
