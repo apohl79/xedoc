@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+from xedoc_release_retry import run_with_retry
 
 
 def generate_cask(*, archive: Path, version: str, repo: str) -> str:
@@ -39,8 +40,8 @@ def publish_cask(
 ) -> None:
     endpoint = f"repos/{tap}/contents/Casks/xedoc.rb"
     try:
-        existing = subprocess.run(
-            [gh, "api", endpoint], text=True, capture_output=True, env=env
+        existing = run_with_retry(
+            [gh, "api", endpoint], text=True, capture_output=True, env=env, check=False
         )
     except OSError as err:
         raise RuntimeError("Could not read the Homebrew cask.") from err
@@ -56,7 +57,7 @@ def publish_cask(
     elif "HTTP 404" not in existing.stderr:
         raise RuntimeError(f"Could not read Homebrew cask: {existing.stderr.strip()}")
     try:
-        subprocess.run(
+        run_with_retry(
             [gh, "api", "--method", "PUT", endpoint, "--input", "-"],
             input=json.dumps(payload),
             text=True,
@@ -65,6 +66,15 @@ def publish_cask(
             stdout=subprocess.DEVNULL,
         )
     except (OSError, subprocess.CalledProcessError) as err:
+        current = run_with_retry(
+            [gh, "api", endpoint], capture_output=True, env=env, check=False
+        )
+        if (
+            current.returncode == 0
+            and base64.b64decode(json.loads(current.stdout)["content"]).decode()
+            == content
+        ):
+            return
         raise RuntimeError("Could not publish the Homebrew cask.") from err
 
 

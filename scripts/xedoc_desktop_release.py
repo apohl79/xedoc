@@ -5,6 +5,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+from xedoc_release_retry import run_with_retry
 
 
 # (electron-builder platform flag, target, electron-builder arch, release arch, extension)
@@ -71,7 +72,7 @@ def build_desktop_release(
 def run(command: list[str], *, cwd: Path) -> None:
     print("+ " + shlex.join(command), flush=True)
     try:
-        subprocess.run(command, check=True, cwd=cwd)
+        run_with_retry(command, cwd=cwd)
     except (OSError, subprocess.CalledProcessError) as err:
         raise RuntimeError(
             f"Desktop app release command failed: {shlex.join(command)}"

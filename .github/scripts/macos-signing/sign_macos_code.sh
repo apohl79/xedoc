@@ -8,6 +8,7 @@
 # signing surface used by the native codesign path.
 
 set -euo pipefail
+retry_script="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../scripts" && pwd)/xedoc_release_retry.py"
 
 usage() {
   cat >&2 <<'EOF'
@@ -136,7 +137,7 @@ sign_with_codesign() {
   fi
 
   args+=(--sign "$identity" "$target")
-  codesign "${args[@]}"
+  python3 "$retry_script" -- codesign "${args[@]}"
 }
 
 append_rcodesign_flags() {
@@ -228,7 +229,7 @@ sign_with_rcodesign() {
   fi
 
   rcodesign_args+=("$target")
-  rcodesign "${rcodesign_args[@]}"
+  python3 "$retry_script" -- rcodesign "${rcodesign_args[@]}"
 }
 
 case "${OAI_CODESIGN_BACKEND:-codesign}" in

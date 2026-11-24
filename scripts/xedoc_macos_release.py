@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from xedoc_release_retry import run_with_retry
 
 
 def build_macos_release(
@@ -103,7 +104,10 @@ def build_macos_release(
 def run(command: list[str], *, cwd: Path | None = None) -> None:
     print("+ " + shlex.join(command), flush=True)
     try:
-        subprocess.run(command, check=True, cwd=cwd)
+        if command[0] == "pnpm" or command[1:3] == ["stapler", "staple"]:
+            run_with_retry(command, cwd=cwd)
+        else:
+            subprocess.run(command, check=True, cwd=cwd)
     except (OSError, subprocess.CalledProcessError) as err:
         raise RuntimeError(
             f"macOS release command failed: {shlex.join(command)}"

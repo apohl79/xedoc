@@ -7,13 +7,13 @@ import subprocess
 import sys
 import tarfile
 import tempfile
-import urllib.request
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from .targets import TargetSpec
+from xedoc_release_retry import download_with_retry, run_with_retry
 
 
 RUNTIME_SERIES = "r3"
@@ -275,7 +275,7 @@ def install_wheels(
         f"onnxruntime=={distribution.onnxruntime_version}",
         *RUNTIME_REQUIREMENTS,
     ]
-    subprocess.run(
+    run_with_retry(
         [
             sys.executable,
             "-m",
@@ -379,11 +379,10 @@ def copy_classifier_weights(root: Path) -> None:
 def download_file(url: str, destination: Path, expected_sha256: str) -> None:
     digest = hashlib.sha256()
     try:
-        with urllib.request.urlopen(url, timeout=300) as response:
-            with open(destination, "wb") as output:
-                while chunk := response.read(1024 * 1024):
-                    digest.update(chunk)
-                    output.write(chunk)
+        download_with_retry(url, destination, timeout=300)
+        with destination.open("rb") as downloaded:
+            for chunk in iter(lambda: downloaded.read(1024 * 1024), b""):
+                digest.update(chunk)
     except OSError as error:
         raise RuntimeError(
             f"Could not download router runtime dependency: {url}"

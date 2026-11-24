@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
+from xedoc_release_retry import run_with_retry
 
 
 def build_ios_release(
@@ -54,7 +54,6 @@ def build_ios_release(
             f"CURRENT_PROJECT_VERSION={numeric_version}",
             "archive",
         ],
-        attempts=3,
     )
     archive_output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="xedoc-ios-release-") as temp_dir:
@@ -82,7 +81,6 @@ def build_ios_release(
                 str(export_options),
                 "-allowProvisioningUpdates",
             ],
-            attempts=3,
         )
         ipa_files = list(export_path.glob("*.ipa"))
         if len(ipa_files) != 1:
@@ -194,29 +192,14 @@ def ios_archive_path(output_dir: Path) -> Path:
 def run(
     command: list[str],
     env: dict[str, str] | None = None,
-    *,
-    attempts: int = 1,
 ) -> None:
-    for attempt in range(1, attempts + 1):
-        print("+ " + shlex.join(command), flush=True)
-        try:
+    print("+ " + shlex.join(command), flush=True)
+    try:
+        if command[0] == "xcodebuild":
+            run_with_retry(command, env=env)
+        else:
             subprocess.run(command, check=True, env=env)
-            return
-        except OSError as err:
-            raise RuntimeError(
-                f"iOS release command could not start: {shlex.join(command)}"
-            ) from err
-        except subprocess.CalledProcessError as err:
-            if attempt == attempts:
-                raise RuntimeError(
-                    f"iOS release command failed after {attempts} attempt(s): "
-                    f"{shlex.join(command)}"
-                ) from err
-            delay = 15 * attempt
-            print(
-                f"iOS release command exited with status {err.returncode}; "
-                f"retrying in {delay}s (attempt {attempt + 1}/{attempts}).",
-                file=sys.stderr,
-                flush=True,
-            )
-            time.sleep(delay)
+    except (OSError, subprocess.CalledProcessError) as err:
+        raise RuntimeError(
+            f"iOS release command failed: {shlex.join(command)}"
+        ) from err

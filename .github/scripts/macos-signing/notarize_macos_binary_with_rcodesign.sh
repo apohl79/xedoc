@@ -9,9 +9,10 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-Usage: notarize_macos_binary_with_rcodesign.sh (--binary PATH | --archive ZIP) [--report-dir PATH] [--max-wait-seconds SECONDS] [--notarytool-keychain-profile NAME]
+Usage: notarize_macos_binary_with_rcodesign.sh (--preflight | --binary PATH | --archive ZIP) [--report-dir PATH] [--max-wait-seconds SECONDS] [--notarytool-keychain-profile NAME]
 
 Options:
+  --preflight                   Validate tools and credentials without submitting.
   --binary PATH                 Signed standalone macOS binary to notarize.
   --archive ZIP                 Signed macOS package ZIP to notarize.
   --report-dir PATH             Directory for notarization logs.
@@ -23,12 +24,17 @@ EOF
 
 binary_path=""
 input_archive=""
+preflight=false
 notarytool_profile_arg=""
 report_dir="${RUNNER_TEMP:-/tmp}/macos-binary-notarization-verification"
 max_wait_seconds="600"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --preflight)
+      preflight=true
+      shift
+      ;;
     --binary)
       binary_path="${2:-}"
       shift 2
@@ -61,14 +67,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$binary_path" && -z "$input_archive" ]] || [[ -n "$binary_path" && -n "$input_archive" ]]; then
+if [[ "$preflight" == false ]] && { [[ -z "$binary_path" && -z "$input_archive" ]] || [[ -n "$binary_path" && -n "$input_archive" ]]; }; then
   echo "Pass exactly one of --binary or --archive." >&2
   usage
   exit 2
 fi
 
 input_path="${binary_path:-$input_archive}"
-if [[ ! -f "$input_path" ]]; then
+if [[ "$preflight" == false && ! -f "$input_path" ]]; then
   echo "Notarization input does not exist: $input_path" >&2
   exit 1
 fi
@@ -77,8 +83,8 @@ if [[ -n "$input_archive" && "$input_archive" != *.zip ]]; then
   exit 1
 fi
 
-if [[ ! "$max_wait_seconds" =~ ^[0-9]+$ ]]; then
-  echo "--max-wait-seconds must be a non-negative integer." >&2
+if [[ ! "$max_wait_seconds" =~ ^[0-9]+$ || "$max_wait_seconds" =~ ^0+$ ]]; then
+  echo "--max-wait-seconds must be a positive integer." >&2
   exit 2
 fi
 
@@ -91,10 +97,20 @@ else
   exit 1
 fi
 
-if ! command -v zip >/dev/null 2>&1; then
-  echo "zip was not found on PATH." >&2
+for tool in zip python3 shasum; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "$tool was not found on PATH." >&2
+    exit 1
+  fi
+done
+retry_script="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../scripts" && pwd)/xedoc_release_retry.py"
+if [[ ! -r "$retry_script" ]]; then
+  echo "Missing release retry helper: $retry_script" >&2
   exit 1
 fi
+mkdir -p "$report_dir"
+notarization_temp_dir="$(mktemp -d)"
+trap 'rm -rf "$notarization_temp_dir" >/dev/null' EXIT
 
 notarytool_profile=""
 notarytool_profile_candidates=()
@@ -104,7 +120,7 @@ add_notarytool_profile_candidate() {
   local existing
 
   [[ -n "$candidate" ]] || return 0
-  if [[ "${#notarytool_profile_candidates[@]}" -gt 0 ]]; then
+  if [[ -n "${notarytool_profile_candidates[*]:-}" ]]; then
     for existing in "${notarytool_profile_candidates[@]}"; do
       [[ "$existing" != "$candidate" ]] || return 0
     done
@@ -180,7 +196,8 @@ if [[ "$notarization_backend" == "notarytool" ]]; then
     add_notarytool_profile_candidate "$candidate"
   done < <(discover_notarytool_profiles_from_keychain)
   add_notarytool_profile_candidate "${NOTARYTOOL_PROFILE:-}"
-  for candidate in ${NOTARYTOOL_PROFILE_CANDIDATES//,/ }; do
+  profile_candidates="${NOTARYTOOL_PROFILE_CANDIDATES:-}"
+  for candidate in ${profile_candidates//,/ }; do
     add_notarytool_profile_candidate "$candidate"
   done
   add_notarytool_profile_candidate "app-notary"
@@ -189,15 +206,16 @@ if [[ "$notarization_backend" == "notarytool" ]]; then
   add_notarytool_profile_candidate "notarytool"
 
   for candidate in "${notarytool_profile_candidates[@]}"; do
-    if xcrun notarytool history \
+    if python3 "$retry_script" -- xcrun notarytool history \
       --keychain-profile "$candidate" \
       --output-format json \
-      --no-progress >/dev/null 2>&1; then
+      --no-progress >"$notarization_temp_dir/history.log" 2>&1; then
       notarytool_profile="$candidate"
       break
     fi
   done
   if [[ -z "$notarytool_profile" ]]; then
+    cat "$notarization_temp_dir/history.log" >&2
     echo "No usable notarytool keychain profile was found." >&2
     exit 1
   fi
@@ -220,11 +238,6 @@ if [[ "$notarization_backend" == "rcodesign" ]]; then
   fi
 fi
 
-mkdir -p "$report_dir"
-
-notarization_temp_dir="$(mktemp -d)"
-trap 'rm -rf "$notarization_temp_dir" >/dev/null' EXIT
-
 private_key_path=""
 if [[ -z "$notarytool_profile" ]]; then
   private_key_path="$notarization_temp_dir/AuthKey_${APPLE_NOTARIZATION_KEY_ID}.p8"
@@ -235,6 +248,40 @@ if [[ -z "$notarytool_profile" ]]; then
     fi
   fi
   chmod 600 "$private_key_path"
+fi
+
+if [[ "$notarization_backend" == "rcodesign" ]]; then
+  api_key_path="$notarization_temp_dir/app-store-connect-api-key.json"
+  rcodesign encode-app-store-connect-api-key \
+    --output-path "$api_key_path" \
+    "$APPLE_NOTARIZATION_ISSUER_ID" \
+    "$APPLE_NOTARIZATION_KEY_ID" \
+    "$private_key_path" \
+    >"$report_dir/encode-app-store-connect-api-key.log" 2>&1
+  if rcodesign notary-submit --help >/dev/null 2>&1; then
+    rcodesign_submit="notary-submit"
+    if rcodesign notary-wait --help >/dev/null 2>&1; then
+      rcodesign_wait="notary-wait"
+    else
+      echo "rcodesign supports notary-submit but not notary-wait." >&2
+      exit 1
+    fi
+  else
+    rcodesign notarize --help >/dev/null
+    rcodesign_submit="notarize"
+    if rcodesign notarize-wait --help >/dev/null 2>&1; then
+      rcodesign_wait="notarize-wait"
+    else
+      echo "rcodesign supports notarize but not notarize-wait." >&2
+      exit 1
+    fi
+  fi
+  python3 "$retry_script" -- rcodesign notary-list --api-key-file "$api_key_path" \
+    >"$report_dir/credentials-preflight.log" 2>&1
+fi
+if [[ "$preflight" == true ]]; then
+  echo "Notarization preflight passed ($notarization_backend)."
+  exit 0
 fi
 
 input_name="$(basename "$input_path")"
@@ -250,40 +297,59 @@ fi
 notarization_log="$report_dir/${input_name}-notarization.log"
 case "$notarization_backend" in
   rcodesign)
-    api_key_path="$notarization_temp_dir/app-store-connect-api-key.json"
-    rcodesign encode-app-store-connect-api-key \
-      --output-path "$api_key_path" \
-      "$APPLE_NOTARIZATION_ISSUER_ID" \
-      "$APPLE_NOTARIZATION_KEY_ID" \
-      "$private_key_path" \
-      >"$report_dir/encode-app-store-connect-api-key.log" 2>&1
-    rcodesign notarize \
+    if ! rcodesign "$rcodesign_submit" \
+      --api-key-file "$api_key_path" \
+      "$archive_path" \
+      >"$notarization_temp_dir/submission.log" 2>&1; then
+      cat "$notarization_temp_dir/submission.log" >&2
+      echo "Notarization submission failed; it will not be retried because Apple may have accepted it." >&2
+      exit 1
+    fi
+    cat "$notarization_temp_dir/submission.log" | tee "$notarization_log"
+    submission_id="$(
+      python3 -c '
+import re, sys
+text = sys.stdin.read()
+matches = re.findall(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b", text)
+print(matches[-1] if matches else "")
+' <"$notarization_temp_dir/submission.log"
+    )"
+    if [[ -z "$submission_id" ]]; then
+      echo "rcodesign submitted the notarization but did not expose a submission ID; refusing to submit again." >&2
+      exit 1
+    fi
+    python3 "$retry_script" -- rcodesign "$rcodesign_wait" \
       --api-key-file "$api_key_path" \
       --max-wait-seconds "$max_wait_seconds" \
-      --wait \
-      "$archive_path" \
-      2>&1 | tee "$notarization_log"
+      "$submission_id" \
+      2>&1 | tee -a "$notarization_log"
+    python3 "$retry_script" -- rcodesign notary-log \
+      --api-key-file "$api_key_path" "$submission_id" \
+      >"$notarization_temp_dir/submission-result.json"
+    cat "$notarization_temp_dir/submission-result.json" | tee -a "$notarization_log"
+    python3 -c 'import json, sys; result = json.load(open(sys.argv[1])); sys.exit(0 if result.get("status") == "Accepted" else "Notarization not accepted: " + str(result))' \
+      "$notarization_temp_dir/submission-result.json"
     ;;
   notarytool)
-    if [[ -n "$notarytool_profile" ]]; then
-      xcrun notarytool submit \
+    if ! xcrun notarytool submit \
         "$archive_path" \
         --keychain-profile "$notarytool_profile" \
-        --wait \
-        --timeout "${max_wait_seconds}s" \
+        --no-wait \
         --output-format json \
-        2>&1 | tee "$notarization_log"
-    else
-      xcrun notarytool submit \
-        "$archive_path" \
-        --key "$private_key_path" \
-        --key-id "$APPLE_NOTARIZATION_KEY_ID" \
-        --issuer "$APPLE_NOTARIZATION_ISSUER_ID" \
-        --wait \
-        --timeout "${max_wait_seconds}s" \
-        --output-format json \
-        2>&1 | tee "$notarization_log"
+        >"$report_dir/${input_name}-submission.json"; then
+      echo "Notarization submission failed; it will not be retried because Apple may have accepted it." >&2
+      exit 1
     fi
+    submission_id="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["id"])' \
+      "$report_dir/${input_name}-submission.json")"
+    python3 "$retry_script" -- xcrun notarytool wait \
+        "$submission_id" \
+        --keychain-profile "$notarytool_profile" \
+        --timeout "${max_wait_seconds}s" \
+        --output-format json \
+        >"$notarization_log"
+    cat "$notarization_log"
+    python3 -c 'import json, sys; result = json.load(open(sys.argv[1])); sys.exit(0 if result.get("status") == "Accepted" else "Notarization not accepted: " + str(result))' "$notarization_log"
     ;;
 esac
 

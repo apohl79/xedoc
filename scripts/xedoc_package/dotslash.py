@@ -10,7 +10,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
-from urllib.request import urlopen
+from xedoc_release_retry import download_with_retry
 
 from .targets import TargetSpec
 
@@ -167,9 +167,7 @@ def download_archive(url: str, archive_path: Path) -> None:
     temp_path = archive_path.with_suffix(f"{archive_path.suffix}.tmp")
     temp_path.unlink(missing_ok=True)
     try:
-        with urlopen(url, timeout=DOWNLOAD_TIMEOUT_SECS) as response:
-            with open(temp_path, "wb") as out:
-                shutil.copyfileobj(response, out)
+        download_with_retry(url, temp_path, timeout=DOWNLOAD_TIMEOUT_SECS)
         temp_path.replace(archive_path)
     finally:
         temp_path.unlink(missing_ok=True)

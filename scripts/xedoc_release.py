@@ -2,6 +2,7 @@
 
 import argparse
 from dataclasses import dataclass
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,8 @@ import textwrap
 from xedoc_ios_release import build_ios_release, upload_ios_testflight
 from xedoc_desktop_release import build_desktop_release
 from xedoc_macos_release import build_macos_release
+from xedoc_release_retry import run_with_retry
+from xedoc_release_preflight import preflight_release
 from update_homebrew_cask import generate_cask, publish_cask
 from xedoc_package.targets import TARGET_SPECS
 from xedoc_package.targets import TargetSpec
@@ -305,6 +308,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="Validate the selected release stages without building or publishing.",
+    )
+    parser.add_argument(
         "--keep-worktree",
         action="store_true",
         help=(
@@ -443,6 +451,22 @@ def build_release(args: argparse.Namespace) -> None:
             ref=args.ref,
             env=github_env,
         )
+
+    preflight_release(
+        args,
+        source_root=source_root,
+        output_dir=output_dir,
+        version=version,
+        targets=targets,
+        include_ios=include_ios,
+        include_macos=include_macos,
+        include_desktop=include_desktop,
+        codesign_identity=codesign_identity,
+        github_env=github_env,
+    )
+    if args.preflight_only:
+        print(f"Release preflight passed for Xedoc {version}.")
+        return
 
     if targets:
         repair_stale_release_lockfiles(
@@ -1977,14 +2001,18 @@ def github_release_exists(
     tag: str,
     env: dict[str, str] | None = None,
 ) -> bool:
-    result = run(
-        [gh, "release", "view", tag, "--repo", repo],
+    result = run_with_retry(
+        [gh, "api", f"repos/{repo}/releases/tags/{tag}"],
         cwd=REPO_ROOT,
         env=env,
         check=False,
-        stdout=subprocess.DEVNULL,
+        capture_output=True,
     )
-    return result.returncode == 0
+    if result.returncode == 0:
+        return True
+    if "HTTP 404" in result.stderr:
+        return False
+    raise RuntimeError(f"Could not check GitHub release {tag}: {result.stderr.strip()}")
 
 
 def github_release_env(*, gh: str, account: str | None) -> dict[str, str] | None:
@@ -2079,6 +2107,9 @@ def command_output(
 ) -> str:
     print("+ " + shlex.join(command), flush=True)
     try:
+        if command[1:2] in (["api"], ["release"]):
+            result = run_with_retry(command, cwd=cwd, env=env, capture_output=True)
+            return result.stdout
         return subprocess.check_output(command, cwd=cwd, env=env, text=True)
     except FileNotFoundError as err:
         raise RuntimeError(f"Command not found: {command[0]}") from err
@@ -2098,10 +2129,37 @@ def run(
 ) -> subprocess.CompletedProcess:
     print("+ " + shlex.join(command), flush=True)
     try:
+        if command[1:2] in (["api"], ["release"]):
+            return run_with_retry(command, cwd=cwd, env=env, check=check, stdout=stdout)
         return subprocess.run(command, cwd=cwd, env=env, check=check, stdout=stdout)
     except FileNotFoundError as err:
         raise RuntimeError(f"Command not found: {command[0]}") from err
     except subprocess.CalledProcessError as err:
+        # A lost HTTP response can report failure after GitHub applied a write.
+        if command[1:3] == ["release", "create"] and github_release_exists(
+            gh=command[0],
+            repo=command[command.index("--repo") + 1],
+            tag=command[3],
+            env=env,
+        ):
+            return subprocess.CompletedProcess(command, 0)
+        if command[1:3] == ["release", "upload"] and "--clobber" not in command:
+            archive = Path(command[4])
+            digest = hashlib.sha256()
+            with archive.open("rb") as uploaded:
+                for chunk in iter(lambda: uploaded.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            if (
+                github_release_asset_digest(
+                    gh=command[0],
+                    repo=command[command.index("--repo") + 1],
+                    tag=command[3],
+                    asset_name=archive.name,
+                    env=env,
+                )
+                == digest.hexdigest()
+            ):
+                return subprocess.CompletedProcess(command, 0)
         raise RuntimeError(
             f"Command failed with exit status {err.returncode}: {shlex.join(command)}"
         ) from err
