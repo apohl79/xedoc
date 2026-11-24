@@ -633,6 +633,8 @@ impl PluginsManager {
                 materialize_marketplace_plugin_source(xedoc_home.as_path(), &resolved.source)
                     .map_err(PluginStoreError::Invalid)?;
             let source_path = materialized.path;
+            crate::runtime_prepare::prepare_plugin_runtime(source_path.as_path())
+                .map_err(PluginStoreError::Invalid)?;
             match (plugin_version, manifest_fallback_contents.as_deref()) {
                 (Some(plugin_version), Some(manifest_contents)) => store
                     .install_with_version_and_fallback_manifest(
@@ -1096,17 +1098,22 @@ impl PluginsManager {
             ));
         }
         if !outcome.upgraded_roots.is_empty() {
-            let mut configured_plugin_keys = configured_plugins_from_stack(
+            let configured_plugins = configured_plugins_from_stack(
                 &config.config_layer_stack,
                 self.xedoc_home.as_path(),
-            )
-            .into_keys()
-            .collect::<Vec<_>>();
+            );
+            let enabled_plugin_keys = configured_plugins
+                .iter()
+                .filter(|(_, plugin)| plugin.enabled)
+                .map(|(key, _)| key.clone())
+                .collect::<Vec<_>>();
+            let mut configured_plugin_keys = configured_plugins.into_keys().collect::<Vec<_>>();
             configured_plugin_keys.sort_unstable();
             match refresh_non_curated_plugin_cache_force_reinstall_detailed(
                 self.xedoc_home.as_path(),
                 &outcome.upgraded_roots,
                 &configured_plugin_keys,
+                &enabled_plugin_keys,
             ) {
                 Ok(refresh_outcome) => {
                     self.clear_caches_after_marketplace_source_refresh(
@@ -1288,6 +1295,7 @@ impl PluginsManager {
                         self.xedoc_home.as_path(),
                         &request.roots,
                         &request.configured_plugin_keys,
+                        &[],
                     )
                 }
             };

@@ -425,7 +425,10 @@ fn replace_plugin_root_atomically(
         })?;
     let staged_root = staged_dir.path().join(plugin_dir_name);
     let staged_version_root = staged_root.join(plugin_version);
-    copy_dir_recursive(source, &staged_version_root)?;
+    let source_root = source
+        .canonicalize()
+        .map_err(|err| PluginStoreError::io("failed to resolve plugin source root", err))?;
+    copy_dir_recursive(&source_root, &staged_version_root, &source_root)?;
     if let InstallManifest::Fallback(contents) = manifest {
         // Inject the generated manifest into Store's existing atomic copy so install does not
         // mutate the original source or require a second staging directory.
@@ -536,7 +539,11 @@ fn compare_plugin_versions(left: &str, right: &str) -> Ordering {
     }
 }
 
-fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), PluginStoreError> {
+fn copy_dir_recursive(
+    source: &Path,
+    target: &Path,
+    source_root: &Path,
+) -> Result<(), PluginStoreError> {
     fs::create_dir_all(target)
         .map_err(|err| PluginStoreError::io("failed to create plugin target directory", err))?;
 
@@ -552,10 +559,52 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), PluginStoreErr
             .map_err(|err| PluginStoreError::io("failed to inspect plugin source entry", err))?;
 
         if file_type.is_dir() {
-            copy_dir_recursive(&source_path, &target_path)?;
+            copy_dir_recursive(&source_path, &target_path, source_root)?;
         } else if file_type.is_file() {
             fs::copy(&source_path, &target_path)
                 .map_err(|err| PluginStoreError::io("failed to copy plugin file", err))?;
+        } else if file_type.is_symlink() {
+            let link_target = fs::read_link(&source_path)
+                .map_err(|err| PluginStoreError::io("failed to read plugin symlink", err))?;
+            if link_target.is_absolute() {
+                return Err(PluginStoreError::Invalid(format!(
+                    "absolute plugin symlinks are not supported: {}",
+                    source_path.display()
+                )));
+            }
+            let resolved_target = source_path
+                .canonicalize()
+                .map_err(|err| PluginStoreError::io("failed to resolve plugin symlink", err))?;
+            if !resolved_target.starts_with(source_root) {
+                return Err(PluginStoreError::Invalid(format!(
+                    "plugin symlink target is outside the plugin: {}",
+                    source_path.display()
+                )));
+            }
+            let shared_depth = source
+                .components()
+                .zip(resolved_target.components())
+                .take_while(|(left, right)| left == right)
+                .count();
+            let mut portable_target = PathBuf::new();
+            for _ in shared_depth..source.components().count() {
+                portable_target.push("..");
+            }
+            portable_target.extend(resolved_target.components().skip(shared_depth));
+            if portable_target.as_os_str().is_empty() {
+                portable_target.push(".");
+            }
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&portable_target, &target_path)
+                .map_err(|err| PluginStoreError::io("failed to copy plugin symlink", err))?;
+            #[cfg(windows)]
+            if resolved_target.is_dir() {
+                std::os::windows::fs::symlink_dir(&portable_target, &target_path)
+                    .map_err(|err| PluginStoreError::io("failed to copy plugin symlink", err))?;
+            } else {
+                std::os::windows::fs::symlink_file(&portable_target, &target_path)
+                    .map_err(|err| PluginStoreError::io("failed to copy plugin symlink", err))?;
+            }
         }
     }
 

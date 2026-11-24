@@ -1,6 +1,7 @@
 pub mod loader;
 mod manager;
 mod provider;
+mod runtime_prepare;
 pub mod startup_sync;
 
 pub use xedoc_core_plugin_marketplace::OPENAI_API_CURATED_MARKETPLACE_NAME;

@@ -1,4 +1,15 @@
+load("@crates//:defs.bzl", "all_crate_deps")
+load("@rules_rust//rust:defs.bzl", "rust_binary")
 load("//:defs.bzl", "xedoc_rust_crate")
+
+rust_binary(
+    name = "runtime-prepare-functional-probe",
+    srcs = ["functional/runtime_prepare.rs"],
+    crate_root = "functional/runtime_prepare.rs",
+    edition = "2024",
+    tags = ["manual"],
+    deps = all_crate_deps(normal = True) + [":core-plugins"],
+)
 
 xedoc_rust_crate(
     name = "core-plugins",

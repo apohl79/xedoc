@@ -29,6 +29,33 @@ Python) or `node` (from `PATH`); otherwise the entrypoint is executed directly.
 Launching an action runs trusted plugin code as the host user, without a shell.
 Hover and focus only discover actions; they never execute plugin code.
 
+## Runtime preparation
+
+Plugins may declare `gui.prepare` alongside `gui.panels`:
+
+```json
+{"entrypoint":"./runtime/bin/prepare-runtime.mjs","interpreter":"node"}
+```
+
+Xedoc runs this trusted command without a shell during explicit plugin installation
+and when enabled installed plugins are refreshed after a configured marketplace
+upgrade. It runs from the plugin root before replacing the installed cache, so a
+failed preparation leaves the previous installed plugin intact. Disabled plugins
+declaring preparation are not prepared or replaced during upgrades.
+Discovery-only refresh defers cache replacement for plugins declaring preparation
+until an authorized installation or enabled marketplace upgrade succeeds. Catalog
+listing, plugin reads, hover, and focus never run preparation.
+
+The entrypoint must resolve to a file inside the plugin. `interpreter` is `node`
+(resolved from `PATH`) or omitted for a directly executable entrypoint. Preparation
+receives no stdin, has a 180-second timeout, and must be idempotent. Stdout is
+discarded to protect RPC transports; use stderr for diagnostics. Installation or
+upgrade reports failures with a retry instruction. Relative symlinks that resolve
+inside the plugin are rewritten as portable relative links to their resolved
+destinations in the installed cache. Absolute symlinks and links resolving outside
+the plugin are rejected. Launchers may retain their own readiness fallback for
+older hosts or externally changed local checkouts.
+
 ## Composer buttons
 
 A panel may declare up to 16 `composerButtons`. The host displays them to the

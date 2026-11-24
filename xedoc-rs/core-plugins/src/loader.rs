@@ -360,6 +360,7 @@ pub(crate) fn refresh_non_curated_plugin_cache_detailed(
         additional_roots,
         configured_plugin_keys,
         NonCuratedCacheRefreshMode::IfVersionChanged,
+        &[],
     )
 }
 
@@ -367,12 +368,14 @@ pub(crate) fn refresh_non_curated_plugin_cache_force_reinstall_detailed(
     xedoc_home: &Path,
     additional_roots: &[AbsolutePathBuf],
     configured_plugin_keys: &[String],
+    preparation_plugin_keys: &[String],
 ) -> Result<NonCuratedCacheRefreshOutcome, String> {
     refresh_non_curated_plugin_cache_with_mode(
         xedoc_home,
         additional_roots,
         configured_plugin_keys,
         NonCuratedCacheRefreshMode::ForceReinstall,
+        preparation_plugin_keys,
     )
 }
 
@@ -381,6 +384,7 @@ fn refresh_non_curated_plugin_cache_with_mode(
     additional_roots: &[AbsolutePathBuf],
     configured_plugin_keys: &[String],
     mode: NonCuratedCacheRefreshMode,
+    preparation_plugin_keys: &[String],
 ) -> Result<NonCuratedCacheRefreshOutcome, String> {
     let mut configured_non_curated_plugin_ids = configured_plugin_keys
         .iter()
@@ -502,6 +506,15 @@ fn refresh_non_curated_plugin_cache_with_mode(
                 return Ok(false);
             }
 
+            let preparation_authorized = preparation_plugin_keys.contains(&plugin_key);
+            if !preparation_authorized
+                && crate::runtime_prepare::has_runtime_preparation(source_path.as_path())?
+            {
+                return Ok(false);
+            }
+            if preparation_authorized {
+                crate::runtime_prepare::prepare_plugin_runtime(source_path.as_path())?;
+            }
             match manifest_fallback_contents.as_deref() {
                 Some(manifest_contents) => store.install_with_version_and_fallback_manifest(
                     source_path,
