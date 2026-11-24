@@ -230,6 +230,57 @@ cannot open targets outside that project; administrators may explicitly select
 external files. Scheme handlers receive the original URL. Declarations cannot
 register active-content schemes such as `javascript` or `data`.
 
+## Session runtime reuse
+
+A panel may opt in to `"reuse": "session"` in its declaration. The host starts
+the enabled panel's runtime when the user explicitly opens its session GUI,
+without supplying a document or waiting for imports. Catalog listing, hover, and
+focus never start a runtime. A failed speculative warmup does not prevent opening
+the main session GUI.
+
+The host sets `XEDOC_PLUGIN_PANEL_REUSE=session` and keeps stdin open. After
+imports, the runtime prints:
+
+```json
+{"protocol":"xedoc.plugin-panel-runtime/v1","ready":true}
+```
+
+It then handles serialized JSON-line commands. Every command and response carries
+that protocol. Opening an instance supplies the unchanged panel context described
+above, including a fresh inference snapshot and its own private `sessionDir`:
+
+```json
+{"protocol":"xedoc.plugin-panel-runtime/v1","op":"open","instanceId":"opaque-panel-id","context":{"protocol":"xedoc.plugin-panel/v1"}}
+```
+
+The `context` example is abbreviated. Success returns `instanceId`, `url`, and an
+optional `title`, using the same root-only loopback URL validation as ordinary
+panels. An instance failure returns `instanceId` and an `error` string without
+stopping sibling instances. Every instance owns its HTTP server, document watcher,
+inference settings, discussions, and Apply/Pause/Finish lifecycle. Sharing imports
+does not share document state or public capability URLs.
+
+`{"protocol":"xedoc.plugin-panel-runtime/v1","op":"close","instanceId":"opaque-panel-id"}`
+closes only that instance and returns the protocol, `instanceId`, and `ok: true`.
+Close must be idempotent. A `status` command returns the protocol and an
+`instances` array of live IDs, so the host can remove instances closed by
+Pause or Finish. Closing the last panel leaves the runtime warm.
+
+Responses are limited to 64 KiB and commands to 2 MiB. Open/readiness waits are
+limited to 180 seconds; close and status commands to five seconds. Invalid
+framing, a mismatched response, timeout, or process failure invalidates the whole
+runtime and all its capabilities rather than risking a desynchronized channel.
+Stdout is reserved for protocol responses; diagnostics go to the runtime's private
+`host-gui/runtimes/<identity>/runtime.log`.
+
+The pool is scoped to the authenticated owner, thread, canonical project, plugin,
+panel, entrypoint, interpreter, and manifest revision. Different owners or threads
+never share a runtime. Disabling/removing a declaration or changing its revision
+retires the old process when the catalog is refreshed. Logout, session close or
+rebind, workspace removal, and host shutdown stop idle and active runtimes.
+The host limits the total runtime processes and visible panel instances to 16
+each. Non-opted-in panels retain the original one-process-per-target protocol.
+
 ## Skill launch
 
 A skill can request the same panel through the owner-only local socket

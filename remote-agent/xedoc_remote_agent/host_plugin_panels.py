@@ -7,9 +7,6 @@ from pathlib import Path
 import queue
 import re
 import secrets
-import shutil
-import subprocess
-import sys
 import threading
 import time
 from urllib.parse import unquote, urlsplit
@@ -18,6 +15,7 @@ from urllib.request import url2pathname
 from .errors import BrokerError, ErrorCode
 from .host_plugin_composer import declarations as composer_declarations
 from .host_plugin_composer import invoke as invoke_composer
+from .host_plugin_runtime import PanelRuntimePool, RuntimeOpenError, launch_process, stop_process
 from .workspaces import load_bootstrap_descriptor
 
 
@@ -35,12 +33,17 @@ class HostPluginPanels:
         self.lock = threading.RLock()
         self.sessions = {}
         self.entries = {}
+        self.runtime_pool = PanelRuntimePool(home, self.entries)
         self.catalogs = {}
         self.broker = None
 
     def attach(self, account, cookie, workspace, project_name, thread_id, project):
         with self.lock:
-            self.sessions[(account["username"], thread_id)] = {
+            owner = (account["username"], thread_id)
+            previous = self.sessions.get(owner)
+            if previous and previous["project"] != Path(project).resolve():
+                self.close(*owner)
+            self.sessions[owner] = {
                 "username": account["username"],
                 "workspaceId": workspace,
                 "projectName": project_name,
@@ -48,6 +51,24 @@ class HostPluginPanels:
                 "project": Path(project).resolve(),
                 "cookie": cookie,
             }
+            threading.Thread(
+                target=self._prewarm, args=(owner, self.sessions[owner]),
+                daemon=True, name="plugin-panel-prewarm",
+            ).start()
+
+    def _prewarm(self, owner, session):
+        try:
+            project = session["project"]
+            panels = self.catalog(project, fresh=True)
+            with self.lock:
+                if self.sessions.get(owner) is not session:
+                    return
+                self.runtime_pool.prune(owner, project, panels, check_instances=False)
+                for (plugin_id, _), panel in panels.items():
+                    if panel["reuse"] == "session":
+                        self.runtime_pool.acquire(owner, project, plugin_id, panel)
+        except (OSError, ValueError, RuntimeError):
+            pass
 
     def _session(self, account, workspace, project_name, thread_id):
         session = self.sessions.get((account["username"], thread_id))
@@ -60,10 +81,10 @@ class HostPluginPanels:
             raise BrokerError.not_found("Open the session in the host GUI first")
         return session
 
-    def catalog(self, project, *, plugin_id=None):
+    def catalog(self, project, *, plugin_id=None, fresh=False):
         key = str(project)
         cached = self.catalogs.get(key)
-        if plugin_id is None and cached and time.monotonic() - cached[0] < 30:
+        if plugin_id is None and not fresh and cached and time.monotonic() - cached[0] < 30:
             return cached[1]
         result = self.workspaces._request("plugin/installed", {"cwds": [key]})
         panels = {}
@@ -91,10 +112,13 @@ class HostPluginPanels:
                 if not manifest.is_file() or manifest.stat().st_size > 256 * 1024:
                     continue
                 try:
-                    declarations = json.loads(manifest.read_text()).get("gui", {})
+                    manifest_stat = manifest.stat()
+                    contents = json.loads(manifest.read_text())
+                    declarations = contents.get("gui", {})
                     for declaration in declarations.get("panels", [])[:16]:
                         panel = self._declaration(summary["id"], root, declaration)
                         panel["pluginName"] = summary["name"]
+                        panel["revision"] = (manifest_stat.st_mtime_ns, manifest_stat.st_size)
                         panels[(summary["id"], panel["id"])] = panel
                 except (OSError, ValueError, TypeError, KeyError):
                     continue
@@ -130,6 +154,9 @@ class HostPluginPanels:
         interpreter = declaration.get("interpreter")
         if interpreter not in (None, "python", "node"):
             raise ValueError("Unsupported panel interpreter")
+        reuse = declaration.get("reuse")
+        if reuse not in (None, "session"):
+            raise ValueError("Unsupported panel runtime reuse")
         handlers = []
         for handler in declaration.get("linkHandlers", [])[:16]:
             handler_id, label = handler["id"], handler["title"]
@@ -154,7 +181,7 @@ class HostPluginPanels:
             })
         return {
             "id": panel_id, "title": title, "executable": executable,
-            "interpreter": interpreter, "root": root, "handlers": handlers,
+            "interpreter": interpreter, "root": root, "handlers": handlers, "reuse": reuse,
             "composerButtons": composer_declarations(root, declaration.get("composerButtons", [])),
         }
 
@@ -163,6 +190,7 @@ class HostPluginPanels:
             session = self._session(account, workspace, project_name, thread_id)
             panels = self.catalog(session["project"])
             owner = (account["username"], thread_id)
+            self.runtime_pool.prune(owner, session["project"], panels)
             for token, entry in list(self.entries.items()):
                 if entry["owner"] == owner and (
                     entry["process"].poll() is not None
@@ -257,6 +285,7 @@ class HostPluginPanels:
                 raise BrokerError.not_found("The enabled plugin does not declare this panel")
             target = self._target(target, panel, session["project"], account, handler_id)
             owner = (account["username"], thread_id)
+            self.runtime_pool.prune(owner, session["project"], panels, plugin_id=plugin_id)
             for token, entry in self.entries.items():
                 if (entry["owner"], entry["pluginId"], entry["manifestPanelId"], entry["target"]) == (
                     owner, plugin_id, panel_id, target
@@ -264,6 +293,11 @@ class HostPluginPanels:
                     return self._public(token, entry)
             if len(self.entries) >= 16:
                 raise BrokerError.limit_exceeded("Close a plugin panel before opening another")
+            if panel["reuse"] is None and (
+                len(self.runtime_pool.runtimes)
+                + sum("runtime" not in entry for entry in self.entries.values()) >= 16
+            ):
+                raise BrokerError.limit_exceeded("Close a session before starting another plugin runtime")
             thread = self.workspaces._thread_for_project(thread_id, session["project"])
             inference = self.session_guis.inference(account, thread_id)
             descriptor = load_bootstrap_descriptor(self.workspaces._bootstrap_path)
@@ -282,39 +316,29 @@ class HostPluginPanels:
                 "mainJsonlPath": thread.get("path"),
                 "inference": inference,
             }
-            executable = str(panel["executable"])
-            interpreter = panel["interpreter"]
-            command = [executable]
-            if interpreter:
-                runtime = sys.executable if interpreter == "python" else shutil.which("node")
-                if not runtime:
-                    raise BrokerError.unavailable("The plugin's Node.js runtime is unavailable")
-                command.insert(0, runtime)
             process = None
+            runtime = None
             try:
-                with (directory / "runtime.log").open("ab") as log:
-                    os.chmod(directory / "runtime.log", 0o600)
-                    environment = {**os.environ, "XEDOC_HOME": str(self.home), "HARNESS": "xedoc"}
-                    binary_directory = self.home / "packages" / "standalone" / "current" / "bin"
-                    if binary_directory.is_dir():
-                        environment["PATH"] = str(binary_directory) + os.pathsep + environment.get("PATH", "")
-                    process = subprocess.Popen(
-                        command, cwd=session["project"], stdin=subprocess.PIPE,
-                        stdout=subprocess.PIPE, stderr=log,
-                        env=environment,
+                if panel["reuse"] == "session":
+                    runtime = self.runtime_pool.acquire(
+                        owner, session["project"], plugin_id, panel,
                     )
-                process.stdin.write((json.dumps(context, ensure_ascii=False) + "\n").encode())
-                process.stdin.close()
-                ready = queue.Queue(maxsize=1)
-                threading.Thread(
-                    target=lambda: ready.put(process.stdout.readline(65537)),
-                    daemon=True, name="plugin-panel-ready",
-                ).start()
-                try:
-                    line = ready.get(timeout=180)
-                except queue.Empty as error:
-                    raise ValueError("Plugin panel startup timed out") from error
-                result = json.loads(line)
+                    process = runtime.process
+                    result = self.runtime_pool.open(runtime, token, context)
+                else:
+                    process = launch_process(self.home, panel, session["project"], directory)
+                    process.stdin.write((json.dumps(context, ensure_ascii=False) + "\n").encode())
+                    process.stdin.close()
+                    ready = queue.Queue(maxsize=1)
+                    threading.Thread(
+                        target=lambda: ready.put(process.stdout.readline(65537)),
+                        daemon=True, name="plugin-panel-ready",
+                    ).start()
+                    try:
+                        line = ready.get(timeout=180)
+                    except queue.Empty as error:
+                        raise ValueError("Plugin panel startup timed out") from error
+                    result = json.loads(line)
                 title = result.get("title")
                 if title is not None and (
                     not isinstance(title, str) or not 0 < len(title.strip()) <= 255
@@ -333,13 +357,17 @@ class HostPluginPanels:
                     "target": target, "address": address,
                     "process": process,
                 }
+                if runtime is not None:
+                    entry["runtime"] = runtime
                 self.entries[token] = entry
                 return self._public(token, entry)
             except (OSError, ValueError, KeyError, TypeError) as error:
-                if process is not None:
+                if runtime is not None and not isinstance(error, RuntimeOpenError):
+                    self.runtime_pool.discard(runtime)
+                elif process is not None and runtime is None:
                     self._stop(process)
                 raise BrokerError.unavailable(
-                    "Plugin panel failed to start; see host-gui/panels runtime.log"
+                    "Plugin panel failed to start; see host-gui runtime.log"
                 ) from error
 
     def entry(self, token):
@@ -364,18 +392,14 @@ class HostPluginPanels:
 
     @staticmethod
     def _stop(process):
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-        process.stdout.close()
+        stop_process(process)
 
     def _close_entry(self, token):
         entry = self.entries.pop(token)
-        self._stop(entry["process"])
+        if "runtime" in entry:
+            self.runtime_pool.close_instance(token, entry)
+        else:
+            self._stop(entry["process"])
 
     def close(self, username=None, thread_id=None, *, workspace_id=None):
         with self.lock:
@@ -386,6 +410,7 @@ class HostPluginPanels:
                     continue
                 if workspace_id is not None and session["workspaceId"] != workspace_id:
                     continue
+                self.runtime_pool.close_owner(owner)
                 for token, entry in list(self.entries.items()):
                     if entry["owner"] == owner:
                         self._close_entry(token)
