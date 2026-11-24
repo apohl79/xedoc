@@ -1,0 +1,4 @@
+interface:
+  display_name: "Computer Use"
+  short_description: "Keep desktop actions local to the intended target"
+  default_prompt: "Use $computer-use to operate the intended app without disrupting shared agent sessions."

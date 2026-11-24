@@ -1,0 +1,4 @@
+interface:
+  display_name: "Schedule Session"
+  short_description: "Create a recurring launchd job for a Xedoc session"
+  default_prompt: "Use $schedule-session to schedule a recurring Xedoc task."

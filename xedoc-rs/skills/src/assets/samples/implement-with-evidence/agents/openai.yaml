@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implement with Evidence"
+  short_description: "Implement changes with end-to-end acceptance evidence"
+  default_prompt: "Use $implement-with-evidence to implement this change and verify its behavior end to end."

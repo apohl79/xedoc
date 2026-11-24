@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research and Investigations"
+  short_description: "Evidence-led research and investigations"
+  default_prompt: "Use $research-and-investigations to investigate this question with bounded evidence gathering and synthesis."
