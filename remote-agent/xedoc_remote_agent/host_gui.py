@@ -954,20 +954,33 @@ class HostHandler(BaseHTTPRequestHandler):
                     self.reply(403, {"error": "Workspace access denied"})
                     return
                 if self.command == "GET" and path == "/api/projects":
+                    pins = self.server.pins.get(account["username"], workspace_id)
+                    projects = service.projects(
+                        workspace_id,
+                        username=account["username"],
+                        activity_only=parse_qs(parsed.query).get(
+                            "activity", [""]
+                        )[0]
+                        == "1",
+                    )
+                    if workspace_id == OTHER_WORKSPACE:
+                        listed = {project["name"] for project in projects}
+                        projects.extend(
+                            {
+                                "name": name,
+                                "label": Path(name).name or name,
+                                "path": name,
+                                "updatedAt": 0,
+                                "sessionActivity": [],
+                            }
+                            for name in pins
+                            if name not in listed
+                        )
                     self.reply(
                         200,
                         {
-                            "projects": service.projects(
-                                workspace_id,
-                                username=account["username"],
-                                activity_only=parse_qs(parsed.query).get(
-                                    "activity", [""]
-                                )[0]
-                                == "1",
-                            ),
-                            "pins": self.server.pins.get(
-                                account["username"], workspace_id
-                            ),
+                            "projects": projects,
+                            "pins": pins,
                         },
                     )
                     return
