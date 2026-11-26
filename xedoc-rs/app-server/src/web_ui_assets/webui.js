@@ -1055,43 +1055,6 @@
         );
         statusLine.classList.add("activity-status");
         if (statusMatch[1] === "Working") statusLine.classList.add("activity-working");
-        const interruptHintEnd = text.indexOf(" to interrupt");
-        const hintSearchStart = interruptHintEnd === -1
-          ? -1
-          : interruptHintEnd + " to interrupt".length;
-        const hintStart = hintSearchStart === -1
-          ? text.lastIndexOf(" • ctrl+d")
-          : text.indexOf(" • ", hintSearchStart);
-        if (hintStart !== -1) {
-          const closeParen = text.indexOf(")", hintStart);
-          const hintEnd = closeParen === -1 ? text.length : closeParen;
-          const range = document.createRange();
-          const walker = document.createTreeWalker(statusLine, NodeFilter.SHOW_TEXT);
-          let offset = 0;
-          let startNode;
-          let startOffset;
-          let endNode;
-          let endOffset;
-          while (walker.nextNode()) {
-            const node = walker.currentNode;
-            const nodeEnd = offset + node.length;
-            if (!startNode && hintStart >= offset && hintStart <= nodeEnd) {
-              startNode = node;
-              startOffset = hintStart - offset;
-            }
-            if (hintEnd >= offset && hintEnd <= nodeEnd) {
-              endNode = node;
-              endOffset = hintEnd - offset;
-              break;
-            }
-            offset = nodeEnd;
-          }
-          if (startNode && endNode) {
-            range.setStart(startNode, startOffset);
-            range.setEnd(endNode, endOffset);
-            range.deleteContents();
-          }
-        }
       }
       for (const line of activityLines) {
         const text = line.textContent;

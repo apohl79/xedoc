@@ -222,7 +222,6 @@ pub struct BottomPane {
     active_turn_started_at: Option<Instant>,
     runtime_context: Option<ComposerRuntimeContext>,
     model_router_mode: Option<String>,
-    active_turn_running: bool,
     can_disconnect_active_turn: bool,
     esc_backtrack_hint: bool,
     animations_enabled: bool,
@@ -298,7 +297,6 @@ impl BottomPane {
             active_turn_started_at: None,
             runtime_context: None,
             model_router_mode: None,
-            active_turn_running: false,
             can_disconnect_active_turn: false,
             status: None,
             unified_exec_footer: UnifiedExecFooter::new(),
@@ -1132,9 +1130,6 @@ impl BottomPane {
                 if let Some(status) = self.status.as_mut() {
                     status.set_interrupt_hint_visible(/*visible*/ true);
                     status.set_interrupt_binding(primary_binding(&self.keymap.chat.interrupt_turn));
-                    status.set_detach_hint_visible(
-                        self.can_disconnect_active_turn && self.active_turn_running,
-                    );
                 }
                 self.sync_status_inline_message();
                 self.request_redraw();
@@ -1175,9 +1170,6 @@ impl BottomPane {
             ));
             if let Some(status) = self.status.as_mut() {
                 status.set_interrupt_binding(primary_binding(&self.keymap.chat.interrupt_turn));
-                status.set_detach_hint_visible(
-                    self.can_disconnect_active_turn && self.active_turn_running,
-                );
             }
             self.sync_status_inline_message();
             self.request_redraw();
@@ -1193,22 +1185,10 @@ impl BottomPane {
 
     pub fn set_can_disconnect_active_turn(&mut self, can_disconnect: bool) {
         self.can_disconnect_active_turn = can_disconnect;
-        if let Some(status) = self.status.as_mut() {
-            status.set_detach_hint_visible(can_disconnect && self.active_turn_running);
-            self.request_redraw();
-        }
     }
 
     pub fn can_disconnect_active_turn(&self) -> bool {
         self.can_disconnect_active_turn
-    }
-
-    pub fn set_active_turn_running(&mut self, running: bool) {
-        self.active_turn_running = running;
-        if let Some(status) = self.status.as_mut() {
-            status.set_detach_hint_visible(running && self.can_disconnect_active_turn);
-            self.request_redraw();
-        }
     }
 
     pub fn set_active_task_list(&mut self, tasks: Vec<PlanItemArg>) {

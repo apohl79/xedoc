@@ -52,7 +52,6 @@ pub struct StatusIndicatorWidget {
     inline_message: Option<String>,
     show_interrupt_hint: bool,
     interrupt_binding: Option<KeyBinding>,
-    show_detach_hint: bool,
 
     elapsed_running: Duration,
     last_resume_at: Instant,
@@ -77,7 +76,6 @@ impl StatusIndicatorWidget {
             inline_message: None,
             show_interrupt_hint: true,
             interrupt_binding: Some(key_hint::plain(KeyCode::Esc)),
-            show_detach_hint: false,
             elapsed_running: Duration::ZERO,
             last_resume_at: Instant::now(),
             is_paused: false,
@@ -142,10 +140,6 @@ impl StatusIndicatorWidget {
 
     pub fn set_interrupt_binding(&mut self, binding: Option<KeyBinding>) {
         self.interrupt_binding = binding;
-    }
-
-    pub fn set_detach_hint_visible(&mut self, visible: bool) {
-        self.show_detach_hint = visible;
     }
 
     pub fn pause_timer(&mut self) {
@@ -274,9 +268,6 @@ impl Renderable for StatusIndicatorWidget {
                 interrupt_binding.into(),
                 " to interrupt".dim(),
             ]);
-        }
-        if self.show_detach_hint {
-            spans.extend(vec![" • ".dim(), "ctrl+d".dim(), " to detach".dim()]);
         }
         spans.push(")".dim());
         if let Some(message) = &self.inline_message {
