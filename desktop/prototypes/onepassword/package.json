@@ -1,0 +1,49 @@
+{
+  "name": "@xedoc/onepassword-probe",
+  "productName": "Xedoc 1Password Probe",
+  "version": "0.0.1",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "description": "Opt-in macOS 1Password compatibility experiment",
+  "author": "e47",
+  "main": "main.cjs",
+  "scripts": {
+    "download:extension": "node prepare.cjs",
+    "start": "node prepare.cjs && electron .",
+    "dist:mac": "node prepare.cjs && electron-builder --mac --arm64 --dir"
+  },
+  "dependencies": {
+    "debug": "4.4.3",
+    "electron-chrome-extensions": "4.10.0"
+  },
+  "devDependencies": {
+    "@electron-internal/extract-zip": "1.0.8",
+    "electron": "45.3.0",
+    "electron-builder": "26.18.1"
+  },
+  "build": {
+    "appId": "org.e47.xedoc.onepassword-probe",
+    "productName": "Xedoc 1Password Probe",
+    "asar": false,
+    "npmRebuild": false,
+    "files": [
+      "main.cjs",
+      "native-host.cjs",
+      "extension/**",
+      "package.json"
+    ],
+    "mac": {
+      "hardenedRuntime": true,
+      "entitlements": "../../entitlements.mac.plist",
+      "entitlementsInherit": "../../entitlements.mac.plist",
+      "notarize": false,
+      "signIgnore": [
+        "/Resources/app/",
+        "\\.lproj/",
+        "\\.pak$",
+        "\\.dat$",
+        "\\.bin$"
+      ]
+    }
+  }
+}

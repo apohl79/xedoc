@@ -1,0 +1,108 @@
+diff --git a/dist/chrome-extension-api.preload.js b/dist/chrome-extension-api.preload.js
+--- a/dist/chrome-extension-api.preload.js
++++ b/dist/chrome-extension-api.preload.js
+@@ -21,7 +21,7 @@
+     }
+     listenerMap.set(name, listenerCount + 1);
+     import_electron.ipcRenderer.addListener(formatIpcName(name), function(event, ...args) {
+-      if (true) {
++      if (false) {
+         console.log(name, "(result)", ...args);
+       }
+       callback(...args);
+@@ -44,7 +44,7 @@
+   var injectExtensionAPIs = () => {
+     const invokeExtension = async function(extensionId, fnName, options = {}, ...args) {
+       const callback = typeof args[args.length - 1] === "function" ? args.pop() : void 0;
+-      if (true) {
++      if (false) {
+         console.log(fnName, args);
+       }
+       if (options.noop) {
+@@ -62,7 +62,7 @@
+         console.error(e);
+         result = void 0;
+       }
+-      if (true) {
++      if (false) {
+         console.log(fnName, "(result)", result);
+       }
+       if (callback) {
+@@ -177,9 +177,14 @@
+         constructor() {
+           this.connectionId = "";
+           this.connected = false;
++          this.disconnected = false;
+           this.pending = [];
+           this.name = "";
+           this._init = (connectionId, send) => {
++            if (this.disconnected) {
++              electron.disconnectNative(extensionId, connectionId);
++              return;
++            }
+             this.connected = true;
+             this.connectionId = connectionId;
+             this._send = send;
+@@ -194,20 +199,26 @@
+           this.pending.push(message);
+         }
+         _receive(message) {
+-          ;
+-          this.onMessage._emit(message);
++          if (!this.disconnected) this.onMessage._emit(message, this);
+         }
+         _disconnect() {
+-          this.disconnect();
++          if (this.disconnected) return;
++          this.disconnected = true;
++          this.connected = false;
++          this.pending = [];
++          this.onDisconnect._emit(this);
+         }
+         postMessage(message) {
++          if (this.disconnected) throw new Error("Attempting to use a disconnected port.");
+           this._send(message);
+         }
+         disconnect() {
++          if (this.disconnected) return;
++          this.disconnected = true;
++          this.pending = [];
+           if (this.connected) {
++            this.connected = false;
+             electron.disconnectNative(extensionId, this.connectionId);
+-            this.onDisconnect._emit();
+-            this.connected = false;
+           }
+         }
+       }
+@@ -453,8 +464,8 @@
+             return {
+               ...base,
+               // TODO: provide a backend for browsers to opt-in to
+-              managed: local,
+-              sync: local
++              managed: base.managed,
++              sync: base.sync
+             };
+           }
+         },
+@@ -567,6 +578,7 @@
+         });
+       });
+       delete globalThis.electron;
++      Object.defineProperty(globalThis, "browser", { value: chrome, configurable: true });
+       Object.freeze(chrome);
+     }
+     if (!process.contextIsolated) {
+diff --git a/dist/cjs/index.js b/dist/cjs/index.js
+--- a/dist/cjs/index.js
++++ b/dist/cjs/index.js
+@@ -1880,6 +1880,8 @@
+     this.sender = void 0;
+   }
+   async launch(application, extensionId) {
++    this.destroy();
++    return;
+     const config = await readNativeMessagingHostConfig(application);
+     if (!config) {
+       d7("launch: unable to find %s for %s", application, extensionId);

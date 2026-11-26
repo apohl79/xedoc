@@ -22,6 +22,11 @@ overrides:
   rollup: 4.59.0
   semver: ^7.7.1
 
+patchedDependencies:
+  electron-chrome-extensions@4.10.0:
+    hash: 4ff392d5bd524189bafa26ac547973ac759eecfe89676c26f2f62d2c38c7fe5f
+    path: patches/electron-chrome-extensions-4.10.0.patch
+
 importers:
 
   .:
@@ -36,6 +41,25 @@ importers:
         specifier: 1.4.4
         version: 1.4.4
     devDependencies:
+      electron:
+        specifier: 45.3.0
+        version: 45.3.0
+      electron-builder:
+        specifier: 26.18.1
+        version: 26.18.1(electron-builder-squirrel-windows@26.18.1)
+
+  desktop/prototypes/onepassword:
+    dependencies:
+      debug:
+        specifier: 4.4.3
+        version: 4.4.3
+      electron-chrome-extensions:
+        specifier: 4.10.0
+        version: 4.10.0(patch_hash=4ff392d5bd524189bafa26ac547973ac759eecfe89676c26f2f62d2c38c7fe5f)
+    devDependencies:
+      '@electron-internal/extract-zip':
+        specifier: 1.0.8
+        version: 1.0.8
       electron:
         specifier: 45.3.0
         version: 45.3.0
@@ -399,6 +423,9 @@ packages:
     resolution: {integrity: sha512-uA3To9X/D4ozwP8k/o/MCfKi/xETyPV0FkhTaqdgIT679uexsQ8QFE+PhF8x6PY8W1jIJrw9/yadTuOWTpmAew==}
     engines: {node: '>=14.0.0'}
     hasBin: true
+
+  electron-chrome-extensions@4.10.0:
+    resolution: {integrity: sha512-yGOGqDN38Xn8hP1jGSWUNoQJSmgZvDltZn8ZVFo8GcQQD1DI4NtA/Fv/BzYzUhpevX8C+4aZI3LC/lqzN+/RFQ==}
 
   electron-publish@26.18.1:
     resolution: {integrity: sha512-VlAkMx9kgPP/TGn5q5sgCSYwKtMUXBGhXT2XwFi3p3lMJZDgCIWErikWBaI6tJg8PbMeXZ6vK1eR2+DzcZsb5w==}
@@ -1552,6 +1579,12 @@ snapshots:
       yargs: 17.7.3
     transitivePeerDependencies:
       - electron-builder-squirrel-windows
+      - supports-color
+
+  electron-chrome-extensions@4.10.0(patch_hash=4ff392d5bd524189bafa26ac547973ac759eecfe89676c26f2f62d2c38c7fe5f):
+    dependencies:
+      debug: 4.4.3
+    transitivePeerDependencies:
       - supports-color
 
   electron-publish@26.18.1:
