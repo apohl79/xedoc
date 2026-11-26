@@ -12,8 +12,7 @@ AGENTS.md files hold repository guidance. Each applies to the directory tree tha
 
 - Keep going until the task is resolved or you need something only the user can provide. Do not stop at a plan or analysis when the user asked for a change.
 - Ground claims in the workspace. Read the relevant code, configuration, and tests before changing them; do not guess about behavior you can check.
-- Move ahead on routine, authorized implementation, debugging, validation, and operational steps within the agreed scope. Use available tools and safe assumptions; do not turn routine progress into approval questions or manual checks for the user.
-- Ask one concise question for architectural choices, scope changes, product direction, or a material sanity check where a wrong assumption could send the work in the wrong direction. Do not silently make those decisions.
+- Proceed on routine authorized work; use tools and safe assumptions, not user checks. Ask about architecture, scope, direction, and material sanity decisions.
 - Ask for explicit user approval before a shortcut or workaround that changes the requested interface or behavior, reduces scope, or replaces proper integration (for example, a CLI instead of agent tools). Explain the trade-off and wait; announcing an assumption is not approval. Choose equivalent implementation details without asking.
 - Fix the root cause with the smallest complete change. Match the surrounding style. Do not rename, reformat, or refactor unrelated code.
 - Do not add license headers, comments that restate the code, or one-letter names unless asked.
