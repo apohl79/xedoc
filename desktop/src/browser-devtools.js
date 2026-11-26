@@ -1,5 +1,6 @@
 "use strict";
 
+const extensions = require("./website-extensions");
 const domains = new Set([
   "Accessibility", "Animation", "Audits", "CSS", "DOM", "DOMDebugger", "DOMSnapshot",
   "Debugger", "Emulation", "Fetch", "Input", "Inspector", "LayerTree", "Log",
@@ -25,6 +26,7 @@ class BrowserDevtools {
     this.sequence = 0;
     this.ready = null;
     this.debugger.on("message", (_event, method, params, sessionId) => {
+      if (extensions.protects(contents.session)) return;
       if (method === "Target.attachedToTarget" && (!sessionId || this.sessions.has(sessionId))) {
         if (["iframe", "worker"].includes(params.targetInfo.type) && this.sessions.size < 32) {
           this.sessions.set(params.sessionId, {
@@ -53,6 +55,7 @@ class BrowserDevtools {
   }
 
   async connect() {
+    this.assertAvailable();
     if (!this.ready) {
       this.ready = (async () => {
         if (!this.debugger.isAttached()) this.debugger.attach("1.3");
@@ -60,6 +63,16 @@ class BrowserDevtools {
       })().catch((error) => { this.ready = null; throw error; });
     }
     await this.ready;
+    this.assertAvailable();
+  }
+
+  assertAvailable() {
+    if (!extensions.protects(this.contents.session)) return;
+    if (this.debugger.isAttached()) this.debugger.detach();
+    this.ready = null;
+    this.sessions.clear();
+    this.events.length = 0;
+    throw new Error("Raw DevTools is blocked while 1Password is enabled. Use normal website automation instead.");
   }
 
   async command(input) {
@@ -80,6 +93,7 @@ class BrowserDevtools {
     const sessionId = input.sessionId || undefined;
     if (sessionId && !this.sessions.has(sessionId)) throw new Error("DevTools session does not belong to this panel.");
     let result = await this.debugger.sendCommand(method, params, sessionId);
+    this.assertAvailable();
     const path = input.resultPath || [];
     if (!Array.isArray(path) || path.length > 8) throw new Error("Invalid DevTools resultPath.");
     for (const key of path) {

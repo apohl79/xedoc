@@ -11,18 +11,18 @@ async function browserInput(panel, action, input) {
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= width / zoom || y >= height / zoom) {
       throw new Error("Pointer coordinates must be inside the visible panel.");
     }
-    const send = (type, buttons) => panel.devtools.command({
-      method: "Input.dispatchMouseEvent",
-      params: { type, x, y, button: type === "mouseMoved" && !buttons ? "none" : "left", buttons, clickCount: 1 },
+    const send = (type, buttons) => contents.sendInputEvent({
+      type, x: Math.round(x * zoom), y: Math.round(y * zoom), button: "left", clickCount: 1,
+      modifiers: buttons ? ["leftButtonDown"] : [],
     });
     contents.focus();
-    if (input.event === "move") await send("mouseMoved", panel.pointerDown ? 1 : 0);
-    else if (input.event === "down") { await send("mousePressed", 1); panel.pointerDown = true; }
-    else if (input.event === "up") { await send("mouseReleased", 0); panel.pointerDown = false; }
+    if (input.event === "move") send("mouseMove", panel.pointerDown ? 1 : 0);
+    else if (input.event === "down") { send("mouseDown", 1); panel.pointerDown = true; }
+    else if (input.event === "up") { send("mouseUp", 0); panel.pointerDown = false; }
     else if (input.event === "click") {
-      await send("mouseMoved", 0);
-      await send("mousePressed", 1);
-      await send("mouseReleased", 0);
+      send("mouseMove", 0);
+      send("mouseDown", 1);
+      send("mouseUp", 0);
       panel.pointerDown = false;
     } else throw new Error("Unsupported pointer event.");
   } else if (action === "type") {

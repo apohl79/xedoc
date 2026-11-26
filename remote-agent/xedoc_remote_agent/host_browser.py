@@ -16,7 +16,7 @@ _ACTIONS = {
     "open", "list", "navigate", "back", "forward", "reload", "snapshot",
     "evaluate", "click", "fill", "select", "scroll", "screenshot", "close",
     "frames", "inspect", "wait_for", "focus", "observe", "diagnostics",
-    "pointer", "key", "type", "cdp", "cdp_events",
+    "pointer", "key", "type", "cdp", "cdp_events", "extensions",
 }
 _MAX_PENDING = 32
 _MAX_RESULT_BYTES = 6 * 1024 * 1024
@@ -182,7 +182,7 @@ class HostBrowser:
         ):
             raise BrokerError.invalid_request("Browser timeout must be between 1 and 120 seconds")
 
-        if action not in ("open", "list"):
+        if action not in ("open", "list", "extensions"):
             panel_id = arguments.get("panelId")
             if not isinstance(panel_id, str) or not _PANEL_ID.fullmatch(panel_id):
                 raise BrokerError.invalid_request("A valid website panelId is required")

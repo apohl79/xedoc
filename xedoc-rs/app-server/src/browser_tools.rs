@@ -28,6 +28,10 @@ const ACTIONS: &[(&str, &str)] = &[
         "list",
         "List this session's website panels, URLs, titles and loading state.",
     ),
+    (
+        "extensions",
+        "Get or set global 1Password extension support without confirmation. Omit enabled for status; true enables, false disables. Changes recreate ALL native website panels across sessions: unsaved forms reset, cookies and account storage remain. Raw CDP is unavailable while enabled. Returns enabled, loaded, rawDevtoolsAvailable, and panelsReloaded. No panelId required.",
+    ),
     ("navigate", "Navigate a website panel to an HTTP(S) URL."),
     ("back", "Go back in a website panel."),
     ("forward", "Go forward in a website panel."),
@@ -126,7 +130,7 @@ pub(crate) fn augment(
                 required.push(name.to_string());
             }
         };
-        if !matches!(*action, "open" | "list") {
+        if !matches!(*action, "open" | "list" | "extensions") {
             property("panelId", json!({"type": "string"}), /*mandatory*/ true);
         }
         if matches!(*action, "open" | "navigate") {
@@ -135,7 +139,7 @@ pub(crate) fn augment(
         if matches!(*action, "click" | "fill" | "select" | "scroll" | "snapshot" | "inspect" | "focus" | "wait_for") {
             property("selector", json!({"type": "string", "maxLength": 4096, "description": "CSS selector. Separate open shadow-root boundaries with ' >>> '."}), matches!(*action, "click" | "fill" | "select" | "inspect" | "focus"));
         }
-        if !matches!(*action, "open" | "list" | "navigate" | "back" | "forward" | "reload" | "screenshot" | "close" | "pointer" | "key" | "type" | "cdp" | "cdp_events") {
+        if !matches!(*action, "open" | "list" | "extensions" | "navigate" | "back" | "forward" | "reload" | "screenshot" | "close" | "pointer" | "key" | "type" | "cdp" | "cdp_events") {
             property("framePath", json!({"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 1024}, "description": "Same-origin iframe CSS selectors from the top document to the target frame."}), /*mandatory*/ false);
         }
         if matches!(*action, "snapshot" | "diagnostics") {
@@ -148,6 +152,9 @@ pub(crate) fn augment(
         if *action == "observe" {
             property("enabled", json!({"type": "boolean", "description": "False stops recording and restores page hooks; default true."}), /*mandatory*/ false);
             property("captureBodies", json!({"type": "boolean", "description": "Opt in to response text prefixes (2048 characters); may contain private data. Default false."}), /*mandatory*/ false);
+        }
+        if *action == "extensions" {
+            property("enabled", json!({"type": "boolean", "description": "Omit for status. Changing this recreates all website panels and resets unsaved forms, while retaining cookies and account storage."}), /*mandatory*/ false);
         }
         if *action == "diagnostics" {
             property("kind", json!({"type": "string", "enum": ["console", "network", "resources"]}), /*mandatory*/ false);

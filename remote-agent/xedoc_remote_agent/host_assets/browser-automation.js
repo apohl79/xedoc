@@ -66,6 +66,14 @@ window.XedocBrowserAutomation = class {
     if (action === "list") {
       return this.panels.listWebsites();
     }
+    if (action === "extensions") {
+      return await this.native({
+        kind: "browserAutomation",
+        requestId: command.requestId,
+        action,
+        input: args,
+      }, command.timeout);
+    }
     if (action === "close") {
       return this.panels.closeWebsite(args.panelId);
     }

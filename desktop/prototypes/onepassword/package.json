@@ -28,7 +28,10 @@
     "npmRebuild": false,
     "files": [
       "main.cjs",
-      "native-host.cjs",
+      {
+        "from": "../../src/onepassword-native.js",
+        "to": "onepassword-native.js"
+      },
       "extension/**",
       "package.json"
     ],

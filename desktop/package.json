@@ -10,15 +10,18 @@
   "main": "src/main.js",
   "desktopName": "xedoc-desktop.desktop",
   "scripts": {
-    "start": "node scripts/build-macos-helper.cjs && electron .",
+    "start": "node scripts/prepare-onepassword.cjs && node scripts/build-macos-helper.cjs && electron .",
     "dist:mac": "electron-builder --mac --universal",
     "dist:linux": "electron-builder --linux",
     "dist:win": "electron-builder --win"
   },
   "dependencies": {
-    "bonjour-service": "1.4.4"
+    "bonjour-service": "1.4.4",
+    "debug": "4.4.3",
+    "electron-chrome-extensions": "4.10.0"
   },
   "devDependencies": {
+    "@electron-internal/extract-zip": "1.0.8",
     "electron": "45.3.0",
     "electron-builder": "26.18.1"
   },
@@ -33,7 +36,11 @@
       "package.json"
     ],
     "icon": "../ios/Xedoc/Assets.xcassets/AppIcon.appiconset/AppIcon.png",
-    "beforePack": "./scripts/build-macos-helper.cjs",
+    "beforePack": "./scripts/before-pack.cjs",
+    "extraResources": [{
+      "from": "build/onepassword",
+      "to": "onepassword"
+    }],
     "toolsets": {
       "appimage": "1.0.3"
     },

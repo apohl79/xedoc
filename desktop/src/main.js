@@ -11,6 +11,7 @@ const { ensureWindowsLocalHostService, readLocalHost } = require("./local-host")
 const { registerUI, uiWebPreferences, uiPage, autosaveBounds } = require("./ui-bridge");
 const { validatedHostURL, sameOrigin } = require("./urls");
 const { installZoom, zoomMenu, sizeDialog } = require("./zoom");
+const extensions = require("./website-extensions");
 
 const background = "#12171c";
 const connections = new Map();
@@ -246,10 +247,11 @@ app.on("before-quit", () => {
   quitting = true;
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   require("./macos-migration").migrateMacOSState(state);
+  await extensions.initialize();
   if (process.platform === "darwin") {
-    Menu.setApplicationMenu(Menu.buildFromTemplate([
+    const updateMenu = () => Menu.setApplicationMenu(Menu.buildFromTemplate([
       { role: "appMenu" },
       {
         label: "File",
@@ -269,8 +271,11 @@ app.whenReady().then(() => {
       },
       { role: "editMenu" },
       { label: "View", submenu: zoomMenu() },
+      { label: "Extensions", submenu: extensions.menu() },
       { role: "windowMenu" },
     ]));
+    updateMenu();
+    extensions.events.on("change", updateMenu);
   }
   ensureWindowsLocalHostService();
   // Website panels need local connections for apps such as Okta Verify. Device and notification

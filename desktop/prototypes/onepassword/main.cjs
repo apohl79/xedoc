@@ -8,7 +8,7 @@ const path = require("node:path");
 const { app, BrowserWindow, Menu, session } = require("electron");
 delete process.env.DEBUG;
 require("debug").disable();
-const { installNativeBridge } = require("./native-host.cjs");
+const { installNativeBridge } = require(app.isPackaged ? "./onepassword-native.js" : "../../src/onepassword-native.js");
 
 const extensionId = "aeblfdkhhhdcdjpifhhbdiojplfjncoa";
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), "xedoc-onepassword-profile-"));
@@ -33,7 +33,7 @@ process.on("uncaughtException", fail);
 
 app.whenReady().then(async () => {
   for (const [module, digest] of [
-    ["electron-chrome-extensions", "c8c50a30c29aec4191c58d3f53524f766f27c9f5ed43c6a28c18f932738729ab"],
+    ["electron-chrome-extensions", "90411be233a92821b2873b9062584553d8a9f994a057f6efa34d32e267ee28ac"],
     ["electron-chrome-extensions/preload", "7d763b069204552a7145fc52d7c6576ae13785c1ff3d24673eab1542bad043c3"],
   ]) {
     const actual = createHash("sha256").update(fs.readFileSync(require.resolve(module))).digest("hex");
@@ -49,14 +49,26 @@ app.whenReady().then(async () => {
   browser.on("will-download", (event) => event.preventDefault());
   let extensions;
   let dummyURL;
+  let dummy;
+  let inlineSetupRefreshed = false;
   const windows = new Set();
   const permittedURL = (url) => {
-    const parsed = new URL(url);
-    return url === dummyURL ||
-      (parsed.protocol === "chrome-extension:" && parsed.hostname === extensionId);
+    if (dummyURL && url === dummyURL) return true;
+    try {
+      const parsed = new URL(url);
+      if (parsed.username || parsed.password || parsed.port) return false;
+      return (parsed.protocol === "chrome-extension:" && parsed.hostname === extensionId) ||
+        (parsed.protocol === "https:" && ["1password.com", "1password.eu", "1password.ca"]
+          .some((domain) => parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`)));
+    } catch {
+      return false;
+    }
   };
+  browser.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, callback) => {
+    callback({ cancel: details.resourceType === "mainFrame" && !permittedURL(details.url) });
+  });
   const createWindow = async (url, title) => {
-    if (!permittedURL(url)) throw new Error("Only the dummy page and official extension UI are allowed.");
+    if (!permittedURL(url)) throw new Error("Only the dummy page, official extension UI, and 1Password account sites are allowed.");
     const window = new BrowserWindow({
       title, width: 800, height: 650, show: false,
       webPreferences: {
@@ -67,12 +79,36 @@ app.whenReady().then(async () => {
     windows.add(window);
     window.on("closed", () => windows.delete(window));
     window.on("page-title-updated", (event) => event.preventDefault());
-    window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    const refreshInlineAfterSetup = () => {
+      if (inlineSetupRefreshed || !dummy || dummy.isDestroyed()) return;
+      if (window.webContents.getURL() !==
+          `chrome-extension://${extensionId}/app/app.html#/page/ready`) return;
+      inlineSetupRefreshed = true;
+      dummy.webContents.reload();
+    };
+    window.webContents.on("did-finish-load", refreshInlineAfterSetup);
+    window.webContents.on("did-navigate-in-page", refreshInlineAfterSetup);
+    window.webContents.setWindowOpenHandler((details) => {
+      if (permittedURL(details.url)) {
+        createWindow(details.url, "1Password account sign-in").catch(() => {
+          console.error("ACCOUNT WINDOW FAILED");
+        });
+      }
+      return { action: "deny" };
+    });
     window.webContents.on("will-navigate", (event) => {
       if (!permittedURL(event.url)) event.preventDefault();
     });
+    window.webContents.on("will-redirect", (event) => {
+      if (event.isMainFrame && !permittedURL(event.url)) event.preventDefault();
+    });
     extensions.addTab(window.webContents, window);
-    await window.loadURL(url);
+    try {
+      await window.loadURL(url);
+    } catch (error) {
+      window.destroy();
+      throw error;
+    }
     window.showInactive();
     return window;
   };
@@ -101,19 +137,33 @@ app.whenReady().then(async () => {
       console.log("1PASSWORD DESKTOP STATE", state[1], reasons.has(state[2]) ? state[2] : "");
     }
   });
-  const extension = await browser.extensions.loadExtension(path.join(__dirname, "extension"));
+  const extensionPath = path.join(profile, "extension");
+  fs.cpSync(path.join(__dirname, "extension"), extensionPath, { recursive: true, errorOnExist: true, force: false });
+  const extension = await browser.extensions.loadExtension(extensionPath);
   if (extension.id !== extensionId) throw new Error("Unexpected extension identity.");
   console.log("OFFICIAL EXTENSION", extension.id, extension.version, "Electron", process.versions.electron);
   const server = http.createServer((_request, response) => {
     response.setHeader("Content-Type", "text/html; charset=utf-8");
     response.setHeader("Content-Security-Policy", "default-src 'none'; form-action 'none'; style-src 'unsafe-inline'");
     response.end(`<!doctype html><title>Xedoc dummy login</title>
-      <style>body{font:18px system-ui;padding:32px;max-width:640px}label{display:block;margin:16px 0}input{font:inherit}</style>
+      <style>body{font:18px system-ui;padding:24px;max-width:680px}label{display:block;margin:12px 0}input{font:inherit}code{user-select:all}</style>
       <h1>1Password compatibility probe</h1>
       <p>This separate experiment never changes normal Xedoc browser sessions.</p>
       <p>Use <b>1Password → Open 1Password</b> (Cmd+Shift+P).</p>
+      <p>For inline suggestions, click a field or use
+      <b>1Password → Show autofill suggestions</b> (Cmd+P).
+      Use arrow keys to select, Enter to choose, and Escape to dismiss.</p>
       <p>Approve browser trust and unlock manually. Use only a disposable test login.
       This form cannot submit. Close all probe windows to end the experiment.</p>
+      <p>Set the disposable Login's <b>website</b> to <code>${dummyURL}</code>.
+      Return to this window, open 1Password, then choose <b>Autofill</b> for that login.
+      Approve 1Password's HTTP confirmation if prompted.</p>
+      <p>Searching a real site's login does not make it match this dummy page.
+      <b>Open &amp; Fill</b> to other sites is blocked. Normal Xedoc panels are not
+      connected to this experiment.</p>
+      <p>Account sign-in opens inside this probe on official 1Password sites only.
+      External SSO and unrelated pop-ups are blocked. This temporary session quits after
+      ten minutes and does not retain your account on normal exit.</p>
       <label>Username <input autocomplete=username name=username></label>
       <label>Password <input type=password autocomplete=current-password name=password></label>
       <button type=button>Dummy sign in</button>`);
@@ -122,10 +172,33 @@ app.whenReady().then(async () => {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   app.once("before-quit", () => server.close());
   dummyURL = `http://127.0.0.1:${server.address().port}/`;
-  const dummy = await createWindow(dummyURL, "Xedoc dummy login");
+  dummy = await createWindow(dummyURL, "Xedoc dummy login");
   extensions.selectTab(dummy.webContents);
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: "1Password", submenu: [
+      { label: "Show autofill suggestions", accelerator: "CommandOrControl+P", click: async () => {
+        if (dummy.isDestroyed() || dummy.webContents.getURL() !== dummyURL) return;
+        try {
+          dummy.show();
+          dummy.focus();
+          dummy.webContents.focus();
+          const focused = await dummy.webContents.executeJavaScript(`(() => {
+            const field = document.activeElement instanceof HTMLInputElement
+              ? document.activeElement : document.querySelector("input[name=username]");
+            field?.focus();
+            return !!field;
+          })()`);
+          if (!focused || dummy.isDestroyed() || dummy.webContents.getURL() !== dummyURL) return;
+          dummy.webContents.sendInputEvent({ type: "keyDown", keyCode: "Down" });
+          dummy.webContents.sendInputEvent({ type: "keyUp", keyCode: "Down" });
+        } catch {
+          console.error("INLINE SUGGESTIONS FAILED");
+        }
+      } },
+      { label: "Reload test page", accelerator: "CommandOrControl+R", click: () => {
+        if (!dummy.isDestroyed()) dummy.webContents.reload();
+      } },
+      { type: "separator" },
       { label: "Open 1Password", accelerator: "CommandOrControl+Shift+P", click: () => {
         if (dummy.isDestroyed()) return;
         extensions.selectTab(dummy.webContents);

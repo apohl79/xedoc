@@ -4,9 +4,10 @@
 const { WebContentsView, session, shell } = require("electron");
 const { validatedWebsiteURL } = require("./urls");
 const { BrowserDevtools } = require("./browser-devtools");
+const extensions = require("./website-extensions");
 
 class WebsitePanel {
-  constructor({ changed, openNew }) {
+  constructor({ changed, openNew, window, activate }) {
     // Panels share the persistent default session so logins carry across panels and launches.
     this.view = new WebContentsView({
       webPreferences: { session: session.defaultSession, sandbox: true, contextIsolation: true },
@@ -44,6 +45,9 @@ class WebsitePanel {
       if (!validatedWebsiteURL(event.url)) event.preventDefault();
       else this.error = null;
     });
+    contents.on("will-redirect", (event) => {
+      if (event.isMainFrame && !validatedWebsiteURL(event.url)) event.preventDefault();
+    });
     contents.setWindowOpenHandler(({ url, disposition }) => {
       if (validatedWebsiteURL(url)) {
         if (disposition === "background-tab") shell.openExternal(url);
@@ -51,6 +55,7 @@ class WebsitePanel {
       }
       return { action: "deny" };
     });
+    extensions.registerPanel(contents, window, activate);
   }
 
   state(id) {
@@ -82,7 +87,7 @@ class WebsitePanel {
   }
 
   close() {
-    this.view.webContents.close();
+    this.view.webContents.close({ waitForBeforeUnload: false });
   }
 }
 

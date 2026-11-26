@@ -106,3 +106,13 @@ diff --git a/dist/cjs/index.js b/dist/cjs/index.js
      const config = await readNativeMessagingHostConfig(application);
      if (!config) {
        d7("launch: unable to find %s for %s", application, extensionId);
+@@ -2416,7 +2418,8 @@
+     const sessionExtensions = session2.extensions || session2;
+     const extension = sessionExtensions.getExtension(extensionId);
+     if (!extension) {
+-      throw new Error(`extension not registered in session [extensionId:${extensionId}]`);
++      // Renderer and service-worker IPC can arrive after extension unload.
++      return;
+     }
+     if (!listeners.has(eventName)) {
+       listeners.set(eventName, []);

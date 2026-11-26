@@ -25,7 +25,7 @@ function registerUI(webContents, handler) {
 }
 
 function uiWebPreferences() {
-  return { preload: path.join(__dirname, "preload-ui.js"), sandbox: true, contextIsolation: true };
+  return { preload: path.join(__dirname, "preload-ui.js"), partition: "desktop-ui", sandbox: true, contextIsolation: true };
 }
 
 function uiPage(name) {

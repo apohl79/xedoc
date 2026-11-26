@@ -19,6 +19,12 @@ window.XedocPluginPanels = class {
     this.frames = document.getElementById("plugin-panel-frames");
     this.divider = document.getElementById("plugin-panel-divider");
     window.xedocOpenWebsite = (url) => this.openWebsite(url);
+    window.xedocActivateWebsite = (id) => {
+      const entry = this.entries.get(id);
+      if (!entry?.website || entry.key !== this.key) return;
+      this.selected.set(this.key, id);
+      this.render();
+    };
     window.xedocWebsiteState = (state) => {
       const entry = this.entries.get(state.id);
       if (!entry?.website) return;
@@ -268,6 +274,7 @@ window.XedocPluginPanels = class {
     address.setAttribute("aria-label", "Website address");
     address.value = url;
     toolbar.append(address);
+    if (/\bElectron\//.test(navigator.userAgent)) button("Open 1Password", "1P", "onepassword");
     toolbar.addEventListener("submit", (event) => {
       event.preventDefault();
       this.websiteCommand("navigate", { id: panelId, url: address.value });

@@ -13,6 +13,7 @@ const { WebsitePanel, describeLoadError } = require("./website-panel");
 const { browserInput } = require("./browser-input");
 const { validatedHostURL, validatedWebsiteURL, sameOrigin } = require("./urls");
 const { displayHostName } = require("./ui/host-display-name");
+const extensions = require("./website-extensions");
 
 const background = "#12171c";
 const configuredSessions = new WeakSet();
@@ -59,6 +60,8 @@ class HostConnection {
     this.viewStateKey = `hostView:${isLocalHost ? "local" : url}`;
     this.partition = partitionFor(url);
     this.websites = new Map();
+    this.pendingWebsiteOpens = new Map();
+    this.pendingWebsiteRestores = new Map();
     this.error = null;
     this.certificateError = false;
     this.username = null;
@@ -90,6 +93,7 @@ class HostConnection {
     autosaveBounds(this.window, autosaveName);
     this.window.on("resize", () => this.layout());
     this.observeContents(this.contents);
+    this.unregisterExtensions = extensions.registerClient(() => this.suspendWebsites());
 
     if (isLocalHost) {
       this.localMonitor = setInterval(() => {
@@ -154,6 +158,10 @@ class HostConnection {
     } else if (params.selectionText) {
       template.push({ role: "copy" });
     }
+    if ([...this.websites.values()].some((panel) => panel.view.webContents === contents)) {
+      if (template.length) template.push({ type: "separator" });
+      template.push(...extensions.menu(contents));
+    }
     if (contents === this.contents) {
       if (template.length) template.push({ type: "separator" });
       template.push(...this.commandMenu());
@@ -171,6 +179,7 @@ class HostConnection {
       { label: "Reload Host", accelerator: `${modifier}R`, registerAccelerator: false, click: () => this.load() },
       { label: "Pair Device…", click: () => this.pairDevice() },
       { label: "Open Website…", accelerator: `${modifier}L`, registerAccelerator: false, click: () => this.promptWebsite() },
+      { label: "Extensions", submenu: extensions.menu() },
       { type: "separator" },
       { label: "Quit Xedoc", accelerator: `${modifier}Q`, registerAccelerator: false, role: "quit" },
     ];
@@ -351,10 +360,24 @@ class HostConnection {
     const panel = this.websites.get(id);
     switch (event.command) {
       case "open": {
+        if (extensions.changing()) {
+          this.pendingWebsiteOpens.set(id, event);
+          void extensions.whenStable().then(() => {
+            if (this.pendingWebsiteOpens.get(id) !== event) return;
+            this.pendingWebsiteOpens.delete(id);
+            if (!this.closed) this.receiveWebsiteCommand(event);
+          });
+          return;
+        }
         const url = validatedWebsiteURL(event.url);
         if (this.websites.size >= 64 || panel || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
             || !url) return;
         const created = new WebsitePanel({
+          window: this.window,
+          activate: () => {
+            this.show();
+            this.contents.executeJavaScript(`window.xedocActivateWebsite?.(${JSON.stringify(id)})`, true).catch(() => {});
+          },
           changed: () => {
             if (this.websites.get(id) !== created) return;
             this.contents.executeJavaScript(`window.xedocWebsiteState?.(${JSON.stringify(created.state(id))})`, true)
@@ -372,6 +395,7 @@ class HostConnection {
       }
       case "layout": {
         for (const [key, item] of this.websites) item.view.setVisible(key === id);
+        if (panel) extensions.selectPanel(panel.view.webContents);
         const rect = event.rect;
         const values = rect && [rect.x, rect.y, rect.width, rect.height];
         if (!panel || !values || !values.every(Number.isFinite) || rect.x < 0 || rect.y < 0
@@ -384,6 +408,8 @@ class HostConnection {
         break;
       }
       case "close":
+        this.pendingWebsiteOpens.delete(id);
+        this.pendingWebsiteRestores.delete(id);
         if (panel) this.removeWebsite(id);
         break;
       case "clear":
@@ -397,6 +423,9 @@ class HostConnection {
         break;
       case "reload":
         panel?.view.webContents.reload();
+        break;
+      case "onepassword":
+        if (panel) void extensions.openOnePassword(panel.view.webContents);
         break;
       case "external": {
         const url = panel && validatedWebsiteURL(panel.address);
@@ -424,6 +453,12 @@ class HostConnection {
       this.contents.executeJavaScript(`window.xedocBrowserResult?.(${JSON.stringify(response)})`).catch(() => {});
     };
     const id = typeof event.panelId === "string" ? event.panelId : "";
+    if (event.action === "extensions") {
+      void (Object.hasOwn(event.input || {}, "enabled")
+        ? extensions.setEnabled(event.input.enabled) : extensions.whenStable().then(() => extensions.status()))
+        .then((result) => reply(result)).catch((error) => reply(null, error));
+      return;
+    }
     const panel = this.websites.get(id);
     if (!panel || panel.view.webContents.isDestroyed()) {
       reply(null, "Website panel is closed or missing.");
@@ -510,7 +545,35 @@ class HostConnection {
   }
 
   closeWebsites() {
+    this.pendingWebsiteOpens.clear();
+    this.pendingWebsiteRestores.clear();
     for (const id of [...this.websites.keys()]) this.removeWebsite(id);
+  }
+
+  async suspendWebsites() {
+    const snapshots = [...this.websites].map(([id, panel]) => ({
+      id, url: validatedWebsiteURL(panel.view.webContents.getURL())?.href || panel.address,
+      bounds: panel.view.getBounds(), visible: panel.view.getVisible(),
+    }));
+    const closed = [...this.websites.values()].map((panel) =>
+      new Promise((resolve) => panel.view.webContents.once("destroyed", resolve)));
+    this.closeWebsites();
+    for (const snapshot of snapshots) this.pendingWebsiteRestores.set(snapshot.id, snapshot);
+    await Promise.all(closed);
+    return {
+      count: snapshots.length,
+      restore: () => {
+        if (this.closed) return;
+        for (const snapshot of this.pendingWebsiteRestores.values()) {
+          this.receiveWebsiteCommand({ command: "open", id: snapshot.id, url: snapshot.url });
+          const panel = this.websites.get(snapshot.id);
+          panel?.view.setBounds(snapshot.bounds);
+          panel?.view.setVisible(snapshot.visible);
+          if (snapshot.visible && panel) extensions.selectPanel(panel.view.webContents);
+        }
+        this.pendingWebsiteRestores.clear();
+      },
+    };
   }
 
   pairDevice() {
@@ -558,6 +621,7 @@ class HostConnection {
 
   close() {
     this.closed = true;
+    this.unregisterExtensions();
     clearInterval(this.localMonitor);
     this.closeWebsites();
     if (this.overlay && !this.overlay.webContents.isDestroyed()) this.overlay.webContents.close();

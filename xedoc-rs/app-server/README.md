@@ -1694,6 +1694,17 @@ text results are capped at 8 KiB. Observation starts explicitly with `observe`,
 is document-scoped, and retains at most 50 events per kind. Response body prefixes
 are opt-in and capped at 2,048 characters.
 
+`extensions` gets or sets global 1Password extension support without a panel ID
+or confirmation. Call with `{}` for status or `{"enabled": false}` /
+`{"enabled": true}` to disable or enable it. Changing the setting recreates all
+native website panels across sessions, resetting unsaved forms but retaining
+cookies and account storage. The result contains `enabled`,
+`loaded`, `rawDevtoolsAvailable`, and `panelsReloaded` (zero for a status query).
+If startup loading fails, the Host GUI still opens and `loaded` is false, so
+the agent can disable or retry without dismissing a dialog.
+Raw `cdp` / `cdp_events` access is unavailable while extension support is enabled.
+The calling session must still be active in a connected native Host GUI.
+
 For deeper access, `cdp` sends Chrome DevTools Protocol commands through that
 panel's in-process debugger, without opening a debugging port. This includes
 cross-origin iframe/dedicated-worker sessions, DOM/CSS/Accessibility, runtime
