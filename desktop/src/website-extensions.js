@@ -17,6 +17,7 @@ const { validatedWebsiteURL } = require("./urls");
 const onepasswordId = "aeblfdkhhhdcdjpifhhbdiojplfjncoa";
 const panels = new Map();
 const windows = new Set();
+const signInApprovals = new WeakMap();
 const clients = new Set();
 const events = new EventEmitter();
 let runtime;
@@ -25,6 +26,7 @@ let loaded = false;
 let loading = false;
 let codePath;
 let disposeNative;
+let workerPreloadRegistered = false;
 let transition = Promise.resolve();
 let changing = false;
 
@@ -41,11 +43,18 @@ async function initialize() {
       const extensionWindow = [...windows].some(
         (window) => window.webContents === contents,
       );
+      if (details.resourceType === "mainFrame" && extensionWindow) {
+        void approveSignInNavigation(contents, details.url).then(
+          (allowed) => callback({ cancel: !allowed }),
+          () => callback({ cancel: true }),
+        );
+        return;
+      }
       callback({
         cancel:
           details.resourceType === "mainFrame" &&
-          ((website && !validatedWebsiteURL(details.url)) ||
-            (extensionWindow && !allowedExtensionURL(details.url))),
+          website &&
+          !validatedWebsiteURL(details.url),
       });
     },
   );
@@ -80,6 +89,14 @@ async function load() {
       ) {
         throw new Error("Unsafe extension runtime.");
       }
+    }
+    if (!workerPreloadRegistered) {
+      protectedSession.registerPreloadScript({
+        id: "onepassword-worker-control",
+        type: "service-worker",
+        filePath: path.join(__dirname, "onepassword-worker-preload.js"),
+      });
+      workerPreloadRegistered = true;
     }
     const { ElectronChromeExtensions } = require("electron-chrome-extensions");
     runtime = new ElectronChromeExtensions({
@@ -236,28 +253,11 @@ async function createWindow(url) {
   if (
     (!loaded && !loading) ||
     !protectedSession ||
-    !allowedExtensionURL(url) ||
+    (!allowedExtensionURL(url) && !signInOrigin(url)) ||
     windows.size >= 16
   )
     throw new Error("Unsupported extension window.");
-  const window = new BrowserWindow({
-    title: "1Password",
-    width: 900,
-    height: 700,
-    show: false,
-    autoHideMenuBar: true,
-    webPreferences: {
-      session: protectedSession,
-      sandbox: true,
-      contextIsolation: true,
-      devTools: false,
-    },
-  });
-  windows.add(window);
-  window.on("closed", () => windows.delete(window));
-  const contents = window.webContents;
-  protectExtensionContents(contents);
-  runtime.addTab(contents, window);
+  const window = createProtectedWindow();
   try {
     await window.loadURL(url);
     window.show();
@@ -268,17 +268,110 @@ async function createWindow(url) {
   }
 }
 
-function protectExtensionContents(contents) {
+function createProtectedWindow(options = {}, approvals) {
+  const window = new BrowserWindow({
+    ...options,
+    title: "1Password",
+    width: 900,
+    height: 700,
+    show: false,
+    autoHideMenuBar: true,
+    webPreferences: {
+      ...options.webPreferences,
+      session: protectedSession,
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      nodeIntegrationInWorker: false,
+      devTools: false,
+    },
+  });
+  windows.add(window);
+  window.on("closed", () => windows.delete(window));
+  const contents = window.webContents;
+  protectExtensionContents(contents, approvals);
+  runtime.addTab(contents, window);
+  return window;
+}
+
+function signInOrigin(text) {
+  try {
+    const url = new URL(text);
+    return url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      !url.port
+      ? url.origin
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function approveSignInNavigation(contents, url) {
+  if (allowedExtensionURL(url)) return true;
+  const origin = signInOrigin(url);
+  const approvals = signInApprovals.get(contents);
+  if (!origin || !approvals || contents.isDestroyed()) return false;
+  if (approvals.allowed.has(origin)) return true;
+  if (!approvals.pending.has(origin)) {
+    const approval = (async () => {
+      const window = BrowserWindow.fromWebContents(contents);
+      if (!window || window.isDestroyed()) return false;
+      window.show();
+      const { response } = await dialog.showMessageBox(window, {
+        type: "question",
+        title: "1Password SSO sign-in",
+        message: "Allow this site for the current 1Password sign-in?",
+        detail: `${origin}\n\nOnly continue if this is your organization's sign-in provider. This permission applies to this sign-in window and its child windows, and is not saved.`,
+        buttons: ["Allow for this sign-in", "Cancel"],
+        defaultId: 1,
+        cancelId: 1,
+        noLink: true,
+      });
+      if (response !== 0 || contents.isDestroyed()) return false;
+      approvals.allowed.add(origin);
+      return true;
+    })().finally(() => approvals.pending.delete(origin));
+    approvals.pending.set(origin, approval);
+  }
+  return approvals.pending.get(origin);
+}
+
+function protectExtensionContents(
+  contents,
+  approvals = { allowed: new Set(), pending: new Map() },
+) {
+  signInApprovals.set(contents, approvals);
   contents.on("will-navigate", (event) => {
-    if (!allowedExtensionURL(event.url)) event.preventDefault();
+    if (!allowedExtensionURL(event.url) && !signInOrigin(event.url))
+      event.preventDefault();
   });
   contents.on("will-redirect", (event) => {
-    if (event.isMainFrame && !allowedExtensionURL(event.url))
+    if (
+      event.isMainFrame &&
+      !allowedExtensionURL(event.url) &&
+      !signInOrigin(event.url)
+    )
       event.preventDefault();
   });
   contents.setWindowOpenHandler((details) => {
-    void createWindow(details.url).catch(() => {});
-    return { action: "deny" };
+    if (
+      !loaded ||
+      changing ||
+      windows.size >= 16 ||
+      (!allowedExtensionURL(details.url) && !signInOrigin(details.url))
+    )
+      return { action: "deny" };
+    return {
+      action: "allow",
+      outlivesOpener: true,
+      createWindow: (options) => {
+        const window = createProtectedWindow(options, approvals);
+        window.once("ready-to-show", () => window.show());
+        return window.webContents;
+      },
+    };
   });
 }
 
