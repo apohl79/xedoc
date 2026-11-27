@@ -1239,6 +1239,78 @@
             },
             "method": {
               "enum": [
+                "thread/voice/status"
+              ],
+              "title": "Thread/voice/statusRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ThreadVoiceStatusParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Thread/voice/statusRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "thread/voice/transcribe"
+              ],
+              "title": "Thread/voice/transcribeRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ThreadVoiceTranscribeParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Thread/voice/transcribeRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
+                "thread/voice/synthesize"
+              ],
+              "title": "Thread/voice/synthesizeRequestMethod",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/ThreadVoiceSynthesizeParams"
+            }
+          },
+          "required": [
+            "id",
+            "method",
+            "params"
+          ],
+          "title": "Thread/voice/synthesizeRequest",
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "method": {
+              "enum": [
                 "thread/metadata/update"
               ],
               "title": "Thread/metadata/updateRequestMethod",
@@ -20794,6 +20866,100 @@
         "unsubscribed"
       ],
       "type": "string"
+    },
+    "ThreadVoiceStatusParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "ThreadVoiceStatusParams",
+      "type": "object"
+    },
+    "ThreadVoiceStatusResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "available": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "available"
+      ],
+      "title": "ThreadVoiceStatusResponse",
+      "type": "object"
+    },
+    "ThreadVoiceSynthesizeParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "locale": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "locale",
+        "text",
+        "threadId"
+      ],
+      "title": "ThreadVoiceSynthesizeParams",
+      "type": "object"
+    },
+    "ThreadVoiceSynthesizeResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "audioBase64": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "audioBase64"
+      ],
+      "title": "ThreadVoiceSynthesizeResponse",
+      "type": "object"
+    },
+    "ThreadVoiceTranscribeParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "audioBase64": {
+          "type": "string"
+        },
+        "locale": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "audioBase64",
+        "locale",
+        "threadId"
+      ],
+      "title": "ThreadVoiceTranscribeParams",
+      "type": "object"
+    },
+    "ThreadVoiceTranscribeResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "ThreadVoiceTranscribeResponse",
+      "type": "object"
     },
     "ThreadWebUiOpenParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",

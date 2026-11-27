@@ -7136,6 +7136,55 @@
       ],
       "type": "object"
     },
+    "ThreadVoiceStatusParams": {
+      "properties": {
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadVoiceSynthesizeParams": {
+      "properties": {
+        "locale": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "locale",
+        "text",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadVoiceTranscribeParams": {
+      "properties": {
+        "audioBase64": {
+          "type": "string"
+        },
+        "locale": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "audioBase64",
+        "locale",
+        "threadId"
+      ],
+      "type": "object"
+    },
     "ThreadWebUiOpenParams": {
       "description": "Opens a loopback browser view of an active TUI session.",
       "properties": {
@@ -8444,6 +8493,78 @@
         "params"
       ],
       "title": "Thread/goal/clearRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/voice/status"
+          ],
+          "title": "Thread/voice/statusRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ThreadVoiceStatusParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/voice/statusRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/voice/transcribe"
+          ],
+          "title": "Thread/voice/transcribeRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ThreadVoiceTranscribeParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/voice/transcribeRequest",
+      "type": "object"
+    },
+    {
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/RequestId"
+        },
+        "method": {
+          "enum": [
+            "thread/voice/synthesize"
+          ],
+          "title": "Thread/voice/synthesizeRequestMethod",
+          "type": "string"
+        },
+        "params": {
+          "$ref": "#/definitions/ThreadVoiceSynthesizeParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "title": "Thread/voice/synthesizeRequest",
       "type": "object"
     },
     {

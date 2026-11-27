@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "locale": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string"
+    },
+    "threadId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "locale",
+    "text",
+    "threadId"
+  ],
+  "title": "ThreadVoiceSynthesizeParams",
+  "type": "object"
+}

@@ -58,7 +58,8 @@
       }],
       "extendInfo": {
         "NSBonjourServices": ["_xedoc-gui._tcp"],
-        "NSLocalNetworkUsageDescription": "Find Xedoc hosts and connect to their GUI on your local network."
+        "NSLocalNetworkUsageDescription": "Find Xedoc hosts and connect to their GUI on your local network.",
+        "NSMicrophoneUsageDescription": "Xedoc uses the microphone for voice conversations in Host GUI sessions."
       }
     },
     "linux": {

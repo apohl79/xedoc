@@ -245,6 +245,12 @@ a { color: #8fc4e7; }
 .prompt-markdown .editor-link { text-decoration: underline; text-underline-offset: 2px; }
 .entry-footer { display: flex; align-items: center; gap: 8px; padding: 3px 10px 7px; min-height: 34px; font-size: 12px; color: #7e95a6; }
 #attach { width: 30px; height: 28px; font-size: 22px; line-height: 1; flex: none; }
+#voice, #voice-options { width: 28px; height: 28px; padding: 5px; flex: none; color: #9dbda7; }
+#voice svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#voice[aria-pressed="true"] { color: #f08080; background: #3b292b; }
+#voice-options { font-size: 19px; line-height: 1; }
+#voice-status { min-height: 0; color: #8fa4b3; font-size: 12px; overflow-wrap: anywhere; }
+#voice-status:empty { display: none; }
 #session-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
 #turn-timer { white-space: nowrap; }
 #settings { display: flex; margin-left: auto; min-width: 0; gap: 2px; }
@@ -279,6 +285,10 @@ a { color: #8fc4e7; }
 }
 #menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; font-size: 13px; }
 #menu button[aria-checked="true"] { color: #c9b3eb; background: #364250; }
+#voice-menu { position: fixed; z-index: 12; min-width: 220px; padding: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-prompt); box-shadow: 0 12px 36px #0006; }
+#voice-menu button { display: block; width: 100%; padding: 7px 10px; text-align: left; }
+#voice-menu button[aria-checked="true"] { color: #b8d8c0; background: #2b3d35; }
+.voice-menu-note { padding: 5px 10px 7px; color: #8296a4; font-size: 11px; }
 #plugin-tools { display: inline-flex; align-items: center; gap: 3px; }
 #plugin-tools:empty { display: none; }
 #plugin-tools button { min-width: 28px; }
@@ -305,4 +315,5 @@ body.dragging #entry { outline: 2px dashed var(--accent); outline-offset: 3px; }
   #settings button { padding: 4px; max-width: 37vw; }
   #session-name { display: none; }
   .entry-footer { gap: 3px; }
+  #voice, #voice-options { width: 26px; }
 }

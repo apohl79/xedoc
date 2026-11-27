@@ -49,13 +49,25 @@
               <button id="model" type="button" aria-haspopup="menu" aria-expanded="false" title="Change model"></button>
               <button id="effort" type="button" aria-haspopup="menu" aria-expanded="false" title="Change reasoning effort"></button>
             </div>
+            <button id="voice" type="button" aria-label="Start voice conversation" aria-pressed="false" title="Start voice conversation" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="9" y="2" width="6" height="12" rx="3"></rect>
+                <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"></path>
+              </svg>
+            </button>
+            <button id="voice-options" type="button" aria-label="Voice backend options" aria-haspopup="menu" aria-expanded="false" title="Voice backend options" hidden>⋯</button>
             <button id="send" type="button" aria-label="Send message" title="Send message" disabled>↑</button>
           </div>
+          <div id="voice-status" role="status" aria-live="polite" hidden></div>
         </div>
         <div class="status-row"><span id="status"></span><span id="goal-status"></span><span id="connection" role="status">Connecting…</span></div>
       </section>
     </main>
     <div id="menu" role="menu" hidden></div>
+    <div id="voice-menu" role="menu" aria-label="Voice backend" hidden>
+      <button id="voice-backend" type="button" role="menuitemradio" aria-checked="false">Voice backend</button>
+      <div class="voice-menu-note">Voice availability is being checked.</div>
+    </div>
     <button id="quote-selection" type="button" hidden>❞ Quote</button>
     <div id="notice" role="alert" hidden></div>
   </body>

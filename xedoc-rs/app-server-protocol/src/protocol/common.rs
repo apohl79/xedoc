@@ -629,6 +629,24 @@ client_request_definitions! {
         serialization: thread_id(params.thread_id),
         response: v2::ThreadGoalClearResponse,
     },
+    #[experimental("thread/voice/status")]
+    ThreadVoiceStatus => "thread/voice/status" {
+        params: v2::ThreadVoiceStatusParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadVoiceStatusResponse,
+    },
+    #[experimental("thread/voice/transcribe")]
+    ThreadVoiceTranscribe => "thread/voice/transcribe" {
+        params: v2::ThreadVoiceTranscribeParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadVoiceTranscribeResponse,
+    },
+    #[experimental("thread/voice/synthesize")]
+    ThreadVoiceSynthesize => "thread/voice/synthesize" {
+        params: v2::ThreadVoiceSynthesizeParams,
+        serialization: thread_id(params.thread_id),
+        response: v2::ThreadVoiceSynthesizeResponse,
+    },
     ThreadMetadataUpdate => "thread/metadata/update" {
         params: v2::ThreadMetadataUpdateParams,
         serialization: thread_id(params.thread_id),

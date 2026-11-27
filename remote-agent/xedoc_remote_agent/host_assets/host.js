@@ -28,6 +28,21 @@
   let hostDiscoveryGeneration = 0;
   const sessionFrames = new Map();
   const openedSessions = new Map();
+  function hideSessionFrame(frame) {
+    if (!frame.hidden) {
+      frame.contentWindow?.postMessage({ type: "xedoc-session-hidden" }, location.origin);
+    }
+    frame.hidden = true;
+  }
+  function hideSessionFrames() {
+    sessionFrames.forEach(hideSessionFrame);
+  }
+  function showOnlySessionFrame(activeFrame) {
+    sessionFrames.forEach((frame) => {
+      if (frame === activeFrame) frame.hidden = false;
+      else hideSessionFrame(frame);
+    });
+  }
   const projectCache = new Map();
   const projectPinCache = new Map();
   const sessionCache = new Map();
@@ -56,7 +71,7 @@
       byId("session-menu").hidePopover();
       sessionRequest++;
       terminalReveals++;
-      sessionFrames.forEach((frame) => { frame.hidden = true; });
+      hideSessionFrames();
       document.querySelectorAll("#sessions .session-tab:not(.terminal-tab)").forEach((tab) => {
         tab.setAttribute("aria-selected", "false");
       });
@@ -472,6 +487,7 @@
     projectRequest++;
     sessionRequest++;
     activity.setAccount(null);
+    hideSessionFrames();
     sessionFrames.clear();
     openedSessions.clear();
     projectCache.clear();
@@ -739,7 +755,7 @@
     saveView();
     byId("session-menu").hidePopover();
     projectViewRequest++;
-    sessionFrames.forEach((frame) => { frame.hidden = true; });
+    hideSessionFrames();
     terminals.hideOutside(selectedWorkspace, selectedProject);
     const entry = state.workspaces.find((workspace) => workspace.workspaceId === selectedWorkspace);
     byId("new-project").title = entry?.external ? "Open folder" : "Add project";
@@ -818,6 +834,7 @@
       const element = button("", async () => {
         if (selectedProject !== project.name) {
           saveView();
+          hideSessionFrames();
           activeThread = workspaceView(selectedWorkspace, project.name)?.threadId || null;
         }
         selectedProject = project.name;
@@ -901,6 +918,7 @@
         byId("session-view").hidden = false;
         void openSession(threadId).catch((error) => notice(error.message));
       } else {
+        hideSessionFrames();
         byId("session-view").hidden = true;
       }
       api(query("project/sessions", { workspaceId, projectName }))
@@ -915,7 +933,7 @@
               void openSession(threadId).catch((error) => notice(error.message));
             } else {
               byId("session-view").hidden = true;
-              sessionFrames.forEach((frame) => { frame.hidden = true; });
+              hideSessionFrames();
             }
           }
         })
@@ -945,7 +963,7 @@
         byId("session-view").hidden = false;
         await openSession(threadId);
       } else {
-        sessionFrames.forEach((frame) => { frame.hidden = true; });
+        hideSessionFrames();
       }
     } catch (error) {
       if (isCurrentView() && byId("session-empty").classList.contains("loading")) {
@@ -1097,7 +1115,7 @@
       saveView();
       byId("session-view").hidden = false;
       byId("session-loading").hidden = true;
-      sessionFrames.forEach((frame) => { frame.hidden = frame !== cachedFrame; });
+      showOnlySessionFrame(cachedFrame);
       document.querySelectorAll("#sessions .session-tab").forEach((tab) => {
         tab.setAttribute("aria-selected", String(tab.dataset.threadId === threadId));
       });
@@ -1108,7 +1126,7 @@
     }
     byId("session-view").hidden = false;
     byId("session-loading").hidden = false;
-    sessionFrames.forEach((frame) => { frame.hidden = true; });
+    hideSessionFrames();
     try {
       const openedSession = await api("session/open", {
         workspaceId,
@@ -1140,6 +1158,7 @@
       if (!frame) {
         frame = document.createElement("iframe");
         frame.className = "session-frame";
+        frame.allow = "microphone";
         frame.title = openedSession.title || "Xedoc session";
         frame.addEventListener("load", () => {
           frame.contentWindow.addEventListener("keydown", handleHostShortcut, true);
@@ -1155,7 +1174,7 @@
         byId("session-loading").hidden = true;
         focusSessionPrompt(frame);
       }
-      sessionFrames.forEach((item) => { item.hidden = item !== frame; });
+      showOnlySessionFrame(frame);
       markActiveSessionVisited();
       activity.markVisible();
     } catch (error) {
@@ -1232,7 +1251,9 @@
       if (frame) delete frame.dataset.closing;
       throw error;
     }
-    sessionFrames.get(threadId)?.remove();
+    const closingFrame = sessionFrames.get(threadId);
+    if (closingFrame) hideSessionFrame(closingFrame);
+    closingFrame?.remove();
     sessionFrames.delete(threadId);
     openedSessions.delete(threadId);
     const key = projectSessionKey(workspaceId, projectName);
@@ -1274,7 +1295,7 @@
     terminals.hideAll();
     byId("session-view").hidden = false;
     byId("session-loading").hidden = false;
-    sessionFrames.forEach((frame) => { frame.hidden = true; });
+    hideSessionFrames();
     try {
       const result = await api("session/new", {
         workspaceId: selectedWorkspace,

@@ -106,6 +106,32 @@ struct HostWebView: UIViewRepresentable {
             for item in pending { item.completion(.cancelAuthenticationChallenge, nil) }
         }
 
+        func webView(
+            _ webView: WKWebView,
+            requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+            initiatedByFrame frame: WKFrameInfo,
+            type: WKMediaCaptureType,
+            decisionHandler: @escaping (WKPermissionDecision) -> Void
+        ) {
+            let expectedPort = parent.url.port ?? (parent.url.scheme == "https" ? 443 : 80)
+            let frameOrigin = frame.securityOrigin
+            let isSessionFrame = frame.request.url?.path.hasPrefix("/session-ui/") == true
+            guard !invalidated,
+                  frame.isMainFrame || isSessionFrame,
+                  type == .microphone,
+                  origin.protocol == parent.url.scheme,
+                  origin.host == parent.url.host,
+                  origin.port == expectedPort,
+                  frameOrigin.protocol == parent.url.scheme,
+                  frameOrigin.host == parent.url.host,
+                  frameOrigin.port == expectedPort
+            else {
+                decisionHandler(.deny)
+                return
+            }
+            decisionHandler(.prompt)
+        }
+
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
             guard let source = message.frameInfo.request.url,
                   source.scheme == parent.url.scheme, source.host == parent.url.host,

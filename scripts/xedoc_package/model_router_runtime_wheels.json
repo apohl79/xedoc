@@ -8,6 +8,8 @@
     "onnxruntime-1.19.2-cp312-cp312-macosx_11_0_universal2.whl": "68e7051bef9cfefcbb858d2d2646536829894d72a4130c24019219442b1dd2ed",
     "packaging-26.3-py3-none-any.whl": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
     "protobuf-7.36.1-cp310-abi3-macosx_10_9_universal2.whl": "3cf2ee25d006cee57294a1196ea43b37feb78e0dcd1e8af5c1aeddb777655aca",
+    "sherpa_onnx-1.13.8-cp312-cp312-macosx_11_0_arm64.whl": "04b9268c348e9f4bd61315754ad06b02a3c185d3d7770acd8e2dcee9c2e039f9",
+    "sherpa_onnx_core-1.13.8-py3-none-macosx_11_0_arm64.whl": "9312bbd46c93e31cecd3abda9cc8e71881d86cc3da3c35c7445ab04025b9fc3e",
     "sympy-1.14.0-py3-none-any.whl": "e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5"
   },
   "aarch64-pc-windows-msvc": {
@@ -19,6 +21,8 @@
     "onnxruntime-1.30.0-cp312-cp312-win_arm64.whl": "dc4c706f1935ebb62356e6a095b047859badd854482c40560888e95c328ed262",
     "packaging-26.3-py3-none-any.whl": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
     "protobuf-7.36.1-py3-none-any.whl": "7d951e46b3f963d6c264c367c437921de9d5aedd9c3f9612b9077736b4e3ad5c",
+    "sherpa_onnx-1.13.8-cp312-cp312-win_arm64.whl": "1613f14db38b6936098c660f610baee95541378edbdec39a973a591d8df58f5b",
+    "sherpa_onnx_core-1.13.8-py3-none-win_arm64.whl": "85e9b12e9e985d73ad9165a1122c396e2c9384256a4023cd7cf9c91bc8d32073",
     "sympy-1.14.0-py3-none-any.whl": "e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5"
   },
   "aarch64-unknown-linux-gnu": {
@@ -30,6 +34,8 @@
     "onnxruntime-1.19.2-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl": "d2d366fbcc205ce68a8a3bde2185fd15c604d9645888703785b61ef174265168",
     "packaging-26.3-py3-none-any.whl": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
     "protobuf-7.36.1-py3-none-any.whl": "7d951e46b3f963d6c264c367c437921de9d5aedd9c3f9612b9077736b4e3ad5c",
+    "sherpa_onnx-1.13.8-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.whl": "2520b1e7b779a29a493a8cec893612218dfad7304786bf3f64df2ff7ac6c3302",
+    "sherpa_onnx_core-1.13.8-py3-none-manylinux2014_aarch64.whl": "a51a03d55c376c32e15dd63ea852236042ba91a5cd73e253bbf7cf21f6582ba9",
     "sympy-1.14.0-py3-none-any.whl": "e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5"
   },
   "x86_64-apple-darwin": {
@@ -37,10 +43,12 @@
     "flatbuffers-25.12.19-py2.py3-none-any.whl": "7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4",
     "humanfriendly-10.0-py2.py3-none-any.whl": "1697e1a8a8f550fd43c2865cd84542fc175a61dcb779b6fee18cf6b6ccba1477",
     "mpmath-1.3.0-py3-none-any.whl": "a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c",
-    "numpy-2.3.5-cp312-cp312-macosx_10_13_x86_64.whl": "74ae7b798248fe62021dbf3c914245ad45d1a6b0cb4a29ecb4b31d0bfbc4cc3e",
+    "numpy-2.3.5-cp312-cp312-macosx_14_0_x86_64.whl": "3101e5177d114a593d79dd79658650fe28b5a0d8abeb8ce6f437c0e6df5be1a4",
     "onnxruntime-1.19.2-cp312-cp312-macosx_11_0_universal2.whl": "68e7051bef9cfefcbb858d2d2646536829894d72a4130c24019219442b1dd2ed",
     "packaging-26.3-py3-none-any.whl": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
     "protobuf-7.36.1-cp310-abi3-macosx_10_9_universal2.whl": "3cf2ee25d006cee57294a1196ea43b37feb78e0dcd1e8af5c1aeddb777655aca",
+    "sherpa_onnx-1.13.8-cp312-cp312-macosx_10_15_x86_64.whl": "ef218d6545a9dcc2aff7043f39026c7d78d6cf46a3876d450d508feebffc00a9",
+    "sherpa_onnx_core-1.13.8-py3-none-macosx_10_15_x86_64.whl": "917422880287baa0f0ae1bd10d9528fa78af8cc7c233d2a953a185a4fe8d83f2",
     "sympy-1.14.0-py3-none-any.whl": "e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5"
   },
   "x86_64-pc-windows-msvc": {
@@ -52,6 +60,8 @@
     "onnxruntime-1.30.0-cp312-cp312-win_amd64.whl": "f3501472571f1b1eee50e017851e7929f5ea37312d2d8c2494a19e8fc58b4a38",
     "packaging-26.3-py3-none-any.whl": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
     "protobuf-7.36.1-cp310-abi3-win_amd64.whl": "51139351435d9b43d88a55eaa49fb6f737fbb478fb0cbf2cf694d1a04a9d3363",
+    "sherpa_onnx-1.13.8-cp312-cp312-win_amd64.whl": "566e49ad3fb2aa8ceb723a52f9809aa6c2ee0a5eb3b0946c3fd2374af807a5c6",
+    "sherpa_onnx_core-1.13.8-py3-none-win_amd64.whl": "5579e80196d516e6dae23c8f629292ce3142ab8869925d32b94612fd86f93733",
     "sympy-1.14.0-py3-none-any.whl": "e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5"
   },
   "x86_64-unknown-linux-gnu": {
@@ -63,6 +73,8 @@
     "onnxruntime-1.19.2-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl": "477b93df4db467e9cbf34051662a4b27c18e131fa1836e05974eae0d6e4cf29b",
     "packaging-26.3-py3-none-any.whl": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
     "protobuf-7.36.1-py3-none-any.whl": "7d951e46b3f963d6c264c367c437921de9d5aedd9c3f9612b9077736b4e3ad5c",
+    "sherpa_onnx-1.13.8-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl": "6949773017647febc0c3696dffb2c67dd3febd4737b87e3dd135a42773704a06",
+    "sherpa_onnx_core-1.13.8-py3-none-manylinux2014_x86_64.whl": "4da90acf435373d7b2ba9cc0be806e7e274d28f63f5780880b5dea6721626e36",
     "sympy-1.14.0-py3-none-any.whl": "e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5"
   }
 }

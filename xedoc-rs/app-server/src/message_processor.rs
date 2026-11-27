@@ -36,6 +36,7 @@ use crate::request_processors::SearchRequestProcessor;
 use crate::request_processors::ThreadGoalRequestProcessor;
 use crate::request_processors::ThreadRequestProcessor;
 use crate::request_processors::TurnRequestProcessor;
+use crate::request_processors::VoiceRequestProcessor;
 use crate::request_serialization::QueuedInitializedRequest;
 use crate::request_serialization::RequestSerializationQueueKey;
 use crate::request_serialization::RequestSerializationQueues;
@@ -174,6 +175,7 @@ pub(crate) struct MessageProcessor {
     thread_goal_processor: ThreadGoalRequestProcessor,
     thread_processor: ThreadRequestProcessor,
     turn_processor: TurnRequestProcessor,
+    voice_processor: VoiceRequestProcessor,
     session_extension_manager: SessionExtensionManager,
     request_serialization_queues: RequestSerializationQueues,
 }
@@ -471,6 +473,11 @@ impl MessageProcessor {
             state_db.clone(),
             Arc::clone(&goal_service),
         );
+        let voice_processor = VoiceRequestProcessor::new(
+            auth_manager.clone(),
+            Arc::clone(&thread_manager),
+            Arc::clone(&config),
+        );
         let thread_processor = ThreadRequestProcessor::new(
             auth_manager,
             Arc::clone(&thread_manager),
@@ -545,6 +552,7 @@ impl MessageProcessor {
             thread_goal_processor,
             thread_processor,
             turn_processor,
+            voice_processor,
             session_extension_manager,
             request_serialization_queues,
         }
@@ -1268,6 +1276,21 @@ impl MessageProcessor {
                     .thread_goal_clear(request_id.clone(), params)
                     .await
             }
+            ClientRequest::ThreadVoiceStatus { params, .. } => self
+                .voice_processor
+                .status(params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::ThreadVoiceTranscribe { params, .. } => self
+                .voice_processor
+                .transcribe(params)
+                .await
+                .map(|response| Some(response.into())),
+            ClientRequest::ThreadVoiceSynthesize { params, .. } => self
+                .voice_processor
+                .synthesize(params)
+                .await
+                .map(|response| Some(response.into())),
             ClientRequest::ThreadMetadataUpdate { params, .. } => {
                 self.thread_processor.thread_metadata_update(params).await
             }

@@ -27,6 +27,11 @@ _WEB_TURN_LIMIT = 50
 _WEB_ITEM_LIMIT = 40
 _WEB_TEXT_LIMIT = 16_384
 _WEB_TRANSCRIPT_LIMIT = 900_000
+_VOICE_TRANSCRIPT_LIMIT = 16_384
+_VOICE_TURN_TIMEOUT = 120
+_VOICE_RPC_TIMEOUT = 300.0
+_VOICE_AUDIO_BASE64_LIMIT = 1_333_336
+_VOICE_SYNTHESIS_BASE64_LIMIT = 4_000_000
 _PROJECT_CLONE_TIMEOUT = 600
 _PROJECT_CLONE_LIMIT = 2
 _PROJECT_CLONE_TEMP_PREFIX = ".xedoc-host-clone-"
@@ -163,7 +168,9 @@ class HostWorkspaces:
         self._session_state_path = home / "host-gui" / "closed-sessions.json"
         self._closed_sessions = self._read_session_state()
         self._client = None
+        self._voice_client = None
         self._activity_client = None
+        self._voice_lock = threading.Lock()
         self._activity_lock = threading.Lock()
         self._active_sessions_lock = threading.Lock()
         self._active_sessions_cache: tuple[float, list[dict]] | None = None
@@ -238,9 +245,11 @@ class HostWorkspaces:
                 self._closed_sessions[username] = old_value
             raise
 
-    def _new_client(self, *, observe_notifications: bool) -> Any:
+    def _new_client(
+        self, *, observe_notifications: bool, timeout: float = 30.0
+    ) -> Any:
         descriptor = load_bootstrap_descriptor(self._bootstrap_path)
-        client = _default_client_factory(descriptor.socket_path, 30.0)
+        client = _default_client_factory(descriptor.socket_path, timeout)
         try:
             client.initialize("xedoc-host-gui", "Xedoc Host GUI", "0.1.0")
             if observe_notifications:
@@ -265,6 +274,22 @@ class HostWorkspaces:
                 if self._client is not None:
                     self._client.close()
                     self._client = None
+                raise map_controller_error(error) from error
+
+    def _voice_request(self, method: str, params: dict) -> dict:
+        with self._voice_lock:
+            try:
+                if self._closed:
+                    raise BrokerError.unavailable()
+                if self._voice_client is None:
+                    self._voice_client = self._new_client(
+                        observe_notifications=False, timeout=_VOICE_RPC_TIMEOUT
+                    )
+                return self._voice_client.request(method, params)
+            except Exception as error:
+                if self._voice_client is not None:
+                    self._voice_client.close()
+                    self._voice_client = None
                 raise map_controller_error(error) from error
 
     def _activity_request(self, method: str, params: dict) -> dict:
@@ -1240,12 +1265,153 @@ class HostWorkspaces:
                 self._active_turns[thread_id] = turn_id
             return response
 
+    def start_voice_turn(
+        self,
+        username: str,
+        workspace_id: str,
+        project_name: str,
+        thread_id: str,
+        transcript: Any,
+    ) -> dict[str, str]:
+        if (
+            not isinstance(transcript, str)
+            or not transcript.strip()
+            or len(transcript.encode("utf-8")) > _VOICE_TRANSCRIPT_LIMIT
+        ):
+            raise BrokerError.invalid_request(
+                "Voice transcript must contain 1–16 KiB of text"
+            )
+
+        response = self.start_turn(
+            username, workspace_id, project_name, thread_id, transcript
+        )
+        turn = response.get("turn")
+        turn_id = (
+            turn.get("id", turn.get("turnId"))
+            if isinstance(turn, dict)
+            else response.get("turnId")
+        )
+        if not isinstance(turn_id, str):
+            raise BrokerError.unavailable("The voice turn did not start")
+
+        deadline = time.monotonic() + _VOICE_TURN_TIMEOUT
+        while time.monotonic() < deadline:
+            page = self._request(
+                "thread/turns/list",
+                {
+                    "threadId": thread_id,
+                    "limit": 100,
+                    "sortDirection": "desc",
+                    "itemsView": "notLoaded",
+                },
+            )
+            turns = page.get("data", [])
+            current = next(
+                (
+                    item
+                    for item in turns
+                    if isinstance(item, dict) and item.get("id") == turn_id
+                ),
+                None,
+            )
+            if current is None or current.get("status") in {"inProgress", "active"}:
+                time.sleep(0.25)
+                continue
+            if current.get("status") != "completed":
+                raise BrokerError.unavailable("The Xedoc voice turn did not complete")
+            break
+        else:
+            raise BrokerError.unavailable("The Xedoc voice turn timed out")
+
+        cursor = None
+        answer = ""
+        for _ in range(10):
+            params = {
+                "threadId": thread_id,
+                "turnId": turn_id,
+                "limit": 40,
+                "sortDirection": "desc",
+            }
+            if cursor:
+                params["cursor"] = cursor
+            page = self._request("thread/items/list", params)
+            for entry in page.get("data", []):
+                item = entry.get("item") if isinstance(entry, dict) else None
+                if (
+                    isinstance(item, dict)
+                    and item.get("type") == "agentMessage"
+                    and isinstance(item.get("text"), str)
+                    and item["text"].strip()
+                ):
+                    answer = item["text"][:_VOICE_TRANSCRIPT_LIMIT]
+                    break
+            if answer:
+                break
+            next_cursor = page.get("nextCursor")
+            if not next_cursor or next_cursor == cursor:
+                break
+            cursor = next_cursor
+
+        if not answer:
+            raise BrokerError.unavailable("The Xedoc voice turn returned no answer")
+        return {"turnId": turn_id, "text": answer}
+
+    def voice_status(self, thread_id: str) -> dict[str, bool]:
+        response = self._voice_request("thread/voice/status", {"threadId": thread_id})
+        return {"available": response.get("available") is True}
+
+    def transcribe_voice(self, thread_id: str, audio_base64: Any, locale: Any) -> dict:
+        if (
+            not isinstance(audio_base64, str)
+            or not audio_base64
+            or len(audio_base64) > _VOICE_AUDIO_BASE64_LIMIT
+        ):
+            raise BrokerError.invalid_request("Voice recording is empty or too large")
+        if not isinstance(locale, str) or len(locale) > 35:
+            raise BrokerError.invalid_request("Voice locale is invalid")
+        return self._voice_request(
+            "thread/voice/transcribe",
+            {
+                "threadId": thread_id,
+                "audioBase64": audio_base64,
+                "locale": locale,
+            },
+        )
+
+    def synthesize_voice(self, thread_id: str, text: Any, locale: Any) -> dict:
+        if (
+            not isinstance(text, str)
+            or not text.strip()
+            or len(text.encode("utf-8")) > 1200
+        ):
+            raise BrokerError.invalid_request(
+                "Speech text must contain 1–1200 UTF-8 bytes"
+            )
+        if not isinstance(locale, str) or len(locale) > 35:
+            raise BrokerError.invalid_request("Voice locale is invalid")
+        response = self._voice_request(
+            "thread/voice/synthesize",
+            {"threadId": thread_id, "text": text, "locale": locale},
+        )
+        audio_base64 = response.get("audioBase64")
+        if (
+            not isinstance(audio_base64, str)
+            or not audio_base64
+            or len(audio_base64) > _VOICE_SYNTHESIS_BASE64_LIMIT
+        ):
+            raise BrokerError.unavailable("Local speech synthesis returned invalid audio")
+        return {"audioBase64": audio_base64}
+
     def close(self) -> None:
         with self._lock:
             self._closed = True
             if self._client is not None:
                 self._client.close()
                 self._client = None
+        with self._voice_lock:
+            if self._voice_client is not None:
+                self._voice_client.close()
+                self._voice_client = None
         with self._activity_lock:
             if self._activity_client is not None:
                 self._activity_client.close()

@@ -537,6 +537,12 @@ export type { ThreadUnarchivedNotification } from "./ThreadUnarchivedNotificatio
 export type { ThreadUnsubscribeParams } from "./ThreadUnsubscribeParams";
 export type { ThreadUnsubscribeResponse } from "./ThreadUnsubscribeResponse";
 export type { ThreadUnsubscribeStatus } from "./ThreadUnsubscribeStatus";
+export type { ThreadVoiceStatusParams } from "./ThreadVoiceStatusParams";
+export type { ThreadVoiceStatusResponse } from "./ThreadVoiceStatusResponse";
+export type { ThreadVoiceSynthesizeParams } from "./ThreadVoiceSynthesizeParams";
+export type { ThreadVoiceSynthesizeResponse } from "./ThreadVoiceSynthesizeResponse";
+export type { ThreadVoiceTranscribeParams } from "./ThreadVoiceTranscribeParams";
+export type { ThreadVoiceTranscribeResponse } from "./ThreadVoiceTranscribeResponse";
 export type { ThreadWebUiOpenParams } from "./ThreadWebUiOpenParams";
 export type { ThreadWebUiOpenResponse } from "./ThreadWebUiOpenResponse";
 export type { TokenUsageBreakdown } from "./TokenUsageBreakdown";

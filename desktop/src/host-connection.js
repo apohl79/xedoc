@@ -16,10 +16,18 @@ const { displayHostName } = require("./ui/host-display-name");
 const extensions = require("./website-extensions");
 
 const background = "#12171c";
-const configuredSessions = new WeakSet();
+const configuredSessions = new WeakMap();
 
 function isLocalHostURL(url) {
   return readLocalHost()?.url === url;
+}
+
+function normalizedOrigin(value) {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
 }
 
 function partitionFor(url) {
@@ -34,11 +42,23 @@ function partitionFor(url) {
   return `persist:host-${identifier}`;
 }
 
-function configureSession(hostSession) {
-  if (configuredSessions.has(hostSession)) return;
-  configuredSessions.add(hostSession);
+function configureSession(hostSession, contents, hostOrigin) {
+  let trustedContents = configuredSessions.get(hostSession);
+  if (trustedContents) {
+    trustedContents.set(contents, hostOrigin);
+    return;
+  }
+  trustedContents = new WeakMap([[contents, hostOrigin]]);
+  configuredSessions.set(hostSession, trustedContents);
   const allowed = new Set(["clipboard-sanitized-write", "fullscreen"]);
   hostSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+    if (permission === "media") {
+      const mediaTypes = details?.mediaTypes;
+      callback(trustedContents.get(contents) === normalizedOrigin(details?.securityOrigin)
+        && mediaTypes?.length === 1
+        && mediaTypes[0] === "audio");
+      return;
+    }
     if (permission === "openExternal") {
       // Only same-origin host frames may hand Slack links to the system, like the macOS app.
       const target = details.externalURL ?? "";
@@ -47,7 +67,13 @@ function configureSession(hostSession) {
     }
     callback(allowed.has(permission));
   });
-  hostSession.setPermissionCheckHandler((_contents, permission) => allowed.has(permission));
+  hostSession.setPermissionCheckHandler((contents, permission, requestingOrigin, details) => {
+    if (permission === "media") {
+      return Boolean(contents && trustedContents.get(contents) === normalizedOrigin(requestingOrigin)
+        && details?.mediaType === "audio");
+    }
+    return allowed.has(permission);
+  });
 }
 
 class HostConnection {
@@ -71,7 +97,6 @@ class HostConnection {
     this.closed = false;
 
     const hostSession = session.fromPartition(this.partition);
-    configureSession(hostSession);
     // The host page must be the window's own contents: only those receive the titlebar-area geometry
     // of the window controls overlay. Website panels and the error overlay are child views above it.
     this.window = new BrowserWindow({
@@ -93,6 +118,7 @@ class HostConnection {
     autosaveBounds(this.window, autosaveName);
     this.window.on("resize", () => this.layout());
     this.observeContents(this.contents);
+    configureSession(hostSession, this.contents, new URL(url).origin);
     this.unregisterExtensions = extensions.registerClient(() => this.suspendWebsites());
 
     if (isLocalHost) {
@@ -208,6 +234,7 @@ class HostConnection {
       const { host } = new URL(this.url);
       this.window.setTitle(new URL(this.url).port ? host : `${host}:80`);
     }
+    configureSession(session.fromPartition(this.partition), this.contents, new URL(this.url).origin);
     if (!this.isLocalHost) {
       try {
         await pairing.configureSession(session.fromPartition(this.partition), this.url, {

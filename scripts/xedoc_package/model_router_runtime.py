@@ -39,6 +39,10 @@ RUNTIME_REQUIREMENTS = (
     "protobuf==7.36.1",
     "sympy==1.14.0",
 )
+VOICE_RUNTIME_REQUIREMENTS = (
+    "sherpa-onnx==1.13.8",
+    "sherpa-onnx-core==1.13.8",
+)
 MODEL_FILES = {
     "onnx/model.onnx": "cf2698d30ff05da02c70a088313bad56e5c2f401d734cb24a8390d446111936c",
     "tokenizer.json": "91f1def9b9391fdabe028cd3f3fcc4efd34e5d1f08c3bf2de513ebb5911a1854",  # gitleaks:allow -- immutable SHA-256.
@@ -56,6 +60,7 @@ MODEL_FILES = {
 class RuntimeDistribution:
     pip_platform: str
     onnxruntime_version: str
+    voice_pip_platforms: tuple[str, ...] = ()
     python_url: str | None = None
     python_sha256: str | None = None
 
@@ -77,11 +82,14 @@ class RuntimeReference:
 
 
 def runtime_distribution(
-    pip_platform: str, onnxruntime_version: str
+    pip_platform: str,
+    onnxruntime_version: str,
+    voice_pip_platforms: tuple[str, ...] = (),
 ) -> RuntimeDistribution:
     return RuntimeDistribution(
         pip_platform=pip_platform,
         onnxruntime_version=onnxruntime_version,
+        voice_pip_platforms=voice_pip_platforms,
     )
 
 
@@ -106,11 +114,15 @@ def windows_distribution(
 
 RUNTIME_DISTRIBUTIONS: dict[str, RuntimeDistribution] = {
     "aarch64-apple-darwin": runtime_distribution("macosx_11_0_arm64", "1.19.2"),
-    "x86_64-apple-darwin": runtime_distribution("macosx_11_0_x86_64", "1.19.2"),
-    "aarch64-unknown-linux-gnu": runtime_distribution(
-        "manylinux_2_27_aarch64", "1.19.2"
+    "x86_64-apple-darwin": runtime_distribution(
+        "macosx_14_0_x86_64", "1.19.2", ("macosx_10_15_x86_64",)
     ),
-    "x86_64-unknown-linux-gnu": runtime_distribution("manylinux_2_27_x86_64", "1.19.2"),
+    "aarch64-unknown-linux-gnu": runtime_distribution(
+        "manylinux_2_27_aarch64", "1.19.2", ("manylinux2014_aarch64",)
+    ),
+    "x86_64-unknown-linux-gnu": runtime_distribution(
+        "manylinux_2_27_x86_64", "1.19.2", ("manylinux2014_x86_64",)
+    ),
     "aarch64-pc-windows-msvc": windows_distribution(
         "aarch64-pc-windows-msvc",
         "1e1de8b5d0df73b965aa72f0c27d5c617a5d7256ce6d205228a0f9638bf6df21",
@@ -149,7 +161,10 @@ def runtime_identity_inputs(
         "sharedPythonVersion": PYTHON_VERSION,
         "targets": {
             target: {
-                "pipPlatform": distribution.pip_platform,
+                "pipPlatforms": [
+                    distribution.pip_platform,
+                    *distribution.voice_pip_platforms,
+                ],
                 "onnxruntimeVersion": distribution.onnxruntime_version,
                 "pythonUrl": distribution.python_url,
                 "pythonSha256": distribution.python_sha256,
@@ -294,6 +309,32 @@ def install_wheels(
             "--abi",
             "cp312",
             *requirements,
+        ],
+        check=True,
+    )
+    voice_platforms = distribution.voice_pip_platforms or (distribution.pip_platform,)
+    run_with_retry(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "download",
+            "--only-binary=:all:",
+            "--no-deps",
+            "--dest",
+            str(wheels_dir),
+            *[
+                argument
+                for platform in voice_platforms
+                for argument in ("--platform", platform)
+            ],
+            "--implementation",
+            "cp",
+            "--python-version",
+            "312",
+            "--abi",
+            "cp312",
+            *VOICE_RUNTIME_REQUIREMENTS,
         ],
         check=True,
     )

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "audioBase64": {
+      "type": "string"
+    },
+    "locale": {
+      "type": "string"
+    },
+    "threadId": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "audioBase64",
+    "locale",
+    "threadId"
+  ],
+  "title": "ThreadVoiceTranscribeParams",
+  "type": "object"
+}

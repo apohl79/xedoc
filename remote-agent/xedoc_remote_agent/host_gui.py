@@ -446,7 +446,12 @@ class HostHandler(BaseHTTPRequestHandler):
                     self.reply(403, {"error": "Unexpected origin"})
                     return
                 size = int(self.headers.get("Content-Length", "0"))
-                limit = 6 * 1024 * 1024 if path == "/api/browser/result" else 64 * 1024
+                if path == "/api/browser/result":
+                    limit = 6 * 1024 * 1024
+                elif path == "/api/session/voice/transcribe":
+                    limit = 1_500_000
+                else:
+                    limit = 64 * 1024
                 if (
                     not 0 < size <= limit
                     or self.headers.get_content_type() != "application/json"
@@ -716,6 +721,49 @@ class HostHandler(BaseHTTPRequestHandler):
                         ]
                     },
                 )
+                return
+            if self.command == "POST" and path in (
+                "/api/session/voice/mode",
+                "/api/session/voice/transcribe",
+                "/api/session/voice/synthesize",
+                "/api/session/voice/turn",
+            ):
+                self.connection.settimeout(305)
+                gui_token = body.get("guiToken")
+                if not isinstance(gui_token, str):
+                    raise BrokerError.not_found()
+                entry = self.server.session_guis.entry(gui_token, account)
+                if path == "/api/session/voice/mode":
+                    self.reply(200, service.voice_status(entry["threadId"]))
+                elif path == "/api/session/voice/transcribe":
+                    self.reply(
+                        200,
+                        service.transcribe_voice(
+                            entry["threadId"],
+                            body.get("audioBase64"),
+                            body.get("locale"),
+                        ),
+                    )
+                elif path == "/api/session/voice/synthesize":
+                    self.reply(
+                        200,
+                        service.synthesize_voice(
+                            entry["threadId"],
+                            body.get("text"),
+                            body.get("locale"),
+                        ),
+                    )
+                else:
+                    self.reply(
+                        200,
+                        service.start_voice_turn(
+                            account["username"],
+                            entry["workspaceId"],
+                            entry["projectName"],
+                            entry["threadId"],
+                            body.get("transcript"),
+                        ),
+                    )
                 return
             workspace_id = (
                 body.get("workspaceId")
