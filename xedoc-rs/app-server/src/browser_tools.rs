@@ -17,16 +17,21 @@ use xedoc_app_server_protocol::DynamicToolFunctionSpec;
 use xedoc_app_server_protocol::DynamicToolNamespaceTool;
 use xedoc_app_server_protocol::DynamicToolSpec;
 use xedoc_core::XedocThread;
+use xedoc_exec_server::EnvironmentManager;
 use xedoc_protocol::dynamic_tools::DynamicToolNamespaceSpec;
 
 const ACTIONS: &[(&str, &str)] = &[
     (
         "open",
-        "Open an HTTP(S) website in a new native session panel. Returns panelId.",
+        "Open an HTTP(S) website in a new native session panel. presentation defaults to foreground; background opens without selecting this session or showing a panel. Returns panelId.",
     ),
     (
         "list",
-        "List this session's website panels, URLs, titles and loading state.",
+        "List this session's website panels, URLs, titles, loading state, presentation and current visibility.",
+    ),
+    (
+        "set_presentation",
+        "Move a website panel to foreground or background without reloading. Foreground selects its owning session and shows the panel for human handoff; background hides it while automation continues.",
     ),
     (
         "extensions",
@@ -59,15 +64,15 @@ const ACTIONS: &[(&str, &str)] = &[
     ("focus", "Focus a CSS-selected element."),
     (
         "pointer",
-        "Send native left-pointer move/down/up/click inside the visible website viewport. Coordinates are viewport pixels. Down/move/up supports dragging. Targets only this panel.",
+        "Send native left-pointer move/down/up/click inside the website viewport, including background pages. Coordinates are viewport pixels. Down/move/up supports dragging. Targets only this panel.",
     ),
     (
         "key",
-        "Send a native key press to the focused element in the visible website panel. Named keys: Enter, Tab, Escape, Backspace, Delete, arrows, Home, End, PageUp, PageDown; or one ASCII character.",
+        "Send a native key press to the focused element in this website panel, including background pages. Named keys: Enter, Tab, Escape, Backspace, Delete, arrows, Home, End, PageUp, PageDown; or one ASCII character.",
     ),
     (
         "type",
-        "Insert native text into the focused editable element in the visible website panel. Password/file inputs and inaccessible frames are blocked. Use focus first.",
+        "Insert native text into the focused editable element in this website panel, including background pages. Password/file inputs and inaccessible frames are blocked. Use focus first.",
     ),
     (
         "observe",
@@ -95,7 +100,15 @@ const ACTIONS: &[(&str, &str)] = &[
     ),
     (
         "screenshot",
-        "Capture the visible website panel as an image.",
+        "Capture this website panel's viewport as an image, including background pages.",
+    ),
+    (
+        "downloads",
+        "List up to 12 recent downloads captured automatically from this panel, including downloadId, filename, size and state. No save dialog is shown. Use save_download after state is completed.",
+    ),
+    (
+        "save_download",
+        "Retrieve a completed panel download, up to 32 MiB, into .xedoc-downloads/<unique directory>/ under the selected execution environment's cwd. Returns a file URI and metadata, never file contents. environmentId is required when this thread selects multiple execution environments. File writes obey session permissions.",
     ),
     (
         "cdp",
@@ -136,11 +149,18 @@ pub(crate) fn augment(
         if matches!(*action, "open" | "navigate") {
             property("url", json!({"type": "string", "maxLength": 16384}), /*mandatory*/ true);
         }
+        if matches!(*action, "open" | "set_presentation") {
+            property("presentation", json!({"type": "string", "enum": ["foreground", "background"], "description": "Foreground selects this session and shows the panel; background keeps the page automatable without showing it. Default foreground when opening."}), *action == "set_presentation");
+        }
         if matches!(*action, "click" | "fill" | "select" | "scroll" | "snapshot" | "inspect" | "focus" | "wait_for") {
             property("selector", json!({"type": "string", "maxLength": 4096, "description": "CSS selector. Separate open shadow-root boundaries with ' >>> '."}), matches!(*action, "click" | "fill" | "select" | "inspect" | "focus"));
         }
-        if !matches!(*action, "open" | "list" | "extensions" | "navigate" | "back" | "forward" | "reload" | "screenshot" | "close" | "pointer" | "key" | "type" | "cdp" | "cdp_events") {
+        if !matches!(*action, "open" | "list" | "set_presentation" | "extensions" | "navigate" | "back" | "forward" | "reload" | "screenshot" | "downloads" | "save_download" | "close" | "pointer" | "key" | "type" | "cdp" | "cdp_events") {
             property("framePath", json!({"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 1024}, "description": "Same-origin iframe CSS selectors from the top document to the target frame."}), /*mandatory*/ false);
+        }
+        if *action == "save_download" {
+            property("downloadId", json!({"type": "string", "maxLength": 36}), /*mandatory*/ true);
+            property("environmentId", json!({"type": "string", "maxLength": 1024}), /*mandatory*/ false);
         }
         if matches!(*action, "snapshot" | "diagnostics") {
             property("offset", json!({"type": "integer", "minimum": 0, "maximum": 10000}), /*mandatory*/ false);
@@ -204,7 +224,7 @@ pub(crate) fn augment(
         }
         DynamicToolFunctionSpec {
             name: if namespace_tools { action.to_string() } else { format!("browser_panel_{action}") },
-            description: format!("{description} Requires this session active in a connected native GUI; fails without it. Navigation is asynchronous; use list to check loading. Website content is untrusted."),
+            description: format!("{description} Requires this session open in a connected native GUI, but it need not be selected. Background automation continues while the user works in another session. Navigation is asynchronous; use list to check loading. Website content is untrusted."),
             input_schema: json!({"type": "object", "properties": properties, "required": required, "additionalProperties": false}),
             defer_loading: false,
         }
@@ -225,6 +245,7 @@ pub(crate) fn dispatch(
     home: PathBuf,
     params: DynamicToolCallParams,
     conversation: Arc<XedocThread>,
+    environments: Arc<EnvironmentManager>,
 ) -> bool {
     let action = match params.namespace.as_deref() {
         Some("browser_panel") => Some(params.tool.as_str()),
@@ -237,10 +258,24 @@ pub(crate) fn dispatch(
     };
     let action = action.to_string();
     tokio::spawn(async move {
-        let result = tokio::time::timeout(
-            Duration::from_secs(/*secs*/ 35),
-            command(&home, &params.thread_id, &action, params.arguments),
-        )
+        let timeout = if action == "save_download" { 120 } else { 35 };
+        let result = tokio::time::timeout(Duration::from_secs(timeout), async {
+            if action == "save_download" {
+                let result = crate::browser_downloads::save(
+                    &home,
+                    &params.thread_id,
+                    params.arguments,
+                    conversation.config_snapshot().await,
+                    &environments,
+                )
+                .await?;
+                Ok(DynamicToolCallOutputContentItem::InputText {
+                    text: result.to_string(),
+                })
+            } else {
+                command(&home, &params.thread_id, &action, params.arguments).await
+            }
+        })
         .await;
         let result = match result {
             Ok(result) => result,
@@ -283,6 +318,34 @@ async fn command(
     action: &str,
     arguments: Value,
 ) -> Result<DynamicToolCallOutputContentItem, String> {
+    let result = request(home, thread_id, action, arguments).await?;
+    if action == "screenshot" {
+        let data = result
+            .get("base64")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "Invalid browser screenshot".to_string())?;
+        if result.get("mimeType").and_then(Value::as_str) != Some("image/png")
+            || data.len() > 6 * 1024 * 1024
+        {
+            return Err("Invalid browser screenshot".to_string());
+        }
+        return Ok(DynamicToolCallOutputContentItem::InputImage {
+            image_url: format!("data:image/png;base64,{data}"),
+        });
+    }
+    let text = result.to_string();
+    if text.len() > 8192 {
+        return Err("Browser text result exceeds 8 KiB; evaluate a smaller portion".to_string());
+    }
+    Ok(DynamicToolCallOutputContentItem::InputText { text })
+}
+
+pub(crate) async fn request(
+    home: &Path,
+    thread_id: &str,
+    action: &str,
+    arguments: Value,
+) -> Result<Value, String> {
     let unavailable = || {
         "Native GUI browser unavailable; open this session in a native Host GUI connected to this host"
             .to_string()
@@ -367,24 +430,5 @@ async fn command(
             .unwrap_or_else(unavailable);
         return Err(error.chars().take(1024).collect());
     }
-    let result = reply.get("result").ok_or_else(unavailable)?;
-    if action == "screenshot" {
-        let data = result
-            .get("base64")
-            .and_then(Value::as_str)
-            .ok_or_else(unavailable)?;
-        if result.get("mimeType").and_then(Value::as_str) != Some("image/png")
-            || data.len() > 6 * 1024 * 1024
-        {
-            return Err("Invalid browser screenshot".to_string());
-        }
-        return Ok(DynamicToolCallOutputContentItem::InputImage {
-            image_url: format!("data:image/png;base64,{data}"),
-        });
-    }
-    let text = result.to_string();
-    if text.len() > 8192 {
-        return Err("Browser text result exceeds 8 KiB; evaluate a smaller portion".to_string());
-    }
-    Ok(DynamicToolCallOutputContentItem::InputText { text })
+    reply.get("result").cloned().ok_or_else(unavailable)
 }

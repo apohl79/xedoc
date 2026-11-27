@@ -1686,14 +1686,43 @@ The server also registers built-in `browser_panel` tools (or `browser_panel_*`
 functions for providers without namespace support) on thread start, resume, and
 fork. These names are reserved and are handled by the server, not forwarded to
 the client as `item/tool/call`. Commands are bound to the calling thread and
-require that session active in a connected native Host GUI. They fail without
+require that session open in a connected native Host GUI, but it need not be
+selected. Automation continues while the user works in another session. They fail without
 one; there is no CLI or headless fallback. Desktop clients share Chromium, DOM,
 same-origin frame/open-shadow-root targeting, page-world evaluation, inspection,
-waits, and bounded console/fetch/XHR observation. Visible panels additionally
-accept native pointer, key, and text input. Screenshot results use `inputImage`;
+waits, and bounded console/fetch/XHR observation. Both foreground and background
+pages accept native pointer, key, and text input. Screenshot results use `inputImage`;
 text results are capped at 8 KiB. Observation starts explicitly with `observe`,
 is document-scoped, and retains at most 50 events per kind. Response body prefixes
 are opt-in and capped at 2,048 characters.
+
+`open` accepts `presentation: "background"` to create a page without selecting
+its session or showing a panel; its backward-compatible default is `"foreground"`.
+`set_presentation` takes `panelId` and `"foreground"` or `"background"` to move
+an existing page without reloading. Foreground selects the owning session and
+shows its panel so a user can take over; background hides it without stopping
+automation. `list` includes each panel's `presentation` and current `visible`
+state.
+
+The native GUI polls browser commands for all its open sessions through one
+`POST /api/browser/poll` request. Legacy single-session fields remain supported;
+the optional `sessions` list registers 1–128 `{workspaceId, projectName, threadId}`
+entries. All entries are authenticated before any browser heartbeat is updated.
+Commands include their session routing fields so switching the selected session
+does not redirect a command to a different page.
+
+Native website downloads are captured automatically in private temporary storage
+without a save dialog. `downloads` lists up to 12 retained downloads for a panel,
+including their `downloadId`, filename, state, and byte counts. After a download
+completes, `save_download` copies it into a unique `.xedoc-downloads` directory
+beneath the calling thread's execution-environment cwd and returns its file URI
+and `environmentId`. Pass `environmentId` when the thread selects more than one
+environment. Transfer works when the native GUI and executor run on different
+hosts; file bytes are not exposed to the model. The destination obeys the
+thread's filesystem permissions. Downloads are limited to 32 MiB each and
+512 MiB retained across panels; old terminal entries may be evicted when a panel
+reaches 12 entries. Closing a panel discards its temporary downloads, but not
+copies already saved to an execution environment.
 
 `extensions` gets or sets global 1Password extension support without a panel ID
 or confirmation. Call with `{}` for status or `{"enabled": false}` /
@@ -1704,7 +1733,7 @@ cookies and account storage. The result contains `enabled`,
 If startup loading fails, the Host GUI still opens and `loaded` is false, so
 the agent can disable or retry without dismissing a dialog.
 Raw `cdp` / `cdp_events` access is unavailable while extension support is enabled.
-The calling session must still be active in a connected native Host GUI.
+The calling session must still be open in a connected native Host GUI.
 
 For deeper access, `cdp` sends Chrome DevTools Protocol commands through that
 panel's in-process debugger, without opening a debugging port. This includes
@@ -1713,7 +1742,7 @@ evaluation, debugging/profiling, network bodies/interception/WebSocket events,
 dialogs, and input. `cdp_events` returns child session IDs and a cursor-paginated
 128-event ring; enable the relevant protocol domains first. Events over 2 KiB
 become previews. Commands cannot select arbitrary browser targets, use browser
-or profile-wide cookie/cache APIs, upload local files, or enable downloads.
+or profile-wide cookie/cache APIs, upload local files, or override download handling.
 Command results are capped at 7,000 bytes; `resultPath` selects a nested result
 and `offset`/`limit` pages an array or string. Website diagnostics may contain
 private data and remain subject to the agent's authorization instructions.

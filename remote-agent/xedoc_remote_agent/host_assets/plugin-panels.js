@@ -18,12 +18,17 @@ window.XedocPluginPanels = class {
     this.tabs = document.getElementById("plugin-panel-tabs");
     this.frames = document.getElementById("plugin-panel-frames");
     this.divider = document.getElementById("plugin-panel-divider");
-    window.xedocOpenWebsite = (url) => this.openWebsite(url);
+    window.xedocOpenWebsite = (url, options = {}) => {
+      const opener = this.entries.get(options.openerPanelId);
+      return this.openWebsite(url, false, opener ? {
+        key: opener.key,
+        presentation: options.background || opener.presentation === "background" ? "background" : "foreground",
+      } : {});
+    };
     window.xedocActivateWebsite = (id) => {
       const entry = this.entries.get(id);
       if (!entry?.website || entry.key !== this.key) return;
-      this.selected.set(this.key, id);
-      this.render();
+      this.setWebsitePresentation(id, "foreground", entry.key);
     };
     window.xedocWebsiteState = (state) => {
       const entry = this.entries.get(state.id);
@@ -239,8 +244,8 @@ window.XedocPluginPanels = class {
     return true;
   }
 
-  openWebsite(url, requireNative = false) {
-    const key = this.contextKey(this.context());
+  openWebsite(url, requireNative = false, options = {}) {
+    const key = options.key || this.contextKey(this.context());
     if (!key || [...this.entries.values()].filter((entry) => entry.website).length >= 64) {
       if (requireNative) throw new Error("No active website panel slot is available.");
       return;
@@ -287,17 +292,17 @@ window.XedocPluginPanels = class {
     frame.append(toolbar, error, viewport);
     this.entries.set(panelId, {
       panelId, title: parsed.hostname, url: parsed.href, key, frame, website: true,
+      presentation: options.presentation || "foreground",
       address, back, forward, error, viewport,
     });
     this.frames.append(frame);
-    this.selected.set(key, panelId);
+    if (options.presentation !== "background") this.selected.set(key, panelId);
     this.websiteCommand("open", { id: panelId, url: parsed.href });
     this.render();
     return panelId;
   }
 
-  listWebsites() {
-    const key = this.contextKey(this.context());
+  listWebsites(key = this.contextKey(this.context())) {
     return [...this.entries.values()]
       .filter((entry) => entry.website && entry.key === key)
       .map((entry) => ({
@@ -306,19 +311,30 @@ window.XedocPluginPanels = class {
         url: entry.url,
         loading: entry.loading === true,
         error: entry.error.textContent || null,
+        presentation: entry.presentation,
+        visible: key === this.contextKey(this.context()) && !entry.frame.hidden,
       }));
   }
 
-  getWebsite(panelId) {
+  getWebsite(panelId, key = this.contextKey(this.context())) {
     const entry = this.entries.get(panelId);
-    if (!entry?.website || entry.key !== this.contextKey(this.context())) {
+    if (!entry?.website || entry.key !== key) {
       throw new Error("Website panel is closed or missing.");
     }
     return entry;
   }
 
-  closeWebsite(panelId) {
-    const entry = this.getWebsite(panelId);
+  setWebsitePresentation(panelId, presentation, key = this.contextKey(this.context())) {
+    if (!["background", "foreground"].includes(presentation)) throw new Error("Invalid page presentation.");
+    const entry = this.getWebsite(panelId, key);
+    entry.presentation = presentation;
+    if (presentation === "foreground") this.selected.set(key, panelId);
+    this.render();
+    return { panelId, presentation, visible: key === this.contextKey(this.context()) && !entry.frame.hidden };
+  }
+
+  closeWebsite(panelId, key = this.contextKey(this.context())) {
+    const entry = this.getWebsite(panelId, key);
     this.websiteCommand("close", { id: panelId });
     entry.frame.remove();
     this.entries.delete(panelId);
@@ -341,22 +357,24 @@ window.XedocPluginPanels = class {
 
   render() {
     const visible = [...this.entries.values()].filter((entry) => entry.key === this.key);
-    if (!visible.some((entry) => entry.panelId === this.selected.get(this.key))) {
-      this.selected.set(this.key, visible[0]?.panelId);
+    const foreground = visible.filter((entry) => entry.presentation !== "background");
+    if (!foreground.some((entry) => entry.panelId === this.selected.get(this.key))) {
+      this.selected.set(this.key, foreground[0]?.panelId);
     }
     const selected = this.selected.get(this.key);
-    if (!visible.length) {
+    if (!foreground.length) {
       this.fullscreen.delete(this.key);
     }
     const fullscreen = this.fullscreen.has(this.key);
     document.getElementById("session-layout").classList.toggle("panel-fullscreen", fullscreen);
     for (const entry of this.entries.values()) {
-      entry.frame.hidden = entry.key !== this.key || entry.panelId !== selected;
+      entry.frame.hidden = entry.key !== this.key || entry.presentation === "background" || entry.panelId !== selected;
     }
     this.tabs.replaceChildren();
     for (const entry of visible) {
       const tab = document.createElement("div");
       tab.className = "session-tab plugin-panel-tab";
+      tab.classList.toggle("background-panel", entry.presentation === "background");
       tab.setAttribute("role", "tab");
       tab.setAttribute("aria-selected", String(entry.panelId === selected));
       tab.tabIndex = 0;
@@ -364,6 +382,7 @@ window.XedocPluginPanels = class {
       select.textContent = entry.title || "Plugin panel";
       select.title = entry.target || select.textContent;
       const activate = () => {
+        if (entry.website) entry.presentation = "foreground";
         this.selected.set(this.key, entry.panelId);
         this.render();
         this.tabs.querySelector('[aria-selected="true"]')?.focus();
@@ -426,17 +445,34 @@ window.XedocPluginPanels = class {
           : "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"}"/></svg>`;
       expand.addEventListener("click", (event) => {
         event.stopPropagation();
+        if (entry.website) entry.presentation = "foreground";
         this.selected.set(this.key, entry.panelId);
         if (expanded) this.fullscreen.delete(this.key);
         else this.fullscreen.add(this.key);
         this.render();
         this.tabs.querySelector('[aria-selected="true"] .plugin-panel-expand')?.focus();
       });
+      if (entry.website) {
+        const presentation = document.createElement("button");
+        presentation.type = "button";
+        presentation.className = "plugin-panel-expand";
+        const background = entry.presentation === "background";
+        presentation.textContent = background ? "↑" : "↓";
+        presentation.title = background ? "Bring page to foreground" : "Move page to background";
+        presentation.setAttribute("aria-label", presentation.title);
+        presentation.addEventListener("click", (event) => {
+          event.stopPropagation();
+          this.setWebsitePresentation(entry.panelId, background ? "foreground" : "background", entry.key);
+        });
+        tab.append(presentation);
+      }
       tab.append(select, expand, browser, close);
       this.tabs.append(tab);
     }
     this.container.hidden = !visible.length;
-    this.divider.hidden = !visible.length || fullscreen;
+    this.container.classList.toggle("background-only", visible.length > 0 && !foreground.length);
+    this.frames.hidden = !foreground.length;
+    this.divider.hidden = !foreground.length || fullscreen;
     this.layoutWebsite();
   }
 

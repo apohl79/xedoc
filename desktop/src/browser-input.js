@@ -1,21 +1,23 @@
 "use strict";
 
+const { waitForBackgroundFrame } = require("./browser-rendering");
+
 async function browserInput(panel, action, input) {
   const contents = panel.view.webContents;
-  if (!panel.view.getVisible()) throw new Error("Native input requires the website panel visible.");
+  await waitForBackgroundFrame(panel.view);
   if (action === "pointer") {
     const { width, height } = panel.view.getBounds();
     const x = input.x;
     const y = input.y;
     const zoom = contents.getZoomFactor();
     if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= width / zoom || y >= height / zoom) {
-      throw new Error("Pointer coordinates must be inside the visible panel.");
+      throw new Error("Pointer coordinates must be inside the page viewport.");
     }
     const send = (type, buttons) => contents.sendInputEvent({
       type, x: Math.round(x * zoom), y: Math.round(y * zoom), button: "left", clickCount: 1,
       modifiers: buttons ? ["leftButtonDown"] : [],
     });
-    contents.focus();
+    if (panel.view.getBounds().x >= 0) contents.focus();
     if (input.event === "move") send("mouseMove", panel.pointerDown ? 1 : 0);
     else if (input.event === "down") { send("mouseDown", 1); panel.pointerDown = true; }
     else if (input.event === "up") { send("mouseUp", 0); panel.pointerDown = false; }
@@ -41,8 +43,8 @@ async function browserInput(panel, action, input) {
         && (node.isContentEditable || ["INPUT", "TEXTAREA"].includes(node.tagName));
     })()`);
     if (!allowed) throw new Error("Focus an editable, non-password element in an accessible frame first.");
-    if (!panel.view.getVisible() || contents.isDestroyed()) throw new Error("Website panel is no longer visible.");
-    contents.focus();
+    if (contents.isDestroyed()) throw new Error("Website panel was closed.");
+    if (panel.view.getBounds().x >= 0) contents.focus();
     await contents.insertText(input.text);
   } else if (action === "key") {
     const modifiers = (input.modifiers || []).map((name) => ({ meta: "meta", control: "control", alt: "alt", shift: "shift" })[name]);
@@ -51,7 +53,7 @@ async function browserInput(panel, action, input) {
     const keyCode = { ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right", " ": "Space" }[input.key] || shifted[input.key] || (input.key.length === 1 ? input.key.toUpperCase() : input.key);
     const character = modifiers.includes("shift")
       ? Object.keys(shifted).find((key) => shifted[key] === input.key) || input.key.toUpperCase() : input.key;
-    contents.focus();
+    if (panel.view.getBounds().x >= 0) contents.focus();
     contents.setIgnoreMenuShortcuts(true);
     try {
       contents.sendInputEvent({ type: "keyDown", keyCode, modifiers });
@@ -59,6 +61,13 @@ async function browserInput(panel, action, input) {
         contents.sendInputEvent({ type: "char", keyCode: character, modifiers });
       }
       contents.sendInputEvent({ type: "keyUp", keyCode, modifiers });
+      if (process.platform === "darwin" && panel.view.getBounds().x < 0
+          && !modifiers.some((name) => ["control", "alt"].includes(name)) && modifiers.includes("meta")) {
+        const command = modifiers.includes("shift")
+          ? { z: "redo" }[input.key.toLowerCase()]
+          : { a: "selectAll", c: "copy", x: "cut", v: "paste", z: "undo", y: "redo" }[input.key.toLowerCase()];
+        if (command) contents[command]();
+      }
     } finally {
       contents.setIgnoreMenuShortcuts(false);
     }

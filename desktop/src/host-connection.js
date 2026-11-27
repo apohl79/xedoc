@@ -11,6 +11,7 @@ const { localAccess, readLocalHost } = require("./local-host");
 const { registerUI, uiWebPreferences, uiPage, autosaveBounds } = require("./ui-bridge");
 const { WebsitePanel, describeLoadError } = require("./website-panel");
 const { browserInput } = require("./browser-input");
+const { waitForBackgroundFrame } = require("./browser-rendering");
 const { validatedHostURL, validatedWebsiteURL, sameOrigin } = require("./urls");
 const { displayHostName } = require("./ui/host-display-name");
 const extensions = require("./website-extensions");
@@ -109,6 +110,7 @@ class HostConnection {
         preload: path.join(__dirname, "preload-host.js"),
         sandbox: true,
         contextIsolation: true,
+        backgroundThrottling: false,
         nodeIntegrationInSubFrames: true,
       },
     });
@@ -410,8 +412,10 @@ class HostConnection {
             this.contents.executeJavaScript(`window.xedocWebsiteState?.(${JSON.stringify(created.state(id))})`, true)
               .catch(() => {});
           },
-          openNew: (target) => {
-            if (created.view.getVisible()) this.openWebsite(target);
+          openNew: (target, background = false) => {
+            this.contents.executeJavaScript(`window.xedocOpenWebsite?.(${JSON.stringify(target)}, ${JSON.stringify({
+              openerPanelId: id, background: background || created.view.getBounds().x < 0,
+            })})`).catch(() => {});
           },
         });
         created.view.webContents.on("context-menu", (_event, params) => this.showContextMenu(created.view.webContents, params));
@@ -421,7 +425,11 @@ class HostConnection {
         break;
       }
       case "layout": {
-        for (const [key, item] of this.websites) item.view.setVisible(key === id);
+        for (const [key, item] of this.websites) {
+          if (key === id) continue;
+          const bounds = item.view.getBounds();
+          if (bounds.x >= 0) item.view.setBounds({ ...bounds, x: -bounds.width - 1, y: 0 });
+        }
         if (panel) extensions.selectPanel(panel.view.webContents);
         const rect = event.rect;
         const values = rect && [rect.x, rect.y, rect.width, rect.height];
@@ -493,6 +501,14 @@ class HostConnection {
     }
     const contents = panel.view.webContents;
     switch (event.action) {
+      case "downloads":
+      case "save_download":
+        try {
+          reply(event.action === "downloads" ? panel.downloads.list() : panel.downloads.read(event.input || {}));
+        } catch (error) {
+          reply(null, error);
+        }
+        break;
       case "cdp":
       case "cdp_events":
         void (event.action === "cdp" ? panel.devtools.command(event.input || {}) : panel.devtools.read(event.input || {}))
@@ -529,7 +545,8 @@ class HostConnection {
         reply({ ok: true });
         break;
       case "screenshot":
-        void contents.capturePage(undefined, { stayHidden: true, stayAwake: true }).then((image) => {
+        void waitForBackgroundFrame(panel.view)
+          .then(() => contents.capturePage(undefined, { stayHidden: true, stayAwake: true })).then((image) => {
           const png = image.toPNG();
           if (!png.length) throw new Error("Could not capture website screenshot.");
           if (png.length > 4 * 1024 * 1024) throw new Error("Website screenshot exceeds 4 MiB.");
@@ -596,7 +613,7 @@ class HostConnection {
           const panel = this.websites.get(snapshot.id);
           panel?.view.setBounds(snapshot.bounds);
           panel?.view.setVisible(snapshot.visible);
-          if (snapshot.visible && panel) extensions.selectPanel(panel.view.webContents);
+          if (snapshot.visible && snapshot.bounds.x >= 0 && panel) extensions.selectPanel(panel.view.webContents);
         }
         this.pendingWebsiteRestores.clear();
       },

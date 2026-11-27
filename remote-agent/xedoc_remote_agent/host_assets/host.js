@@ -63,7 +63,17 @@
       projectName: selectedProject, threadId: activeThread, frame,
     };
   }, run);
-  new window.XedocBrowserAutomation(api, pluginPanels);
+  new window.XedocBrowserAutomation(api, pluginPanels, {
+    contexts: () => !state ? [] : [...openedSessions.values()].map((session) => ({
+      ...session, generation: accountGeneration,
+    })),
+    async reveal(context) {
+      if (pluginPanels.contextKey(pluginPanels.context()) === pluginPanels.contextKey(context)) return;
+      await window.xedocOpenSession({
+        username: state.account.username, ...pluginPanels.params(context),
+      });
+    },
+  });
   const terminals = new window.XedocHostTerminals(api, {
     run,
     current: () => ({ workspaceId: selectedWorkspace, projectName: selectedProject }),

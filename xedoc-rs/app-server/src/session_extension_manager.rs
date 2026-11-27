@@ -248,6 +248,7 @@ impl SessionExtensionManager {
             self.inner.config.xedoc_home.to_path_buf(),
             params.clone(),
             conversation.clone(),
+            self.inner.thread_manager.environment_manager(),
         ) {
             return true;
         }

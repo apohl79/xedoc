@@ -10,6 +10,7 @@ import uuid
 from urllib.parse import urlsplit
 
 from .errors import BrokerError
+from .host_outside_projects import OTHER_WORKSPACE
 
 
 _ACTIONS = {
@@ -17,8 +18,11 @@ _ACTIONS = {
     "evaluate", "click", "fill", "select", "scroll", "screenshot", "close",
     "frames", "inspect", "wait_for", "focus", "observe", "diagnostics",
     "pointer", "key", "type", "cdp", "cdp_events", "extensions",
+    "downloads", "save_download", "set_presentation",
 }
 _MAX_PENDING = 32
+_MAX_POLL_SESSIONS = 128
+_LEGACY_POLL = object()
 _MAX_RESULT_BYTES = 6 * 1024 * 1024
 _PANEL_ID = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z",
@@ -32,6 +36,7 @@ class HostBrowser:
         self.condition = threading.Condition(threading.RLock())
         self.pending = {}
         self.queues = {}
+        self.poll_cursor = 0
 
     def command(self, account, body):
         thread_id, action, arguments, timeout = self._validate(body)
@@ -94,26 +99,56 @@ class HostBrowser:
             raise BrokerError.invalid_request(request["error"])
         return {"result": request.get("result")}
 
-    def poll(self, account, workspace_id, project_name, thread_id):
-        session = self._session(account, thread_id, workspace_id, project_name)
+    def poll(self, account, workspace_id, project_name, thread_id, sessions=_LEGACY_POLL):
+        registrations = [{
+            "workspaceId": workspace_id,
+            "projectName": project_name,
+            "threadId": thread_id,
+        }] if sessions is _LEGACY_POLL else sessions
+        if not isinstance(registrations, list) or not 1 <= len(registrations) <= _MAX_POLL_SESSIONS:
+            raise BrokerError.invalid_request("Browser poll requires between 1 and 128 sessions")
         with self.panels.lock:
-            session["browserSeenAt"] = time.monotonic()
-        owner = (account["username"], thread_id)
+            registered = {}
+            for registration in registrations:
+                if not isinstance(registration, dict) or any(
+                    not isinstance(registration.get(key), str)
+                    or not 0 < len(registration[key]) <= 1024
+                    for key in ("workspaceId", "projectName", "threadId")
+                ):
+                    raise BrokerError.invalid_request("Browser poll session is invalid")
+                if account["role"] != "admin" and registration["workspaceId"] == OTHER_WORKSPACE:
+                    raise BrokerError.unauthorized("Workspace access denied")
+                session = self._session(
+                    account, registration["threadId"],
+                    registration["workspaceId"], registration["projectName"],
+                )
+                registered[(account["username"], registration["threadId"])] = session
+            seen_at = time.monotonic()
+            for session in registered.values():
+                session["browserSeenAt"] = seen_at
+        owners = list(registered)
         deadline = time.monotonic() + 2
         with self.condition:
             while True:
-                queue = self.queues.get(owner)
-                while queue:
-                    request = self.pending.get(queue.popleft())
-                    if request is not None:
-                        request["delivered"] = True
-                        return {
-                            "command": {
-                                key: request[key]
-                                for key in ("requestId", "action", "arguments", "timeout")
+                for offset in range(len(owners)):
+                    index = (self.poll_cursor + offset) % len(owners)
+                    owner = owners[index]
+                    queue = self.queues.get(owner)
+                    while queue:
+                        request = self.pending.get(queue.popleft())
+                        if request is not None:
+                            self.poll_cursor = (index + 1) % len(owners)
+                            request["delivered"] = True
+                            return {
+                                "command": {
+                                    key: request[key]
+                                    for key in (
+                                        "requestId", "threadId", "workspaceId",
+                                        "projectName", "action", "arguments", "timeout",
+                                    )
+                                }
                             }
-                        }
-                self.queues.pop(owner, None)
+                    self.queues.pop(owner, None)
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     return {"command": None}
@@ -198,6 +233,19 @@ class HostBrowser:
                 or parsed.password is not None
             ):
                 raise BrokerError.invalid_request("Only HTTP and HTTPS website URLs are allowed")
+        if action == "set_presentation" and "presentation" not in arguments:
+            raise BrokerError.invalid_request("Browser presentation is required")
+        if "presentation" in arguments and arguments["presentation"] not in (
+            "foreground", "background",
+        ):
+            raise BrokerError.invalid_request("Browser presentation must be foreground or background")
+        if action == "save_download":
+            download_id = arguments.get("downloadId")
+            if not isinstance(download_id, str) or not _PANEL_ID.fullmatch(download_id):
+                raise BrokerError.invalid_request("A valid downloadId is required")
+            offset = arguments.get("offset", 0)
+            if type(offset) is not int or not 0 <= offset <= 32 * 1024 * 1024:
+                raise BrokerError.invalid_request("Invalid download offset")
         if action == "evaluate":
             script = arguments.get("script")
             if not isinstance(script, str) or len(script.encode()) > 32 * 1024:
@@ -234,7 +282,7 @@ class HostBrowser:
             if not isinstance(selector, str) or not 0 < len(selector.encode()) <= 4096:
                 raise BrokerError.invalid_request("A bounded CSS selector is required")
         for name, minimum, maximum in (
-            ("offset", 0, 2**53 - 1 if action == "cdp" else 10000),
+            ("offset", 0, 2**53 - 1 if action in ("cdp", "save_download") else 10000),
             ("limit", 1, 4096 if action == "cdp" else 8 if action == "cdp_events" else 12),
             ("after", 0, 2**53 - 1), ("textLimit", 0, 3000),
             ("timeoutMs", 100, 15000), ("id", 1, 2**53 - 1),

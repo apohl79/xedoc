@@ -789,7 +789,8 @@ class HostHandler(BaseHTTPRequestHandler):
                 "/api/browser/poll",
                 "/api/browser/result",
             ):
-                if not admin and (
+                multiplex_browser_poll = path == "/api/browser/poll" and "sessions" in body
+                if not admin and not multiplex_browser_poll and (
                     workspace_id == OTHER_WORKSPACE
                     or workspace_id not in account["workspaces"]
                 ):
@@ -812,7 +813,8 @@ class HostHandler(BaseHTTPRequestHandler):
                     browser = self.server.browser
                     if path == "/api/browser/poll":
                         self.reply(200, browser.poll(
-                            account, workspace_id, project_name, thread_id
+                            account, workspace_id, project_name, thread_id,
+                            **({"sessions": body["sessions"]} if "sessions" in body else {}),
                         ))
                     elif path == "/api/browser/result":
                         self.reply(200, browser.complete(
