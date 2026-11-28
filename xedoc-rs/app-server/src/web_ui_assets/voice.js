@@ -5,7 +5,7 @@
   const optionsButton = document.getElementById("voice-options");
   const menu = document.getElementById("voice-menu");
   const backend = document.getElementById("voice-backend");
-  const backendNote = document.querySelector(".voice-menu-note");
+  const backendNote = document.getElementById("voice-backend-note");
   const status = document.getElementById("voice-status");
   const sessionMatch = location.pathname.match(/^\/session-ui\/([^/]+)(?:\/|$)/);
   if (!button || !optionsButton || !menu || !backend || !backendNote || !status || !sessionMatch) return;
@@ -23,7 +23,6 @@
 
   button.hidden = false;
   optionsButton.hidden = false;
-  status.hidden = false;
   button.disabled = true;
 
   function setStatus(message) {
@@ -38,11 +37,13 @@
     menu.style.left = `${Math.max(8, Math.min(left, innerWidth - bounds.width - 8))}px`;
     menu.style.top = `${Math.max(8, Math.min(top, innerHeight - bounds.height - 8))}px`;
     optionsButton.setAttribute("aria-expanded", "true");
+    if (!voiceAvailable) button.setAttribute("aria-expanded", "true");
   }
 
   function closeMenu() {
     menu.hidden = true;
     optionsButton.setAttribute("aria-expanded", "false");
+    if (!voiceAvailable) button.setAttribute("aria-expanded", "false");
   }
 
   function isActive(session) {
@@ -74,23 +75,25 @@
       const result = await post("/api/session/voice/mode", {});
       voiceAvailable = result.available === true;
       if (voiceAvailable) {
-        backend.textContent = "Local Whisper + Piper";
-        backendNote.textContent = "Speech runs on the host; models download on first use.";
         setStatus("Local voice is ready.");
       } else {
-        backendNote.textContent = "Configure OpenAI OAuth or an API key to use voice.";
-        setStatus("Voice unavailable. Configure OpenAI OAuth or an API key.");
+        const reason = result.unavailableReason || "Update Xedoc on the host to use voice.";
+        setStatus(`Voice unavailable. ${reason}`);
       }
     } catch {
       voiceAvailable = false;
-      backendNote.textContent = "Voice availability could not be checked.";
       setStatus("Voice availability could not be checked.");
     }
+    backendNote.hidden = !voiceAvailable;
     backend.setAttribute("aria-checked", voiceAvailable ? "true" : "false");
-    button.disabled = !voiceAvailable;
+    button.disabled = false;
     backend.disabled = !voiceAvailable;
-    optionsButton.hidden = !voiceAvailable;
-    button.title = voiceAvailable ? "Start voice conversation" : "Voice unavailable";
+    button.title = voiceAvailable ? "Start voice conversation" : "Voice unavailable — show details";
+    button.setAttribute("aria-label", button.title);
+    if (!voiceAvailable) {
+      button.setAttribute("aria-haspopup", "menu");
+      button.setAttribute("aria-expanded", "false");
+    }
   }
 
   function downsampleToPcm16(samples, sourceRate) {
@@ -413,7 +416,15 @@
 
   button.addEventListener("click", () => {
     if (activeSession) stopVoice(activeSession);
-    else if (voiceAvailable) void startVoice();
+    else if (voiceAvailable) {
+      closeMenu();
+      void startVoice();
+    } else if (menu.hidden) {
+      const bounds = button.getBoundingClientRect();
+      positionMenu(bounds.right, bounds.top - 8, true, true);
+    } else {
+      closeMenu();
+    }
   });
   optionsButton.addEventListener("click", () => {
     if (menu.hidden) {

@@ -39,7 +39,7 @@ pub(crate) struct VoiceRequestProcessor {
     auth_manager: Arc<AuthManager>,
     thread_manager: Arc<ThreadManager>,
     config: Arc<Config>,
-    runtime: Option<VoiceRuntime>,
+    runtime: Result<VoiceRuntime, String>,
     worker: Arc<Mutex<Option<VoiceWorker>>>,
 }
 
@@ -77,9 +77,24 @@ impl VoiceRequestProcessor {
     ) -> Result<ThreadVoiceStatusResponse, JSONRPCErrorError> {
         self.ensure_thread(&params.thread_id).await?;
         let auth = self.auth_manager.auth().await;
+        let unavailable_reason = if !auth.as_ref().is_some_and(openai_auth_is_configured) {
+            Some("Configure OpenAI OAuth or an API key on the host to use voice.".to_string())
+        } else if let Err(reason) = &self.runtime {
+            Some(reason.clone())
+        } else {
+            self.worker_request(serde_json::json!({"action": "status"}))
+                .await
+                .err()
+                .map(|error| {
+                    format!(
+                        "The host speech runtime could not start: {}. Reinstall or update Xedoc on the host.",
+                        error.message
+                    )
+                })
+        };
         Ok(ThreadVoiceStatusResponse {
-            available: self.runtime.is_some()
-                && auth.as_ref().is_some_and(openai_auth_is_configured),
+            available: unavailable_reason.is_none(),
+            unavailable_reason,
         })
     }
 
@@ -144,12 +159,13 @@ impl VoiceRequestProcessor {
     }
 
     async fn require_voice_available(&self, thread_id: &str) -> Result<(), JSONRPCErrorError> {
-        self.ensure_thread(thread_id).await?;
-        let auth = self.auth_manager.auth().await;
-        if self.runtime.is_none() || !auth.as_ref().is_some_and(openai_auth_is_configured) {
-            return Err(invalid_request(
-                "voice requires configured OpenAI OAuth or API-key auth and the bundled local speech runtime",
-            ));
+        let status = self
+            .status(ThreadVoiceStatusParams {
+                thread_id: thread_id.to_string(),
+            })
+            .await?;
+        if let Some(reason) = status.unavailable_reason {
+            return Err(invalid_request(reason));
         }
         Ok(())
     }
@@ -165,10 +181,7 @@ impl VoiceRequestProcessor {
     }
 
     async fn worker_request(&self, request: JsonValue) -> Result<JsonValue, JSONRPCErrorError> {
-        let runtime = self
-            .runtime
-            .clone()
-            .ok_or_else(|| invalid_request("the bundled local speech runtime is unavailable"))?;
+        let runtime = self.runtime.clone().map_err(invalid_request)?;
         let xedoc_home = self.config.xedoc_home.to_path_buf();
         let worker_state = Arc::clone(&self.worker);
         let response = tokio::task::spawn_blocking(move || {
@@ -339,18 +352,32 @@ fn terminate_voice_worker(child: &Mutex<Child>) {
     }
 }
 
-fn voice_runtime() -> Option<VoiceRuntime> {
-    let manifest = InstallContext::current()
-        .bundled_resource("model-router/runtime/model-router-runtime.json")?
+fn voice_runtime() -> Result<VoiceRuntime, String> {
+    let install = InstallContext::current();
+    let missing_runtime =
+        "The host speech runtime is missing or incomplete. Reinstall or update Xedoc on the host.";
+    let manifest = install
+        .bundled_resource("model-router/runtime/model-router-runtime.json")
+        .ok_or_else(|| missing_runtime.to_string())?
         .into_path_buf();
-    let root = manifest.parent()?;
+    let root = manifest
+        .parent()
+        .ok_or_else(|| missing_runtime.to_string())?;
     let python = if cfg!(windows) {
         root.join("python").join("python.exe")
     } else {
-        root.join("python").join("bin").join("python3")
+        install
+            .bundled_resource("remote-agent/runtime/python/bin/python3")
+            .map_or_else(
+                || root.join("python").join("bin").join("python3"),
+                PathBuf::from,
+            )
     };
     let site_packages = root.join("site-packages");
-    (python.is_file() && site_packages.is_dir()).then_some(VoiceRuntime {
+    if !python.is_file() || !site_packages.join("sherpa_onnx/__init__.py").is_file() {
+        return Err(missing_runtime.to_string());
+    }
+    Ok(VoiceRuntime {
         python,
         site_packages,
     })

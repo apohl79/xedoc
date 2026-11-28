@@ -860,6 +860,7 @@ pub struct ThreadVoiceStatusParams {
 #[ts(export_to = "v2/")]
 pub struct ThreadVoiceStatusResponse {
     pub available: bool,
+    pub unavailable_reason: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema, TS)]

@@ -1356,9 +1356,12 @@ class HostWorkspaces:
             raise BrokerError.unavailable("The Xedoc voice turn returned no answer")
         return {"turnId": turn_id, "text": answer}
 
-    def voice_status(self, thread_id: str) -> dict[str, bool]:
+    def voice_status(self, thread_id: str) -> dict:
         response = self._voice_request("thread/voice/status", {"threadId": thread_id})
-        return {"available": response.get("available") is True}
+        return {
+            "available": response.get("available") is True,
+            "unavailableReason": response.get("unavailableReason"),
+        }
 
     def transcribe_voice(self, thread_id: str, audio_base64: Any, locale: Any) -> dict:
         if (

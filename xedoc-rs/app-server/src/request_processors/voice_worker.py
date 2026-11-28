@@ -284,6 +284,8 @@ def synthesize(request: dict, cache: Path, synthesizers: dict):
 def handle(request: dict, cache: Path, recognizers: dict, synthesizers: dict):
     if not isinstance(request, dict):
         raise ValueError("Voice request must be an object")
+    if request.get("action") == "status":
+        return {}
     if request.get("action") == "transcribe":
         return transcribe(request, cache, recognizers)
     if request.get("action") == "synthesize":

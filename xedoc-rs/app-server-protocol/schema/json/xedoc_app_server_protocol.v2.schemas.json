@@ -20885,6 +20885,12 @@
       "properties": {
         "available": {
           "type": "boolean"
+        },
+        "unavailableReason": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
