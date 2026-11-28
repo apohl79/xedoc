@@ -28,6 +28,9 @@ Hosts… (`N`), New Tab (`T`, opens the session “+” menu), Reload Host (`R`)
 Open Website… (`L`), and Quit (`Q`). There is no menu bar; right-click the
 host page for the same commands and Pair Device…. `Ctrl`+click opens a link in
 the external browser. Closing the last window quits the app on Linux and Windows.
+Use **Extensions → Load gTabs Extension…** to select gTabs' unpacked `extension/`
+folder. Xedoc remembers the folder across launches. Reload open gTabs and Ultimate
+Guitar pages after loading or reloading it; use the same menu to remove it.
 macOS uses a native File menu with `⌘N`, `⌘T`, `⌘R` and `⌘L`; closing the last
 window keeps the app running. See `macos/README.md` for signed macOS releases.
 `⌘+`, `⌘-` and `⌘0` on macOS (`Ctrl` elsewhere) increase, decrease and reset

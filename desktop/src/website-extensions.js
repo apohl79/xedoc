@@ -13,6 +13,7 @@ const {
 const { EventEmitter } = require("node:events");
 const state = require("./state");
 const { validatedWebsiteURL } = require("./urls");
+const gtabs = require("./website-gtabs");
 
 const onepasswordId = "aeblfdkhhhdcdjpifhhbdiojplfjncoa";
 const panels = new Map();
@@ -58,6 +59,7 @@ async function initialize() {
       });
     },
   );
+  await gtabs.initialize(ensureRuntime);
   if (state.get("onepasswordEnabled") !== true) return;
   try {
     await setEnabled(true);
@@ -68,7 +70,7 @@ async function initialize() {
   }
 }
 
-async function load() {
+function ensureRuntime() {
   if (!runtime) {
     delete process.env.DEBUG;
     require("debug").disable();
@@ -91,7 +93,7 @@ async function load() {
       }
     }
     if (!workerPreloadRegistered) {
-      protectedSession.registerPreloadScript({
+      session.defaultSession.registerPreloadScript({
         id: "onepassword-worker-control",
         type: "service-worker",
         filePath: path.join(__dirname, "onepassword-worker-preload.js"),
@@ -100,9 +102,12 @@ async function load() {
     }
     const { ElectronChromeExtensions } = require("electron-chrome-extensions");
     runtime = new ElectronChromeExtensions({
-      session: protectedSession,
+      session: session.defaultSession,
       requestPermissions: async () => false,
       createTab: async (details) => {
+        if (gtabs.canOpen(details.url)) {
+          return gtabs.createTab(details, runtime);
+        }
         const window = await createWindow(details.url);
         return [window.webContents, window];
       },
@@ -125,7 +130,15 @@ async function load() {
       window.once("closed", () => windows.delete(window));
       protectExtensionContents(window.webContents);
     });
+    for (const contents of panels.keys()) {
+      runtime.addTab(contents, contents.getOwnerBrowserWindow());
+    }
   }
+  return runtime;
+}
+
+async function load() {
+  ensureRuntime();
   disposeNative = require("./onepassword-native").installNativeBridge(runtime);
   if (!codePath) {
     const source = app.isPackaged
@@ -378,13 +391,12 @@ function protectExtensionContents(
 function registerPanel(contents, window, activate) {
   panels.set(contents, activate);
   contents.once("destroyed", () => panels.delete(contents));
-  if (!runtime || !loaded) return;
-  runtime.addTab(contents, window);
+  if (runtime) runtime.addTab(contents, window);
   contents.on("focus", () => selectPanel(contents));
 }
 
 function selectPanel(contents) {
-  if (runtime && loaded && panels.has(contents)) runtime.selectTab(contents);
+  if (runtime && panels.has(contents)) runtime.selectTab(contents);
 }
 
 async function configure() {
@@ -428,6 +440,8 @@ async function openOnePassword(contents) {
 
 function menu(contents) {
   return [
+    ...gtabs.menu(ensureRuntime, () => events.emit("change")),
+    { type: "separator" },
     { label: "Open 1Password", click: () => void openOnePassword(contents) },
     ...(protectedSession && !loaded
       ? [{ label: "1Password unavailable — disable or retry", enabled: false }]
