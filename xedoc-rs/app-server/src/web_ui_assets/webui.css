@@ -144,6 +144,7 @@ a { color: #8fc4e7; }
 #composer { flex: none; min-width: 0; }
 #activity { max-height: 32dvh; overflow-y: auto; overflow-x: hidden; padding-left: 10px; font-family: var(--sans); font-size: 13px; margin-bottom: 10px; }
 #activity:empty { display: none; }
+.activity-popup { font-family: var(--mono); }
 @keyframes activity-glimmer {
   0%, 100% { color: var(--activity-status-foreground, inherit); text-shadow: none; }
   50% { color: #fff; text-shadow: 0 0 5px rgb(255 255 255 / 55%); }

@@ -987,7 +987,13 @@
       fitLiveFrame();
     }
     if (lastActivity !== frame.activity || lastPopup !== frame.popup) {
-      activity.innerHTML = `${frame.activity || ""}${frame.popup || ""}`;
+      activity.innerHTML = frame.activity || "";
+      if (frame.popup) {
+        const popup = document.createElement("div");
+        popup.className = "activity-popup";
+        popup.innerHTML = frame.popup;
+        activity.append(popup);
+      }
       const activityLines = [...activity.querySelectorAll(":scope > .line")];
       const copyStyledRange = (line, start, end) => {
         const range = document.createRange();
