@@ -1033,8 +1033,11 @@ fn bundled_router_argv() -> Option<Vec<OsString>> {
                     .join("remote-agent")
                     .join("runtime")
                     .join("python")
-                    .join("bin")
-                    .join("python3")
+                    .join(if cfg!(windows) {
+                        "python.exe"
+                    } else {
+                        "bin/python3"
+                    })
             });
             let python = bundled_python
                 .filter(|python| python.is_file())

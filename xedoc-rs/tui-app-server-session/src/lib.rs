@@ -1527,7 +1527,12 @@ async fn sync_environment_variables_with_request_handle(
 fn environment_variables_for_mode(
     thread_params_mode: ThreadParamsMode,
 ) -> Option<BTreeMap<String, String>> {
-    matches!(thread_params_mode, ThreadParamsMode::Embedded).then(|| std::env::vars().collect())
+    matches!(thread_params_mode, ThreadParamsMode::Embedded).then(|| {
+        std::env::vars()
+            // Windows drive-current-directory entries are not forwardable environment variables.
+            .filter(|(key, _)| !key.starts_with('='))
+            .collect()
+    })
 }
 
 pub fn status_account_display_from_auth_mode(
